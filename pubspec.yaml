@@ -1,0 +1,20 @@
+name: hrm_coffee_shop_flutter
+description: Flutter frontend scaffold for HRM Coffee Shop SRS v2.0
+publish_to: none
+version: 1.0.0+1
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  flutter_riverpod: ^3.4.3
+  get_it: ^9.3.0
+  dio: ^5.11.1
+  go_router: ^18.1.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+flutter:
+  uses-material-design: true
