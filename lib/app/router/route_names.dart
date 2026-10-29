@@ -16,6 +16,12 @@ abstract final class RouteNames {
   static const managerApprovals = '/manager/approvals';
   static const managerChecklistApprovals = '/manager/checklists/approvals';
   static const managerAttendanceReport = '/manager/reports/attendance';
+  static const adminHome = '/admin';
+  static const adminAccounts = '/admin/accounts';
+  static const adminPositions = '/admin/positions';
+  static const adminTraining = '/admin/training';
+  static const adminChecklistTemplates = '/admin/checklist-templates';
+  static const adminSettings = '/admin/settings';
 
   static String managerEmployeeDetailFor(String employeeCode) =>
       '/manager/employees/$employeeCode';
