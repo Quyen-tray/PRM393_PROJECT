@@ -8,6 +8,8 @@ enum DemoDeviceStatus { active, pending, locked, revoked }
 
 enum DemoTrainingStatus { complete, inProgress, expired }
 
+enum DemoNotificationCategory { reminder, approval, system }
+
 enum DemoChecklistStatus {
   pending,
   inProgress,
@@ -160,6 +162,36 @@ class DemoManagerSkill {
   final String levelLabel;
   final int scorePercent;
   final String evaluatedAt;
+}
+
+class DemoEmployeeCertificate {
+  const DemoEmployeeCertificate({
+    required this.title,
+    required this.issuer,
+    required this.issuedAt,
+    required this.expiresAt,
+  });
+
+  final String title;
+  final String issuer;
+  final String issuedAt;
+  final String expiresAt;
+}
+
+class DemoEmployeeNotification {
+  const DemoEmployeeNotification({
+    required this.title,
+    required this.message,
+    required this.timeLabel,
+    required this.category,
+    required this.isUnread,
+  });
+
+  final String title;
+  final String message;
+  final String timeLabel;
+  final DemoNotificationCategory category;
+  final bool isUnread;
 }
 
 class DemoChecklistTask {
@@ -318,6 +350,9 @@ abstract final class DemoData {
   static const storeName = 'HRM Coffee Shop';
   static const storeBranch = 'Chi nhánh trung tâm';
   static const storeLocationLabel = 'Khu vực cửa hàng';
+  // Demo branch coordinates from the example location in the SRS.
+  static const storeLatitude = 10.7769;
+  static const storeLongitude = 106.7009;
 
   static const employee = DemoEmployee(
     fullName: 'Nguyễn Văn An',
@@ -328,6 +363,44 @@ abstract final class DemoData {
     employmentStatus: 'Đang làm việc',
     hireDate: '01/06/2026',
   );
+
+  static const employeeNotifications = <DemoEmployeeNotification>[
+    DemoEmployeeNotification(
+      title: 'Ca làm ngày mai',
+      message: 'Bạn có ca làm lúc 08:00.',
+      timeLabel: '2 giờ trước',
+      category: DemoNotificationCategory.reminder,
+      isUnread: true,
+    ),
+    DemoEmployeeNotification(
+      title: 'Checklist chưa hoàn thành',
+      message: 'Vui lòng hoàn thành checklist cuối ca.',
+      timeLabel: '5 giờ trước',
+      category: DemoNotificationCategory.reminder,
+      isUnread: true,
+    ),
+    DemoEmployeeNotification(
+      title: 'Khóa học sắp hết hạn',
+      message: 'An toàn thực phẩm còn 7 ngày để hoàn thành.',
+      timeLabel: '1 ngày trước',
+      category: DemoNotificationCategory.reminder,
+      isUnread: false,
+    ),
+    DemoEmployeeNotification(
+      title: 'Yêu cầu đổi ca',
+      message: 'Yêu cầu đổi ca của bạn đã được duyệt.',
+      timeLabel: '1 ngày trước',
+      category: DemoNotificationCategory.approval,
+      isUnread: false,
+    ),
+    DemoEmployeeNotification(
+      title: 'Thông báo chung',
+      message: 'Cập nhật quy định mới của cửa hàng.',
+      timeLabel: '2 ngày trước',
+      category: DemoNotificationCategory.system,
+      isUnread: false,
+    ),
+  ];
 
   static const managerEmployees = <DemoManagerEmployee>[
     DemoManagerEmployee(
@@ -667,10 +740,6 @@ abstract final class DemoData {
 
   static const attendanceStatus = DemoAttendanceStatus.notCheckedIn;
   static const lateMinutes = 7;
-  static const locationDistanceMeters = 12;
-  static const locationAccuracyMeters = 12.5;
-  static const checkInPhotoLabel = 'Ảnh xác minh mẫu';
-
   static const device = DemoDevice(
     name: 'Thiết bị demo của Nguyễn Văn An',
     status: DemoDeviceStatus.active,
@@ -737,6 +806,27 @@ abstract final class DemoData {
     ),
   ];
 
+  static const employeeCertificates = <DemoEmployeeCertificate>[
+    DemoEmployeeCertificate(
+      title: 'An toàn thực phẩm',
+      issuer: 'HRM Coffee Shop',
+      issuedAt: '10/10/2026',
+      expiresAt: '10/10/2027',
+    ),
+    DemoEmployeeCertificate(
+      title: 'Quy trình phục vụ',
+      issuer: 'HRM Coffee Shop',
+      issuedAt: '10/10/2026',
+      expiresAt: '10/10/2027',
+    ),
+    DemoEmployeeCertificate(
+      title: 'Vệ sinh và an toàn lao động',
+      issuer: 'HRM Coffee Shop',
+      issuedAt: '10/10/2026',
+      expiresAt: '10/10/2027',
+    ),
+  ];
+
   static const checklistTasks = <DemoChecklistTask>[
     DemoChecklistTask(
       title: 'Kiểm tra khu vực quầy',
@@ -764,6 +854,13 @@ abstract final class DemoData {
       status: DemoChecklistStatus.pending,
       dueTime: '07:35',
       evidenceRequired: true,
+      managerApprovalRequired: true,
+    ),
+    DemoChecklistTask(
+      title: 'Mở két và kiểm tra tiền',
+      status: DemoChecklistStatus.pending,
+      dueTime: '07:45',
+      evidenceRequired: false,
       managerApprovalRequired: true,
     ),
   ];

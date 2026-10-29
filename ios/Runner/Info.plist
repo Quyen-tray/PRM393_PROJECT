@@ -24,6 +24,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Ứng dụng cần camera để chụp ảnh xác minh check-in và ảnh minh chứng checklist.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Tính năng chụp ảnh không sử dụng microphone.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Ứng dụng dùng vị trí khi bạn check-in để xác minh bạn đang ở gần cửa hàng.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

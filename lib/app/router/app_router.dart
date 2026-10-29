@@ -4,14 +4,18 @@ import 'package:go_router/go_router.dart';
 import '../../features/approvals/presentation/manager_approval_page.dart';
 import '../../features/approvals/presentation/manager_checklist_approval_page.dart';
 import '../../features/attendance/presentation/employee_check_in_page.dart';
+import '../../features/checklist/presentation/employee_checklist_page.dart';
 import '../../features/auth/presentation/login_page.dart';
 import '../../features/auth/presentation/register_page.dart';
 import '../../features/employees/presentation/manager_employee_list_page.dart';
 import '../../features/employees/presentation/manager_employee_detail_page.dart';
 import '../../features/home/presentation/employee_dashboard_page.dart';
 import '../../features/home/presentation/manager_dashboard_page.dart';
+import '../../features/notifications/presentation/employee_notifications_page.dart';
+import '../../features/profile/presentation/employee_profile_page.dart';
 import '../../features/reports/presentation/manager_attendance_report_page.dart';
 import '../../features/schedule/presentation/employee_schedule_page.dart';
+import '../../features/training/presentation/employee_training_page.dart';
 import '../../features/schedule/presentation/manager_shift_schedule_page.dart';
 import 'route_names.dart';
 
@@ -29,6 +33,22 @@ final appRouter = GoRouter(
     GoRoute(
       path: RouteNames.employeeSchedule,
       builder: (context, state) => const EmployeeSchedulePage(),
+    ),
+    GoRoute(
+      path: RouteNames.employeeChecklist,
+      builder: (context, state) => const EmployeeChecklistPage(),
+    ),
+    GoRoute(
+      path: RouteNames.employeeTraining,
+      builder: (context, state) => const EmployeeTrainingPage(),
+    ),
+    GoRoute(
+      path: RouteNames.employeeProfile,
+      builder: (context, state) => const EmployeeProfilePage(),
+    ),
+    GoRoute(
+      path: RouteNames.employeeNotifications,
+      builder: (context, state) => const EmployeeNotificationsPage(),
     ),
     GoRoute(
       path: RouteNames.managerEmployees,
