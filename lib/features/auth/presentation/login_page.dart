@@ -85,7 +85,9 @@ class _LoginPageState extends State<LoginPage> {
                         labelText: 'Mật khẩu',
                         prefixIcon: const Icon(Icons.lock_outline),
                         suffixIcon: IconButton(
-                          tooltip: _obscurePassword ? 'Hiện mật khẩu' : 'Ẩn mật khẩu',
+                          tooltip: _obscurePassword
+                              ? 'Hiện mật khẩu'
+                              : 'Ẩn mật khẩu',
                           onPressed: () => setState(
                             () => _obscurePassword = !_obscurePassword,
                           ),
@@ -123,6 +125,11 @@ class _LoginPageState extends State<LoginPage> {
                     TextButton(
                       onPressed: () => context.go(RouteNames.register),
                       child: const Text('Chưa có tài khoản? Đăng ký'),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton(
+                      onPressed: () => context.go(RouteNames.adminHome),
+                      child: const Text('Demo: vào màn hình quản trị'),
                     ),
                   ],
                 ),
