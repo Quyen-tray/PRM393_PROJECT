@@ -1,9 +1,16 @@
+import 'dart:async';
+import 'dart:typed_data';
+
+import 'package:camera/camera.dart' show CameraLensDirection;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../data/mock/demo_data.dart';
+import '../../../shared/presentation/camera_capture_page.dart';
 
 class EmployeeCheckInPage extends StatefulWidget {
   const EmployeeCheckInPage({super.key});
@@ -15,49 +22,168 @@ class EmployeeCheckInPage extends StatefulWidget {
 class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
   static const _maxAccuracyMeters = 25.0;
 
+  Position? _position;
+  Uint8List? _photoBytes;
   String? _errorMessage;
   bool _isLoadingLocation = false;
   bool _isLoadingPhoto = false;
-  bool _isPhotoReady = true;
   bool _isSubmitting = false;
 
-  bool get _hasValidLocation {
-    return DemoData.locationDistanceMeters <=
-            DemoData.attendancePolicy.storeRadiusMeters &&
-        DemoData.locationAccuracyMeters <= _maxAccuracyMeters;
+  bool get _hasGpsFix => _position != null;
+
+  double? get _distanceMeters {
+    final position = _position;
+    if (position == null) return null;
+    return Geolocator.distanceBetween(
+      position.latitude,
+      position.longitude,
+      DemoData.storeLatitude,
+      DemoData.storeLongitude,
+    );
   }
 
-  Future<void> _refreshDemoLocation() async {
+  bool get _hasValidLocation {
+    final position = _position;
+    final distance = _distanceMeters;
+    return position != null &&
+        distance != null &&
+        distance <= DemoData.attendancePolicy.storeRadiusMeters &&
+        position.accuracy <= _maxAccuracyMeters;
+  }
+
+  String get _locationMessage {
+    final position = _position;
+    final distance = _distanceMeters;
+    if (_isLoadingLocation) return 'Đang xác định vị trí GPS...';
+    if (position == null || distance == null) return 'Chưa lấy được vị trí GPS';
+    if (position.accuracy > _maxAccuracyMeters) {
+      return 'Sai số GPS quá lớn (${position.accuracy.toStringAsFixed(0)} m)';
+    }
+    if (_hasValidLocation) {
+      return 'Trong khu vực cửa hàng (${distance.toStringAsFixed(0)} m)';
+    }
+    return 'Ngoài bán kính cửa hàng (${distance.toStringAsFixed(0)} m)';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_refreshLocation());
+    });
+  }
+
+  Future<void> _refreshLocation() async {
     setState(() {
       _isLoadingLocation = true;
+      _position = null;
       _errorMessage = null;
     });
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    if (!mounted) return;
-    setState(() => _isLoadingLocation = false);
+
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        throw const FormatException('Bật dịch vụ định vị của thiết bị rồi thử lại.');
+      }
+
+      if (!kIsWeb) {
+        var permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+        }
+        if (permission == LocationPermission.deniedForever) {
+          throw const FormatException(
+            'Quyền vị trí đã bị từ chối vĩnh viễn. Hãy cấp quyền trong cài đặt thiết bị.',
+          );
+        }
+        if (permission == LocationPermission.denied) {
+          throw const FormatException('Cần cấp quyền vị trí để check-in.');
+        }
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: LocationSettings(
+          accuracy: LocationAccuracy.high,
+          // geolocator_web forwards this Duration to the browser API with an
+          // incorrect unit conversion. Enforce the web timeout below instead.
+          timeLimit: kIsWeb ? null : const Duration(seconds: 8),
+        ),
+      ).timeout(const Duration(seconds: 12));
+      if (!mounted) return;
+      setState(() => _position = position);
+    } on TimeoutException {
+      if (mounted) {
+        setState(() => _errorMessage = kIsWeb
+            ? 'Chrome chưa trả vị trí. Hãy cho phép vị trí cho trang web; nếu đang giả lập điện thoại, đặt vị trí trong DevTools > Sensors > Location rồi cập nhật lại.'
+            : 'Điện thoại chưa trả vị trí. Hãy bật dịch vụ vị trí, cấp quyền cho ứng dụng rồi thử cập nhật ở nơi thoáng.');
+      }
+    } on LocationServiceDisabledException {
+      if (mounted) {
+        setState(() => _errorMessage = 'Dịch vụ định vị đang tắt. Hãy bật GPS.');
+      }
+    } on PermissionDeniedException {
+      if (mounted) {
+        setState(() => _errorMessage = kIsWeb
+            ? 'Bạn cần cho phép vị trí cho trang web trong Chrome để check-in.'
+            : 'Bạn cần cấp quyền vị trí cho ứng dụng trong cài đặt Android để check-in.');
+      }
+    } on FormatException catch (error) {
+      if (mounted) setState(() => _errorMessage = error.message.toString());
+    } catch (_) {
+      if (mounted) {
+        setState(() => _errorMessage = 'Không thể lấy GPS. Hãy thử cập nhật lại.');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingLocation = false);
+    }
   }
 
-  Future<void> _useDemoPhoto() async {
+  Future<void> _capturePhoto() async {
     setState(() {
       _isLoadingPhoto = true;
-      _isPhotoReady = false;
       _errorMessage = null;
     });
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    if (!mounted) return;
-    setState(() {
-      _isPhotoReady = true;
-      _isLoadingPhoto = false;
-    });
+
+    try {
+      final photo = await Navigator.of(context).push<Uint8List>(
+        MaterialPageRoute(
+          builder: (_) => const CameraCapturePage(
+            preferredDirection: CameraLensDirection.front,
+            title: 'Ảnh xác minh',
+            instruction: 'Đưa khuôn mặt vào giữa khung hình rồi chụp.',
+          ),
+        ),
+      );
+      if (!mounted) return;
+      if (photo != null) setState(() => _photoBytes = photo);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _errorMessage = 'Không thể mở camera để chụp ảnh.');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingPhoto = false);
+    }
   }
 
   Future<void> _submit() async {
-    if (!_hasValidLocation) {
-      setState(() => _errorMessage = 'Vị trí chưa thỏa điều kiện chấm công.');
+    final position = _position;
+    final distance = _distanceMeters;
+    if (position == null) {
+      setState(() => _errorMessage = 'Hãy lấy vị trí GPS thật trước khi check-in.');
       return;
     }
-    if (!_isPhotoReady) {
-      setState(() => _errorMessage = 'Vui lòng chọn ảnh xác minh mẫu.');
+    if (position.accuracy > _maxAccuracyMeters) {
+      setState(() => _errorMessage =
+          'Sai số GPS là ${position.accuracy.toStringAsFixed(0)} m; cần không quá ${_maxAccuracyMeters.toStringAsFixed(0)} m.');
+      return;
+    }
+    if (distance == null ||
+        distance > DemoData.attendancePolicy.storeRadiusMeters) {
+      setState(() => _errorMessage =
+          'Bạn đang ngoài bán kính ${DemoData.attendancePolicy.storeRadiusMeters} m của cửa hàng.');
+      return;
+    }
+    if (_photoBytes == null) {
+      setState(() => _errorMessage = 'Hãy chụp ảnh xác minh bằng camera.');
       return;
     }
 
@@ -78,7 +204,7 @@ class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
   @override
   Widget build(BuildContext context) {
     final canSubmit = _hasValidLocation &&
-        _isPhotoReady &&
+        _photoBytes != null &&
         !_isLoadingLocation &&
         !_isLoadingPhoto &&
         !_isSubmitting;
@@ -107,15 +233,16 @@ class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
                       _ShiftLabel(shift: DemoData.currentShift),
                       const SizedBox(height: 14),
                       _LocationPreview(
-                        distanceMeters:
-                            DemoData.locationDistanceMeters.toDouble(),
-                        accuracyMeters: DemoData.locationAccuracyMeters,
-                        allowedRadiusMeters:
-                            DemoData.attendancePolicy.storeRadiusMeters
-                                .toDouble(),
+                        accuracyMeters: _position?.accuracy,
                         isLoading: _isLoadingLocation,
+                        hasGpsFix: _hasGpsFix,
                         isValid: _hasValidLocation,
-                        onRefresh: _refreshDemoLocation,
+                        statusMessage: _locationMessage,
+                        coordinatesLabel: _position == null
+                            ? null
+                            : '${_position!.latitude.toStringAsFixed(6)}, '
+                                '${_position!.longitude.toStringAsFixed(6)}',
+                        onRefresh: _refreshLocation,
                       ),
                       const SizedBox(height: 18),
                       Row(
@@ -140,15 +267,15 @@ class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
                       ),
                       const SizedBox(height: 9),
                       _SelfiePreview(
-                        isReady: _isPhotoReady,
+                        photoBytes: _photoBytes,
                         isLoading: _isLoadingPhoto,
-                        onCapture: _useDemoPhoto,
+                        onCapture: _capturePhoto,
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        _isPhotoReady
-                            ? DemoData.checkInPhotoLabel
-                            : 'Ảnh xác minh đang chờ.',
+                        _photoBytes == null
+                            ? 'Chưa có ảnh. Hãy chụp trực tiếp bằng camera.'
+                            : 'Ảnh xác minh đã chụp trực tiếp.',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: AppColors.textSecondary,
@@ -164,8 +291,8 @@ class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
                 _CheckInFooter(
                   canSubmit: canSubmit,
                   isSubmitting: _isSubmitting,
-                  hasLocation: _hasValidLocation,
-                  hasPhoto: _isPhotoReady,
+                  hasLocation: _hasGpsFix,
+                  hasPhoto: _photoBytes != null,
                   onSubmit: _submit,
                 ),
               ],
@@ -212,24 +339,30 @@ class _ShiftLabel extends StatelessWidget {
 
 class _LocationPreview extends StatelessWidget {
   const _LocationPreview({
-    required this.distanceMeters,
     required this.accuracyMeters,
-    required this.allowedRadiusMeters,
     required this.isLoading,
+    required this.hasGpsFix,
     required this.isValid,
+    required this.statusMessage,
+    required this.coordinatesLabel,
     required this.onRefresh,
   });
 
-  final double distanceMeters;
-  final double accuracyMeters;
-  final double allowedRadiusMeters;
+  final double? accuracyMeters;
   final bool isLoading;
+  final bool hasGpsFix;
   final bool isValid;
+  final String statusMessage;
+  final String? coordinatesLabel;
   final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = isValid ? const Color(0xFF287A48) : AppColors.error;
+    final statusColor = isValid
+        ? const Color(0xFF287A48)
+        : isLoading || !hasGpsFix
+            ? AppColors.textSecondary
+            : AppColors.error;
 
     return Column(
       children: [
@@ -241,28 +374,29 @@ class _LocationPreview extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 const CustomPaint(painter: _MapPainter()),
-                Center(
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.16),
-                          blurRadius: 10,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.location_on_rounded,
-                      color: Color(0xFF2586C2),
-                      size: 27,
+                if (hasGpsFix)
+                  Center(
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.16),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.location_on_rounded,
+                        color: Color(0xFF2586C2),
+                        size: 27,
+                      ),
                     ),
                   ),
-                ),
                 Positioned(
                   left: 10,
                   bottom: 10,
@@ -313,27 +447,40 @@ class _LocationPreview extends StatelessWidget {
                   ? Icons.gps_not_fixed
                   : isValid
                       ? Icons.check_circle
-                      : Icons.location_off,
+                      : hasGpsFix
+                          ? Icons.location_off
+                          : Icons.gps_off,
               color: statusColor,
               size: 17,
             ),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                isLoading
-                    ? 'Đang cập nhật vị trí demo...'
-                    : isValid
-                        ? 'Trong khu vực cửa hàng (${distanceMeters.toStringAsFixed(0)} m)'
-                        : 'Ngoài bán kính ${allowedRadiusMeters.toStringAsFixed(0)} m',
+                statusMessage,
                 style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w600),
               ),
             ),
             Text(
-              '±${accuracyMeters.toStringAsFixed(0)} m',
+              accuracyMeters == null
+                  ? '±-- m'
+                  : '±${accuracyMeters!.toStringAsFixed(0)} m',
               style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
             ),
           ],
         ),
+        if (coordinatesLabel != null) ...[
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'GPS: $coordinatesLabel',
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 10,
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -410,17 +557,18 @@ class _MapPainter extends CustomPainter {
 
 class _SelfiePreview extends StatelessWidget {
   const _SelfiePreview({
-    required this.isReady,
+    required this.photoBytes,
     required this.isLoading,
     required this.onCapture,
   });
 
-  final bool isReady;
+  final Uint8List? photoBytes;
   final bool isLoading;
   final VoidCallback onCapture;
 
   @override
   Widget build(BuildContext context) {
+    final hasPhoto = photoBytes != null;
     return AspectRatio(
       aspectRatio: 1.28,
       child: ClipRRect(
@@ -428,29 +576,27 @@ class _SelfiePreview extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Container(
-              color: const Color(0xFFF0E8DF),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircleAvatar(
-                    radius: 43,
-                    backgroundColor: Color(0xFFE2D0BF),
-                    child: Icon(Icons.person, size: 56, color: Color(0xFF76533E)),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    isReady
-                        ? DemoData.checkInPhotoLabel
-                        : 'Canh khuôn mặt vào giữa khung hình',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF76533E),
+            if (photoBytes != null)
+              Image.memory(photoBytes!, fit: BoxFit.cover)
+            else
+              Container(
+                color: const Color(0xFFF0E8DF),
+                child: const Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircleAvatar(
+                      radius: 43,
+                      backgroundColor: Color(0xFFE2D0BF),
+                      child: Icon(Icons.person, size: 56, color: Color(0xFF76533E)),
                     ),
-                  ),
-                ],
+                    SizedBox(height: 10),
+                    Text(
+                      'Ảnh sẽ hiện sau khi chụp trực tiếp bằng camera.',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF76533E)),
+                    ),
+                  ],
+                ),
               ),
-            ),
             Positioned.fill(
               child: IgnorePointer(
                 child: Padding(
@@ -471,8 +617,8 @@ class _SelfiePreview extends StatelessWidget {
                 onPressed: isLoading ? null : onCapture,
                 icon: isLoading
                     ? const SizedBox.square(dimension: 17, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(isReady ? Icons.replay : Icons.photo_camera, size: 17),
-                label: Text(isReady ? 'Đổi ảnh mẫu' : 'Dùng ảnh mẫu'),
+                    : Icon(hasPhoto ? Icons.replay : Icons.photo_camera, size: 17),
+                label: Text(hasPhoto ? 'Chụp lại' : 'Chụp ảnh'),
               ),
             ),
           ],

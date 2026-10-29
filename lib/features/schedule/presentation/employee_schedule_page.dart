@@ -72,7 +72,7 @@ class _EmployeeSchedulePageState extends State<EmployeeSchedulePage> {
   String _dateKey(DateTime date) {
     final month = date.month.toString().padLeft(2, '0');
     final day = date.day.toString().padLeft(2, '0');
-    return '${date.year}-${month}-${day}';
+    return '${date.year}-$month-$day';
   }
 
   String _dayLabel(DateTime date) {
@@ -87,7 +87,7 @@ class _EmployeeSchedulePageState extends State<EmployeeSchedulePage> {
     ];
     final day = date.day.toString().padLeft(2, '0');
     final month = date.month.toString().padLeft(2, '0');
-    return '${weekdays[date.weekday - 1]}, ${day}/${month}/${date.year}';
+    return '${weekdays[date.weekday - 1]}, $day/$month/${date.year}';
   }
 
   List<DemoShiftAssignment> _shiftsForDate(DateTime date) {
@@ -522,7 +522,7 @@ class _MonthCalendar extends StatelessWidget {
                         Text(
                           assignedShiftCount == 0
                               ? '—'
-                              : '${assignedShiftCount} ca',
+                              : '$assignedShiftCount ca',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(

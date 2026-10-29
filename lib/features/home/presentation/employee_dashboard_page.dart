@@ -8,14 +8,6 @@ import '../../../data/mock/demo_data.dart';
 class EmployeeDashboardPage extends StatelessWidget {
   const EmployeeDashboardPage({super.key});
 
-  void _showComingSoon(BuildContext context, String feature) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text('$feature sẽ được hoàn thiện ở bước tiếp theo.')),
-      );
-  }
-
   @override
   Widget build(BuildContext context) {
     final employee = DemoData.employee;
@@ -29,7 +21,7 @@ class EmployeeDashboardPage extends StatelessWidget {
               children: [
                 _StoreHeader(
                   onNotificationsTap: () =>
-                      _showComingSoon(context, 'Thông báo'),
+                      context.go(RouteNames.employeeNotifications),
                 ),
                 Expanded(
                   child: ListView(
@@ -38,7 +30,7 @@ class EmployeeDashboardPage extends StatelessWidget {
                       _EmployeeGreeting(
                         employee: employee,
                         onProfileTap: () =>
-                            _showComingSoon(context, 'Hồ sơ cá nhân'),
+                            context.go(RouteNames.employeeProfile),
                       ),
                       const SizedBox(height: 18),
                       _ShiftCard(
@@ -58,13 +50,13 @@ class EmployeeDashboardPage extends StatelessWidget {
                         onScheduleTap: () =>
                             context.go(RouteNames.employeeSchedule),
                         onChecklistTap: () =>
-                            _showComingSoon(context, 'Checklist'),
+                            context.go(RouteNames.employeeChecklist),
                         onTrainingTap: () =>
-                            _showComingSoon(context, 'Đào tạo'),
+                            context.go(RouteNames.employeeTraining),
                         onProfileTap: () =>
-                            _showComingSoon(context, 'Hồ sơ cá nhân'),
+                            context.go(RouteNames.employeeProfile),
                         onNotificationsTap: () =>
-                            _showComingSoon(context, 'Thông báo'),
+                            context.go(RouteNames.employeeNotifications),
                       ),
                     ],
                   ),
@@ -102,9 +94,9 @@ class EmployeeDashboardPage extends StatelessWidget {
           if (index == 1) {
             context.go(RouteNames.employeeSchedule);
           } else if (index == 2) {
-            _showComingSoon(context, 'Checklist');
+            context.go(RouteNames.employeeChecklist);
           } else if (index == 3) {
-            _showComingSoon(context, 'Hồ sơ cá nhân');
+            context.go(RouteNames.employeeProfile);
           }
         },
       ),
@@ -373,7 +365,7 @@ class _QuickAccessGrid extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       crossAxisSpacing: 10,
       mainAxisSpacing: 10,
-      childAspectRatio: 1.15,
+      childAspectRatio: 1.0,
       children: [
         _QuickAccessTile(
           icon: Icons.calendar_month_outlined,
@@ -432,7 +424,7 @@ class _QuickAccessTile extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: const Color(0xFFEDE8E3)),
