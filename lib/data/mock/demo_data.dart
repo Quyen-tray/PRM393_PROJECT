@@ -59,6 +59,205 @@ class DemoManagerEmployee {
   final int avatarColorValue;
 }
 
+enum DemoAdminAccountRole { admin, manager, employee }
+
+class DemoAdminAccount {
+  const DemoAdminAccount({
+    required this.name,
+    required this.accountId,
+    required this.role,
+    required this.initials,
+    required this.isEnabled,
+    required this.avatarColorValue,
+  });
+
+  final String name;
+  final String accountId;
+  final DemoAdminAccountRole role;
+  final String initials;
+  final bool isEnabled;
+  final int avatarColorValue;
+
+  DemoAdminAccount copyWith({bool? isEnabled}) {
+    return DemoAdminAccount(
+      name: name,
+      accountId: accountId,
+      role: role,
+      initials: initials,
+      isEnabled: isEnabled ?? this.isEnabled,
+      avatarColorValue: avatarColorValue,
+    );
+  }
+}
+
+class DemoAdminPosition {
+  const DemoAdminPosition({
+    required this.name,
+    required this.employeeCount,
+  });
+
+  final String name;
+  final int employeeCount;
+
+  DemoAdminPosition copyWith({
+    String? name,
+    int? employeeCount,
+  }) {
+    return DemoAdminPosition(
+      name: name ?? this.name,
+      employeeCount: employeeCount ?? this.employeeCount,
+    );
+  }
+}
+
+enum DemoAdminTrainingType { course, skill, certificate }
+
+class DemoAdminTrainingItem {
+  const DemoAdminTrainingItem({
+    required this.title,
+    required this.type,
+    required this.isMandatory,
+    required this.completedCount,
+    required this.totalCount,
+  });
+
+  final String title;
+  final DemoAdminTrainingType type;
+  final bool isMandatory;
+  final int completedCount;
+  final int totalCount;
+
+  DemoAdminTrainingItem copyWith({
+    String? title,
+    bool? isMandatory,
+    int? completedCount,
+    int? totalCount,
+  }) {
+    return DemoAdminTrainingItem(
+      title: title ?? this.title,
+      type: type,
+      isMandatory: isMandatory ?? this.isMandatory,
+      completedCount: completedCount ?? this.completedCount,
+      totalCount: totalCount ?? this.totalCount,
+    );
+  }
+}
+
+enum DemoAdminChecklistVersionStatus { active, draft, archived }
+
+class DemoAdminChecklistTemplate {
+  const DemoAdminChecklistTemplate({
+    required this.id,
+    required this.name,
+    required this.taskCount,
+    required this.activeVersion,
+  });
+
+  final String id;
+  final String name;
+  final int taskCount;
+  final String activeVersion;
+
+  DemoAdminChecklistTemplate copyWith({
+    String? name,
+    int? taskCount,
+    String? activeVersion,
+  }) {
+    return DemoAdminChecklistTemplate(
+      id: id,
+      name: name ?? this.name,
+      taskCount: taskCount ?? this.taskCount,
+      activeVersion: activeVersion ?? this.activeVersion,
+    );
+  }
+}
+
+class DemoAdminChecklistVersion {
+  const DemoAdminChecklistVersion({
+    required this.templateId,
+    required this.version,
+    required this.taskCount,
+    required this.updatedAt,
+    required this.status,
+  });
+
+  final String templateId;
+  final String version;
+  final int taskCount;
+  final String updatedAt;
+  final DemoAdminChecklistVersionStatus status;
+
+  DemoAdminChecklistVersion copyWith({
+    int? taskCount,
+    DemoAdminChecklistVersionStatus? status,
+  }) {
+    return DemoAdminChecklistVersion(
+      templateId: templateId,
+      version: version,
+      taskCount: taskCount ?? this.taskCount,
+      updatedAt: updatedAt,
+      status: status ?? this.status,
+    );
+  }
+}
+
+class DemoAdminSystemSettings {
+  const DemoAdminSystemSettings({
+    required this.storeName,
+    required this.branchName,
+    required this.latitude,
+    required this.longitude,
+    required this.radiusMeters,
+    required this.checkInEarlyMinutes,
+    required this.graceMinutes,
+    required this.monthlyGraceLimit,
+    required this.photoRetentionMonths,
+    required this.reminderIntervalMinutes,
+    required this.maxLateReminders,
+  });
+
+  final String storeName;
+  final String branchName;
+  final double latitude;
+  final double longitude;
+  final int radiusMeters;
+  final int checkInEarlyMinutes;
+  final int graceMinutes;
+  final int monthlyGraceLimit;
+  final int photoRetentionMonths;
+  final int reminderIntervalMinutes;
+  final int maxLateReminders;
+
+  DemoAdminSystemSettings copyWith({
+    String? storeName,
+    String? branchName,
+    double? latitude,
+    double? longitude,
+    int? radiusMeters,
+    int? checkInEarlyMinutes,
+    int? graceMinutes,
+    int? monthlyGraceLimit,
+    int? photoRetentionMonths,
+    int? reminderIntervalMinutes,
+    int? maxLateReminders,
+  }) {
+    return DemoAdminSystemSettings(
+      storeName: storeName ?? this.storeName,
+      branchName: branchName ?? this.branchName,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      radiusMeters: radiusMeters ?? this.radiusMeters,
+      checkInEarlyMinutes: checkInEarlyMinutes ?? this.checkInEarlyMinutes,
+      graceMinutes: graceMinutes ?? this.graceMinutes,
+      monthlyGraceLimit: monthlyGraceLimit ?? this.monthlyGraceLimit,
+      photoRetentionMonths: photoRetentionMonths ?? this.photoRetentionMonths,
+      reminderIntervalMinutes:
+          reminderIntervalMinutes ?? this.reminderIntervalMinutes,
+      maxLateReminders: maxLateReminders ?? this.maxLateReminders,
+    );
+  }
+}
+
 class DemoShiftAssignment {
   const DemoShiftAssignment({
     required this.workDate,
@@ -349,6 +548,200 @@ abstract final class DemoData {
   static const demoDate = 'Thứ Ba, 13/10/2026';
   static const storeName = 'HRM Coffee Shop';
   static const storeBranch = 'Chi nhánh trung tâm';
+  static const adminTotalEmployees = 15;
+  static const adminActiveAccounts = 12;
+  static const adminCourseCount = 8;
+  static const adminChecklistTemplateCount = 6;
+  static const adminMonthlyEmployeeCounts = <int>[5, 7, 8, 10, 11, 15];
+  static const adminDashboardMonthLabels = <String>[
+    'T5',
+    'T6',
+    'T7',
+    'T8',
+    'T9',
+    'T10',
+  ];
+  static const adminAccounts = <DemoAdminAccount>[
+    DemoAdminAccount(
+      name: 'Trần Thị Bích Ngọc',
+      accountId: 'QL0001',
+      role: DemoAdminAccountRole.manager,
+      initials: 'BN',
+      isEnabled: true,
+      avatarColorValue: 0xFFDCE9E2,
+    ),
+    DemoAdminAccount(
+      name: 'Nguyễn Văn An',
+      accountId: 'NV0012',
+      role: DemoAdminAccountRole.employee,
+      initials: 'AN',
+      isEnabled: true,
+      avatarColorValue: 0xFFEAD9CC,
+    ),
+    DemoAdminAccount(
+      name: 'Phạm Quang Minh',
+      accountId: 'NV0015',
+      role: DemoAdminAccountRole.employee,
+      initials: 'PM',
+      isEnabled: false,
+      avatarColorValue: 0xFFF1E4C9,
+    ),
+    DemoAdminAccount(
+      name: 'Hoàng Thị Lan',
+      accountId: 'NV0016',
+      role: DemoAdminAccountRole.employee,
+      initials: 'HL',
+      isEnabled: true,
+      avatarColorValue: 0xFFF2DCD8,
+    ),
+  ];
+  static const adminPositions = <DemoAdminPosition>[
+    DemoAdminPosition(name: 'Quản lý cửa hàng', employeeCount: 3),
+    DemoAdminPosition(name: 'Nhân viên pha chế', employeeCount: 4),
+    DemoAdminPosition(name: 'Nhân viên phục vụ', employeeCount: 6),
+    DemoAdminPosition(name: 'Thu ngân', employeeCount: 2),
+  ];
+  static const adminTrainingItems = <DemoAdminTrainingItem>[
+    DemoAdminTrainingItem(
+      title: 'An toàn thực phẩm',
+      type: DemoAdminTrainingType.course,
+      isMandatory: true,
+      completedCount: 12,
+      totalCount: 15,
+    ),
+    DemoAdminTrainingItem(
+      title: 'Quy trình phục vụ',
+      type: DemoAdminTrainingType.course,
+      isMandatory: true,
+      completedCount: 15,
+      totalCount: 15,
+    ),
+    DemoAdminTrainingItem(
+      title: 'Vệ sinh và an toàn lao động',
+      type: DemoAdminTrainingType.course,
+      isMandatory: true,
+      completedCount: 13,
+      totalCount: 15,
+    ),
+    DemoAdminTrainingItem(
+      title: 'Kỹ năng giao tiếp',
+      type: DemoAdminTrainingType.course,
+      isMandatory: false,
+      completedCount: 9,
+      totalCount: 15,
+    ),
+    DemoAdminTrainingItem(
+      title: 'Giao tiếp với khách hàng',
+      type: DemoAdminTrainingType.skill,
+      isMandatory: false,
+      completedCount: 12,
+      totalCount: 15,
+    ),
+    DemoAdminTrainingItem(
+      title: 'Pha chế cơ bản',
+      type: DemoAdminTrainingType.skill,
+      isMandatory: false,
+      completedCount: 10,
+      totalCount: 15,
+    ),
+    DemoAdminTrainingItem(
+      title: 'Chứng nhận an toàn thực phẩm',
+      type: DemoAdminTrainingType.certificate,
+      isMandatory: true,
+      completedCount: 12,
+      totalCount: 15,
+    ),
+    DemoAdminTrainingItem(
+      title: 'Chứng nhận vệ sinh lao động',
+      type: DemoAdminTrainingType.certificate,
+      isMandatory: true,
+      completedCount: 13,
+      totalCount: 15,
+    ),
+  ];
+  static const adminChecklistTemplates = <DemoAdminChecklistTemplate>[
+    DemoAdminChecklistTemplate(
+      id: 'start_shift',
+      name: 'Checklist đầu ca',
+      taskCount: 5,
+      activeVersion: 'v1.0',
+    ),
+    DemoAdminChecklistTemplate(
+      id: 'end_shift',
+      name: 'Checklist cuối ca',
+      taskCount: 6,
+      activeVersion: 'v1.0',
+    ),
+    DemoAdminChecklistTemplate(
+      id: 'periodic_cleaning',
+      name: 'Vệ sinh định kỳ',
+      taskCount: 8,
+      activeVersion: 'v1.0',
+    ),
+    DemoAdminChecklistTemplate(
+      id: 'equipment_check',
+      name: 'Kiểm tra thiết bị',
+      taskCount: 4,
+      activeVersion: 'v1.1',
+    ),
+  ];
+  static const adminChecklistVersions = <DemoAdminChecklistVersion>[
+    DemoAdminChecklistVersion(
+      templateId: 'start_shift',
+      version: 'v1.0',
+      taskCount: 5,
+      updatedAt: '10/10/2026',
+      status: DemoAdminChecklistVersionStatus.active,
+    ),
+    DemoAdminChecklistVersion(
+      templateId: 'start_shift',
+      version: 'v1.1',
+      taskCount: 6,
+      updatedAt: '13/10/2026',
+      status: DemoAdminChecklistVersionStatus.draft,
+    ),
+    DemoAdminChecklistVersion(
+      templateId: 'end_shift',
+      version: 'v1.0',
+      taskCount: 6,
+      updatedAt: '08/10/2026',
+      status: DemoAdminChecklistVersionStatus.active,
+    ),
+    DemoAdminChecklistVersion(
+      templateId: 'periodic_cleaning',
+      version: 'v1.0',
+      taskCount: 8,
+      updatedAt: '02/10/2026',
+      status: DemoAdminChecklistVersionStatus.active,
+    ),
+    DemoAdminChecklistVersion(
+      templateId: 'equipment_check',
+      version: 'v1.0',
+      taskCount: 4,
+      updatedAt: '09/10/2026',
+      status: DemoAdminChecklistVersionStatus.archived,
+    ),
+    DemoAdminChecklistVersion(
+      templateId: 'equipment_check',
+      version: 'v1.1',
+      taskCount: 4,
+      updatedAt: '12/10/2026',
+      status: DemoAdminChecklistVersionStatus.active,
+    ),
+  ];
+  static const adminSystemSettings = DemoAdminSystemSettings(
+    storeName: 'HRM Coffee Shop',
+    branchName: 'Chi nhánh trung tâm',
+    latitude: 10.7769,
+    longitude: 106.7009,
+    radiusMeters: 30,
+    checkInEarlyMinutes: 15,
+    graceMinutes: 5,
+    monthlyGraceLimit: 3,
+    photoRetentionMonths: 12,
+    reminderIntervalMinutes: 5,
+    maxLateReminders: 3,
+  );
   static const storeLocationLabel = 'Khu vực cửa hàng';
   // Demo branch coordinates from the example location in the SRS.
   static const storeLatitude = 10.7769;
