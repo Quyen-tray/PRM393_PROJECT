@@ -3,28 +3,49 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
+import '../../../data/mock/demo_data.dart';
 
 class EmployeeDashboardPage extends StatelessWidget {
   const EmployeeDashboardPage({super.key});
 
+  void _showComingSoon(BuildContext context, String feature) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text('$feature sẽ được hoàn thiện ở bước tiếp theo.')),
+      );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final employee = DemoData.employee;
+
     return Scaffold(
       body: SafeArea(
-        child: ListView(
-          children: [
-            const _StoreHeader(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 620),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 620),
+            child: Column(
+              children: [
+                _StoreHeader(
+                  onNotificationsTap: () =>
+                      _showComingSoon(context, 'Thông báo'),
+                ),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
                     children: [
-                      const _EmployeeGreeting(),
-                      const SizedBox(height: 16),
-                      const _AttendanceCard(),
+                      _EmployeeGreeting(
+                        employee: employee,
+                        onProfileTap: () =>
+                            _showComingSoon(context, 'Hồ sơ cá nhân'),
+                      ),
+                      const SizedBox(height: 18),
+                      _ShiftCard(
+                        shift: DemoData.currentShift,
+                        attendanceStatus: DemoData.attendanceStatus,
+                        onCheckInTap: () => context.go(RouteNames.checkIn),
+                      ),
                       const SizedBox(height: 22),
                       Text(
                         'Truy cập nhanh',
@@ -33,50 +54,58 @@ class EmployeeDashboardPage extends StatelessWidget {
                             ),
                       ),
                       const SizedBox(height: 12),
-                      const _TaskGrid(),
-                      const SizedBox(height: 22),
-                      _SectionHeading(
-                        title: 'Checklist hôm nay',
-                        action: '2/4 hoàn tất',
+                      _QuickAccessGrid(
+                        onScheduleTap: () =>
+                            context.go(RouteNames.employeeSchedule),
+                        onChecklistTap: () =>
+                            _showComingSoon(context, 'Checklist'),
+                        onTrainingTap: () =>
+                            _showComingSoon(context, 'Đào tạo'),
+                        onProfileTap: () =>
+                            _showComingSoon(context, 'Hồ sơ cá nhân'),
+                        onNotificationsTap: () =>
+                            _showComingSoon(context, 'Thông báo'),
                       ),
-                      const SizedBox(height: 8),
-                      const _TodayChecklist(),
-                      const SizedBox(height: 22),
-                      _SectionHeading(
-                        title: 'Ca làm hôm nay',
-                        action: 'Xem lịch',
-                        onTap: () {},
-                      ),
-                      const SizedBox(height: 8),
-                      const _ScheduleCard(),
-                      const SizedBox(height: 22),
-                      Text(
-                        'Thông báo mới',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                      ),
-                      const SizedBox(height: 10),
-                      const _NotificationCard(),
                     ],
                   ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: 0,
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Trang chủ'),
-          NavigationDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month), label: 'Lịch'),
-          NavigationDestination(icon: Icon(Icons.checklist_outlined), selectedIcon: Icon(Icons.checklist), label: 'Checklist'),
-          NavigationDestination(icon: Icon(Icons.notifications_none), selectedIcon: Icon(Icons.notifications), label: 'Tin nhắn'),
-          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Cá nhân'),
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Trang chủ',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.calendar_month_outlined),
+            selectedIcon: Icon(Icons.calendar_month),
+            label: 'Lịch',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.checklist_outlined),
+            selectedIcon: Icon(Icons.checklist),
+            label: 'Checklist',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Cá nhân',
+          ),
         ],
         onDestinationSelected: (index) {
-          if (index == 4) context.go(RouteNames.profile);
+          if (index == 1) {
+            context.go(RouteNames.employeeSchedule);
+          } else if (index == 2) {
+            _showComingSoon(context, 'Checklist');
+          } else if (index == 3) {
+            _showComingSoon(context, 'Hồ sơ cá nhân');
+          }
         },
       ),
     );
@@ -84,65 +113,72 @@ class EmployeeDashboardPage extends StatelessWidget {
 }
 
 class _StoreHeader extends StatelessWidget {
-  const _StoreHeader();
+  const _StoreHeader({required this.onNotificationsTap});
+
+  final VoidCallback onNotificationsTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFF24332D),
+    return Padding(
       padding: const EdgeInsets.fromLTRB(18, 12, 12, 12),
-      child: SafeArea(
-        bottom: false,
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.coffee, color: Color(0xFFE9C89A), size: 21),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(10),
             ),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'HRM COFFEE SHOP',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                    ),
+            child: const Icon(Icons.coffee, color: Colors.white, size: 21),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  DemoData.storeName,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
                   ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Chi nhánh trung tâm',
-                    style: TextStyle(color: Color(0xFFCFD8D2), fontSize: 11),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  DemoData.storeBranch,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 11,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            IconButton(
-              tooltip: 'Thông báo',
-              onPressed: () {},
-              color: Colors.white,
-              icon: const Badge(
-                smallSize: 7,
-                child: Icon(Icons.notifications_none_rounded),
-              ),
+          ),
+          IconButton(
+            tooltip: 'Thông báo',
+            onPressed: onNotificationsTap,
+            color: AppColors.textPrimary,
+            icon: const Badge(
+              smallSize: 7,
+              child: Icon(Icons.notifications_none_rounded),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
 class _EmployeeGreeting extends StatelessWidget {
-  const _EmployeeGreeting();
+  const _EmployeeGreeting({
+    required this.employee,
+    required this.onProfileTap,
+  });
+
+  final DemoEmployee employee;
+  final VoidCallback onProfileTap;
 
   @override
   Widget build(BuildContext context) {
@@ -158,25 +194,44 @@ class _EmployeeGreeting extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Chào buổi sáng,', style: Theme.of(context).textTheme.bodySmall),
+              Text('Xin chào,', style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: 2),
               Text(
-                'Nguyễn Thị Mai',
+                employee.fullName,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
               ),
               const SizedBox(height: 2),
-              const Text(
-                'Nhân viên · Thu ngân',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              Text(
+                employee.position,
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE4F5E9),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  employee.employmentStatus,
+                  style: const TextStyle(
+                    color: Color(0xFF25804B),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ),
         ),
         IconButton(
           tooltip: 'Hồ sơ cá nhân',
-          onPressed: () => context.go(RouteNames.profile),
+          onPressed: onProfileTap,
           icon: const Icon(Icons.chevron_right),
         ),
       ],
@@ -184,52 +239,29 @@ class _EmployeeGreeting extends StatelessWidget {
   }
 }
 
-class _SectionHeading extends StatelessWidget {
-  const _SectionHeading({
-    required this.title,
-    required this.action,
-    this.onTap,
+class _ShiftCard extends StatelessWidget {
+  const _ShiftCard({
+    required this.shift,
+    required this.attendanceStatus,
+    required this.onCheckInTap,
   });
 
-  final String title;
-  final String action;
-  final VoidCallback? onTap;
+  final DemoShiftAssignment shift;
+  final DemoAttendanceStatus attendanceStatus;
+  final VoidCallback onCheckInTap;
 
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-          ),
-        ),
-        TextButton(
-          onPressed: onTap,
-          style: TextButton.styleFrom(
-            foregroundColor: AppColors.primary,
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            minimumSize: const Size(0, 36),
-          ),
-          child: Text(action),
-        ),
-      ],
-    );
-  }
-}
-
-class _AttendanceCard extends StatelessWidget {
-  const _AttendanceCard();
+  String get _attendanceLabel => switch (attendanceStatus) {
+        DemoAttendanceStatus.notCheckedIn => 'Chưa check-in',
+        DemoAttendanceStatus.checkedIn => 'Đã check-in',
+        DemoAttendanceStatus.checkedOut => 'Đã check-out',
+      };
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE5E1DA)),
       ),
       padding: const EdgeInsets.all(16),
@@ -240,73 +272,77 @@ class _AttendanceCard extends StatelessWidget {
             children: [
               const Expanded(
                 child: Text(
-                  'Chấm công hôm nay',
+                  'Ca làm hôm nay',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
-              const Spacer(),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFF1D9),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: const Text(
-                  'Chưa check-in',
-                  style: TextStyle(color: Color(0xFF96631D), fontSize: 11),
+                child: Text(
+                  _attendanceLabel,
+                  style: const TextStyle(
+                    color: Color(0xFF96631D),
+                    fontSize: 11,
+                  ),
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 5),
+          Text(
+            shift.dayLabel,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+            ),
           ),
           const SizedBox(height: 10),
-          const Row(
+          Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                '08:12',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 34,
-                  height: 1,
-                  fontWeight: FontWeight.w800,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${shift.startTime} - ${shift.endTime}',
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 25,
+                        height: 1.1,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${shift.shiftName} · ${shift.workArea}',
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              SizedBox(width: 9),
-              Padding(
-                padding: EdgeInsets.only(bottom: 2),
-                child: Text(
-                  'Thứ Hai, 26/10',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              const SizedBox(width: 8),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  minimumSize: const Size(0, 42),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
+                onPressed: onCheckInTap,
+                child: const Text('Check-in'),
               ),
             ],
-          ),
-          const SizedBox(height: 14),
-          const Divider(height: 1),
-          const SizedBox(height: 12),
-          const Row(
-            children: [
-              Icon(Icons.access_time, size: 17, color: AppColors.textSecondary),
-              SizedBox(width: 7),
-              Text('Ca sáng', style: TextStyle(fontWeight: FontWeight.w600)),
-              Spacer(),
-              Text('07:00 - 15:00', style: TextStyle(color: AppColors.textSecondary)),
-            ],
-          ),
-          const SizedBox(height: 13),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF76503A),
-                foregroundColor: Colors.white,
-                minimumSize: const Size.fromHeight(44),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              onPressed: () => context.go(RouteNames.checkIn),
-              icon: const Icon(Icons.login_rounded, size: 18),
-              label: const Text('Check-in'),
-            ),
           ),
         ],
       ),
@@ -314,235 +350,116 @@ class _AttendanceCard extends StatelessWidget {
   }
 }
 
-class _TaskGrid extends StatelessWidget {
-  const _TaskGrid();
+class _QuickAccessGrid extends StatelessWidget {
+  const _QuickAccessGrid({
+    required this.onScheduleTap,
+    required this.onChecklistTap,
+    required this.onTrainingTap,
+    required this.onProfileTap,
+    required this.onNotificationsTap,
+  });
+
+  final VoidCallback onScheduleTap;
+  final VoidCallback onChecklistTap;
+  final VoidCallback onTrainingTap;
+  final VoidCallback onProfileTap;
+  final VoidCallback onNotificationsTap;
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    return GridView.count(
+      crossAxisCount: 3,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisSpacing: 10,
+      mainAxisSpacing: 10,
+      childAspectRatio: 1.15,
       children: [
-        Expanded(
-          child: _TaskTile(
-            icon: Icons.calendar_month_outlined,
-            title: 'Lịch làm việc',
-            color: Color(0xFF3B8C67),
-          ),
+        _QuickAccessTile(
+          icon: Icons.calendar_month_outlined,
+          title: 'Lịch làm việc',
+          color: const Color(0xFF3B8C67),
+          onTap: onScheduleTap,
         ),
-        Expanded(
-          child: _TaskTile(
-            icon: Icons.checklist_rounded,
-            title: 'Checklist',
-            color: Color(0xFFD39A36),
-          ),
+        _QuickAccessTile(
+          icon: Icons.checklist_rounded,
+          title: 'Checklist',
+          color: const Color(0xFFD39A36),
+          onTap: onChecklistTap,
         ),
-        Expanded(
-          child: _TaskTile(
-            icon: Icons.description_outlined,
-            title: 'Hồ sơ',
-            color: Color(0xFFD66E56),
-          ),
+        _QuickAccessTile(
+          icon: Icons.school_outlined,
+          title: 'Đào tạo',
+          color: const Color(0xFF4E86A8),
+          onTap: onTrainingTap,
         ),
-        Expanded(
-          child: _TaskTile(
-            icon: Icons.school_outlined,
-            title: 'Đào tạo',
-            color: Color(0xFF4E86A8),
-          ),
+        _QuickAccessTile(
+          icon: Icons.person_outline,
+          title: 'Hồ sơ',
+          color: const Color(0xFFD66E56),
+          onTap: onProfileTap,
+        ),
+        _QuickAccessTile(
+          icon: Icons.notifications_none,
+          title: 'Thông báo',
+          color: const Color(0xFF7B68A6),
+          onTap: onNotificationsTap,
         ),
       ],
     );
   }
 }
 
-class _TaskTile extends StatelessWidget {
-  const _TaskTile({
+class _QuickAccessTile extends StatelessWidget {
+  const _QuickAccessTile({
     required this.icon,
     required this.title,
     required this.color,
+    required this.onTap,
   });
 
   final IconData icon;
   final String title;
   final Color color;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          width: 48,
-          height: 48,
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFEDE8E3)),
           ),
-          child: Icon(icon, color: color, size: 23),
-        ),
-        const SizedBox(height: 7),
-        Text(
-          title,
-          textAlign: TextAlign.center,
-          maxLines: 2,
-          style: const TextStyle(fontSize: 11, height: 1.15),
-        ),
-      ],
-    );
-  }
-}
-
-class _TodayChecklist extends StatelessWidget {
-  const _TodayChecklist();
-
-  @override
-  Widget build(BuildContext context) {
-    return const _SectionCard(
-      child: Column(
-        children: [
-          _ChecklistRow(title: 'Kiểm tra khu vực quầy', isDone: true),
-          Divider(height: 18),
-          _ChecklistRow(title: 'Kiểm tra máy pha cà phê', isDone: true),
-          Divider(height: 18),
-          _ChecklistRow(title: 'Vệ sinh bàn và khu vực khách', isDone: false),
-          Divider(height: 18),
-          _ChecklistRow(title: 'Kiểm tra nguyên vật liệu', isDone: false),
-        ],
-      ),
-    );
-  }
-}
-
-class _ChecklistRow extends StatelessWidget {
-  const _ChecklistRow({required this.title, required this.isDone});
-
-  final String title;
-  final bool isDone;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(
-          isDone ? Icons.check_circle : Icons.radio_button_unchecked,
-          color: isDone ? AppColors.secondary : const Color(0xFF9AA39B),
-          size: 19,
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            title,
-            style: TextStyle(
-              fontSize: 13,
-              color: isDone ? AppColors.textSecondary : AppColors.textPrimary,
-              decoration: isDone ? TextDecoration.lineThrough : null,
-            ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: color, size: 23),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                style: const TextStyle(fontSize: 11, height: 1.15),
+              ),
+            ],
           ),
         ),
-        if (!isDone)
-          const Icon(Icons.chevron_right, color: AppColors.textSecondary, size: 20),
-      ],
-    );
-  }
-}
-
-class _ScheduleCard extends StatelessWidget {
-  const _ScheduleCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return const _SectionCard(
-      child: Row(
-        children: [
-          _DateBadge(day: '27', month: 'T10'),
-          SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Ca chiều', style: TextStyle(fontWeight: FontWeight.w700)),
-                SizedBox(height: 4),
-                Text('14:00 - 22:00 · Tầng 1', style: TextStyle(color: AppColors.textSecondary)),
-              ],
-            ),
-          ),
-          Icon(Icons.chevron_right),
-        ],
       ),
-    );
-  }
-}
-
-class _DateBadge extends StatelessWidget {
-  const _DateBadge({required this.day, required this.month});
-
-  final String day;
-  final String month;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 54,
-      height: 54,
-      decoration: BoxDecoration(
-        color: const Color(0xFFEAF3EF),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(day, style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary)),
-          Text(month, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-        ],
-      ),
-    );
-  }
-}
-
-class _NotificationCard extends StatelessWidget {
-  const _NotificationCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return const _SectionCard(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: Color(0xFFF4E8C8),
-            child: Icon(Icons.priority_high, color: Color(0xFFA87412), size: 20),
-          ),
-          SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Checklist đầu ca sắp hết hạn', style: TextStyle(fontWeight: FontWeight.w700)),
-                SizedBox(height: 4),
-                Text('Hoàn thành trước 07:15 hôm nay.', style: TextStyle(color: AppColors.textSecondary)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE5E9E3)),
-      ),
-      child: child,
     );
   }
 }
