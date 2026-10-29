@@ -45,7 +45,7 @@ class EmployeeDashboardPage extends StatelessWidget {
                       _SectionHeading(
                         title: 'Ca làm hôm nay',
                         action: 'Xem lịch',
-                        onTap: () {},
+                        onTap: () => context.go(RouteNames.schedule),
                       ),
                       const SizedBox(height: 8),
                       const _ScheduleCard(),
@@ -76,6 +76,7 @@ class EmployeeDashboardPage extends StatelessWidget {
           NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Cá nhân'),
         ],
         onDestinationSelected: (index) {
+          if (index == 1) context.go(RouteNames.schedule);
           if (index == 4) context.go(RouteNames.profile);
         },
       ),
@@ -319,13 +320,14 @@ class _TaskGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    return Row(
       children: [
         Expanded(
           child: _TaskTile(
             icon: Icons.calendar_month_outlined,
             title: 'Lịch làm việc',
             color: Color(0xFF3B8C67),
+            onTap: () => context.go(RouteNames.schedule),
           ),
         ),
         Expanded(
@@ -359,33 +361,42 @@ class _TaskTile extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.color,
+    this.onTap,
   });
 
   final IconData icon;
   final String title;
   final Color color;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Icon(icon, color: color, size: 23),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: color, size: 23),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              style: const TextStyle(fontSize: 11, height: 1.15),
+            ),
+          ],
         ),
-        const SizedBox(height: 7),
-        Text(
-          title,
-          textAlign: TextAlign.center,
-          maxLines: 2,
-          style: const TextStyle(fontSize: 11, height: 1.15),
-        ),
-      ],
+      ),
     );
   }
 }

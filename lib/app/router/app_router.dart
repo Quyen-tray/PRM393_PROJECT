@@ -5,6 +5,7 @@ import '../../features/attendance/presentation/employee_check_in_page.dart';
 import '../../features/auth/presentation/login_page.dart';
 import '../../features/auth/presentation/register_page.dart';
 import '../../features/home/presentation/employee_dashboard_page.dart';
+import '../../features/schedule/presentation/employee_schedule_page.dart';
 import 'route_names.dart';
 
 final appRouter = GoRouter(
@@ -25,6 +26,10 @@ final appRouter = GoRouter(
     GoRoute(
       path: RouteNames.checkIn,
       builder: (context, state) => const EmployeeCheckInPage(),
+    ),
+    GoRoute(
+      path: RouteNames.schedule,
+      builder: (context, state) => const EmployeeSchedulePage(),
     ),
     GoRoute(
       path: RouteNames.profile,
