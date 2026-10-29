@@ -588,6 +588,83 @@ abstract final class DemoData {
     ),
   ];
 
+  /// Weekly personal schedule sample anchored at Tuesday, 13/10/2026.
+  static const employeeScheduleAnchorDate = '2026-10-13';
+  static const employeeScheduleShifts = <DemoShiftAssignment>[
+    DemoShiftAssignment(
+      workDate: '2026-10-13',
+      dayLabel: 'Thứ Ba, 13/10/2026',
+      shiftName: 'Ca sáng',
+      startTime: '08:00',
+      endTime: '16:00',
+      workArea: 'Nhân viên phục vụ',
+      assignmentStatus: 'Đã phân',
+    ),
+    DemoShiftAssignment(
+      workDate: '2026-10-13',
+      dayLabel: 'Thứ Ba, 13/10/2026',
+      shiftName: 'Ca chiều',
+      startTime: '16:00',
+      endTime: '22:00',
+      workArea: 'Nhân viên pha chế',
+      assignmentStatus: 'Chờ duyệt',
+    ),
+    DemoShiftAssignment(
+      workDate: '2026-10-14',
+      dayLabel: 'Thứ Tư, 14/10/2026',
+      shiftName: 'Ca chiều',
+      startTime: '16:00',
+      endTime: '22:00',
+      workArea: 'Nhân viên phục vụ',
+      assignmentStatus: 'Đã phân',
+    ),
+    DemoShiftAssignment(
+      workDate: '2026-10-15',
+      dayLabel: 'Thứ Năm, 15/10/2026',
+      shiftName: 'Ca sáng',
+      startTime: '08:00',
+      endTime: '16:00',
+      workArea: 'Nhân viên phục vụ',
+      assignmentStatus: 'Đã phân',
+    ),
+    DemoShiftAssignment(
+      workDate: '2026-10-16',
+      dayLabel: 'Thứ Sáu, 16/10/2026',
+      shiftName: 'Ca nghỉ',
+      startTime: '',
+      endTime: '',
+      workArea: '',
+      assignmentStatus: 'Ngày nghỉ',
+    ),
+    DemoShiftAssignment(
+      workDate: '2026-10-17',
+      dayLabel: 'Thứ Bảy, 17/10/2026',
+      shiftName: 'Ca chiều',
+      startTime: '16:00',
+      endTime: '22:00',
+      workArea: 'Nhân viên phục vụ',
+      assignmentStatus: 'Đã phân',
+    ),
+    DemoShiftAssignment(
+      workDate: '2026-10-18',
+      dayLabel: 'Chủ Nhật, 18/10/2026',
+      shiftName: 'Ca sáng',
+      startTime: '08:00',
+      endTime: '16:00',
+      workArea: 'Nhân viên phục vụ',
+      assignmentStatus: 'Đã phân',
+    ),
+    DemoShiftAssignment(
+      workDate: '2026-10-19',
+      dayLabel: 'Thứ Hai, 19/10/2026',
+      shiftName: 'Ca chiều',
+      startTime: '16:00',
+      endTime: '22:00',
+      workArea: 'Nhân viên phục vụ',
+      assignmentStatus: 'Đã phân',
+    ),
+  ];
+
   static const attendanceStatus = DemoAttendanceStatus.notCheckedIn;
   static const lateMinutes = 7;
   static const locationDistanceMeters = 12;

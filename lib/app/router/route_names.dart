@@ -1,5 +1,11 @@
 abstract final class RouteNames {
   static const home = '/';
+  static const employeeHome = '/employee';
+  static const employeeSchedule = '/employee/schedule';
+  static const employeeChecklist = '/employee/checklist';
+  static const employeeTraining = '/employee/training';
+  static const employeeNotifications = '/employee/notifications';
+  static const employeeProfile = '/employee/profile';
   static const login = '/login';
   static const register = '/register';
   static const checkIn = '/attendance/check-in';

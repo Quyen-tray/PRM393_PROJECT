@@ -1,12 +1,9 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
+import '../../../data/mock/demo_data.dart';
 
 class EmployeeCheckInPage extends StatefulWidget {
   const EmployeeCheckInPage({super.key});
@@ -16,111 +13,42 @@ class EmployeeCheckInPage extends StatefulWidget {
 }
 
 class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
-  static const _storeLatitude = 10.7769;
-  static const _storeLongitude = 106.7009;
-  static const _allowedRadiusMeters = 30.0;
   static const _maxAccuracyMeters = 25.0;
 
-  Position? _position;
-  Uint8List? _photoBytes;
   String? _errorMessage;
   bool _isLoadingLocation = false;
   bool _isLoadingPhoto = false;
+  bool _isPhotoReady = true;
   bool _isSubmitting = false;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadLocation());
-  }
-
   bool get _hasValidLocation {
-    final position = _position;
-    if (position == null) return false;
-
-    final distance = Geolocator.distanceBetween(
-      position.latitude,
-      position.longitude,
-      _storeLatitude,
-      _storeLongitude,
-    );
-    return distance <= _allowedRadiusMeters &&
-        position.accuracy <= _maxAccuracyMeters;
+    return DemoData.locationDistanceMeters <=
+            DemoData.attendancePolicy.storeRadiusMeters &&
+        DemoData.locationAccuracyMeters <= _maxAccuracyMeters;
   }
 
-  double get _distanceMeters => _position == null
-      ? 0
-      : Geolocator.distanceBetween(
-          _position!.latitude,
-          _position!.longitude,
-          _storeLatitude,
-          _storeLongitude,
-        );
-
-  Future<void> _loadLocation() async {
+  Future<void> _refreshDemoLocation() async {
     setState(() {
       _isLoadingLocation = true;
       _errorMessage = null;
     });
-
-    try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        throw const LocationServiceDisabledException();
-      }
-
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        throw PermissionDeniedException('Quyền vị trí chưa được cấp');
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 15),
-        ),
-      );
-
-      if (!mounted) return;
-      setState(() => _position = position);
-    } on LocationServiceDisabledException {
-      _showError('GPS đang tắt. Hãy bật vị trí và thử lại.');
-    } on PermissionDeniedException {
-      _showError('Bạn cần cho phép truy cập vị trí để chấm công.');
-    } catch (_) {
-      _showError('Không thể lấy vị trí. Hãy di chuyển ra nơi thoáng rồi thử lại.');
-    } finally {
-      if (mounted) setState(() => _isLoadingLocation = false);
-    }
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+    setState(() => _isLoadingLocation = false);
   }
 
-  Future<void> _takePhoto() async {
+  Future<void> _useDemoPhoto() async {
     setState(() {
       _isLoadingPhoto = true;
+      _isPhotoReady = false;
       _errorMessage = null;
     });
-
-    try {
-      final photo = await ImagePicker().pickImage(
-        source: ImageSource.camera,
-        preferredCameraDevice: CameraDevice.front,
-        imageQuality: 78,
-        maxWidth: 1600,
-      );
-      if (photo == null) return;
-
-      final bytes = await photo.readAsBytes();
-      if (!mounted) return;
-      setState(() => _photoBytes = bytes);
-    } catch (_) {
-      _showError('Không thể mở camera. Hãy kiểm tra quyền truy cập camera.');
-    } finally {
-      if (mounted) setState(() => _isLoadingPhoto = false);
-    }
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+    setState(() {
+      _isPhotoReady = true;
+      _isLoadingPhoto = false;
+    });
   }
 
   Future<void> _submit() async {
@@ -128,8 +56,8 @@ class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
       setState(() => _errorMessage = 'Vị trí chưa thỏa điều kiện chấm công.');
       return;
     }
-    if (_photoBytes == null) {
-      setState(() => _errorMessage = 'Vui lòng chụp ảnh xác minh.');
+    if (!_isPhotoReady) {
+      setState(() => _errorMessage = 'Vui lòng chọn ảnh xác minh mẫu.');
       return;
     }
 
@@ -141,100 +69,108 @@ class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
     if (!mounted) return;
 
     setState(() => _isSubmitting = false);
-    context.go(RouteNames.home);
+    context.go(RouteNames.employeeHome);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Đã check-in thành công')),
     );
   }
 
-  void _showError(String message) {
-    if (!mounted) return;
-    setState(() => _errorMessage = message);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final canSubmit = _hasValidLocation && _photoBytes != null && !_isSubmitting;
+    final canSubmit = _hasValidLocation &&
+        _isPhotoReady &&
+        !_isLoadingLocation &&
+        !_isLoadingPhoto &&
+        !_isSubmitting;
 
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         leading: IconButton(
           tooltip: 'Quay lại',
-          onPressed: () => context.go(RouteNames.home),
+          onPressed: () => context.go(RouteNames.employeeHome),
           icon: const Icon(Icons.arrow_back),
         ),
         centerTitle: true,
         title: const Text('Check-in'),
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                children: [
-                  const _ShiftLabel(),
-                  const SizedBox(height: 14),
-                  _LocationPreview(
-                    position: _position,
-                    distanceMeters: _distanceMeters,
-                    allowedRadiusMeters: _allowedRadiusMeters,
-                    isLoading: _isLoadingLocation,
-                    isValid: _hasValidLocation,
-                    onRefresh: _loadLocation,
-                  ),
-                  const SizedBox(height: 18),
-                  Row(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 620),
+            child: Column(
+              children: [
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                     children: [
+                      _ShiftLabel(shift: DemoData.currentShift),
+                      const SizedBox(height: 14),
+                      _LocationPreview(
+                        distanceMeters:
+                            DemoData.locationDistanceMeters.toDouble(),
+                        accuracyMeters: DemoData.locationAccuracyMeters,
+                        allowedRadiusMeters:
+                            DemoData.attendancePolicy.storeRadiusMeters
+                                .toDouble(),
+                        isLoading: _isLoadingLocation,
+                        isValid: _hasValidLocation,
+                        onRefresh: _refreshDemoLocation,
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        children: [
+                          Text(
+                            'Ảnh xác minh',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const Spacer(),
+                          const Text(
+                            'BẮT BUỘC',
+                            style: TextStyle(
+                              color: Color(0xFF946442),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 9),
+                      _SelfiePreview(
+                        isReady: _isPhotoReady,
+                        isLoading: _isLoadingPhoto,
+                        onCapture: _useDemoPhoto,
+                      ),
+                      const SizedBox(height: 8),
                       Text(
-                        'Ảnh xác minh',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
+                        _isPhotoReady
+                            ? DemoData.checkInPhotoLabel
+                            : 'Ảnh xác minh đang chờ.',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: AppColors.textSecondary,
                             ),
                       ),
-                      const Spacer(),
-                      const Text(
-                        'BẮT BUỘC',
-                        style: TextStyle(
-                          color: Color(0xFF946442),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
+                      if (_errorMessage != null) ...[
+                        const SizedBox(height: 12),
+                        _ErrorBanner(message: _errorMessage!),
+                      ],
                     ],
                   ),
-                  const SizedBox(height: 9),
-                  _SelfiePreview(
-                    photoBytes: _photoBytes,
-                    isLoading: _isLoadingPhoto,
-                    onCapture: _takePhoto,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _photoBytes == null
-                        ? 'Chụp rõ khuôn mặt để xác minh chấm công.'
-                        : 'Ảnh xác minh đã sẵn sàng.',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                  ),
-                  if (_errorMessage != null) ...[
-                    const SizedBox(height: 12),
-                    _ErrorBanner(message: _errorMessage!),
-                  ],
-                ],
-              ),
+                ),
+                _CheckInFooter(
+                  canSubmit: canSubmit,
+                  isSubmitting: _isSubmitting,
+                  hasLocation: _hasValidLocation,
+                  hasPhoto: _isPhotoReady,
+                  onSubmit: _submit,
+                ),
+              ],
             ),
-            _CheckInFooter(
-              canSubmit: canSubmit,
-              isSubmitting: _isSubmitting,
-              hasLocation: _hasValidLocation,
-              hasPhoto: _photoBytes != null,
-              onSubmit: _submit,
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -242,7 +178,9 @@ class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
 }
 
 class _ShiftLabel extends StatelessWidget {
-  const _ShiftLabel();
+  const _ShiftLabel({required this.shift});
+
+  final DemoShiftAssignment shift;
 
   @override
   Widget build(BuildContext context) {
@@ -250,10 +188,10 @@ class _ShiftLabel extends StatelessWidget {
       children: [
         const Icon(Icons.access_time, size: 17, color: AppColors.textSecondary),
         const SizedBox(width: 7),
-        const Expanded(
+        Expanded(
           child: Text(
-            'Ca sáng · 07:00 - 15:00',
-            style: TextStyle(fontWeight: FontWeight.w600),
+            '${shift.shiftName} · ${shift.startTime} - ${shift.endTime}',
+            style: const TextStyle(fontWeight: FontWeight.w600),
           ),
         ),
         Container(
@@ -274,16 +212,16 @@ class _ShiftLabel extends StatelessWidget {
 
 class _LocationPreview extends StatelessWidget {
   const _LocationPreview({
-    required this.position,
     required this.distanceMeters,
+    required this.accuracyMeters,
     required this.allowedRadiusMeters,
     required this.isLoading,
     required this.isValid,
     required this.onRefresh,
   });
 
-  final Position? position;
   final double distanceMeters;
+  final double accuracyMeters;
   final double allowedRadiusMeters;
   final bool isLoading;
   final bool isValid;
@@ -291,11 +229,7 @@ class _LocationPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = position == null
-        ? AppColors.textSecondary
-        : isValid
-            ? const Color(0xFF287A48)
-            : AppColors.error;
+    final statusColor = isValid ? const Color(0xFF287A48) : AppColors.error;
 
     return Column(
       children: [
@@ -375,7 +309,7 @@ class _LocationPreview extends StatelessWidget {
         Row(
           children: [
             Icon(
-              position == null
+              isLoading
                   ? Icons.gps_not_fixed
                   : isValid
                       ? Icons.check_circle
@@ -386,19 +320,18 @@ class _LocationPreview extends StatelessWidget {
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                position == null
-                    ? 'Đang xác định vị trí GPS...'
+                isLoading
+                    ? 'Đang cập nhật vị trí demo...'
                     : isValid
-                        ? 'Trong phạm vi ${distanceMeters.toStringAsFixed(0)} m'
-                        : 'Ngoài phạm vi ${allowedRadiusMeters.toStringAsFixed(0)} m',
+                        ? 'Trong khu vực cửa hàng (${distanceMeters.toStringAsFixed(0)} m)'
+                        : 'Ngoài bán kính ${allowedRadiusMeters.toStringAsFixed(0)} m',
                 style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w600),
               ),
             ),
-            if (position != null)
-              Text(
-                '±${position!.accuracy.toStringAsFixed(0)} m',
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
-              ),
+            Text(
+              '±${accuracyMeters.toStringAsFixed(0)} m',
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+            ),
           ],
         ),
       ],
@@ -477,12 +410,12 @@ class _MapPainter extends CustomPainter {
 
 class _SelfiePreview extends StatelessWidget {
   const _SelfiePreview({
-    required this.photoBytes,
+    required this.isReady,
     required this.isLoading,
     required this.onCapture,
   });
 
-  final Uint8List? photoBytes;
+  final bool isReady;
   final bool isLoading;
   final VoidCallback onCapture;
 
@@ -495,24 +428,29 @@ class _SelfiePreview extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (photoBytes != null)
-              Image.memory(photoBytes!, fit: BoxFit.cover)
-            else
-              Container(
-                color: const Color(0xFFF0E8DF),
-                child: const Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircleAvatar(
-                      radius: 43,
-                      backgroundColor: Color(0xFFE2D0BF),
-                      child: Icon(Icons.person, size: 56, color: Color(0xFF76533E)),
+            Container(
+              color: const Color(0xFFF0E8DF),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircleAvatar(
+                    radius: 43,
+                    backgroundColor: Color(0xFFE2D0BF),
+                    child: Icon(Icons.person, size: 56, color: Color(0xFF76533E)),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    isReady
+                        ? DemoData.checkInPhotoLabel
+                        : 'Canh khuôn mặt vào giữa khung hình',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF76533E),
                     ),
-                    SizedBox(height: 10),
-                    Text('Canh khuôn mặt vào giữa khung hình', style: TextStyle(fontSize: 11, color: Color(0xFF76533E))),
-                  ],
-                ),
+                  ),
+                ],
               ),
+            ),
             Positioned.fill(
               child: IgnorePointer(
                 child: Padding(
@@ -533,8 +471,8 @@ class _SelfiePreview extends StatelessWidget {
                 onPressed: isLoading ? null : onCapture,
                 icon: isLoading
                     ? const SizedBox.square(dimension: 17, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(photoBytes == null ? Icons.photo_camera : Icons.replay, size: 17),
-                label: Text(photoBytes == null ? 'Chụp ảnh' : 'Chụp lại'),
+                    : Icon(isReady ? Icons.replay : Icons.photo_camera, size: 17),
+                label: Text(isReady ? 'Đổi ảnh mẫu' : 'Dùng ảnh mẫu'),
               ),
             ),
           ],

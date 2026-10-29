@@ -8,8 +8,10 @@ import '../../features/auth/presentation/login_page.dart';
 import '../../features/auth/presentation/register_page.dart';
 import '../../features/employees/presentation/manager_employee_list_page.dart';
 import '../../features/employees/presentation/manager_employee_detail_page.dart';
+import '../../features/home/presentation/employee_dashboard_page.dart';
 import '../../features/home/presentation/manager_dashboard_page.dart';
 import '../../features/reports/presentation/manager_attendance_report_page.dart';
+import '../../features/schedule/presentation/employee_schedule_page.dart';
 import '../../features/schedule/presentation/manager_shift_schedule_page.dart';
 import 'route_names.dart';
 
@@ -19,6 +21,14 @@ final appRouter = GoRouter(
     GoRoute(
       path: RouteNames.home,
       builder: (context, state) => const ManagerDashboardPage(),
+    ),
+    GoRoute(
+      path: RouteNames.employeeHome,
+      builder: (context, state) => const EmployeeDashboardPage(),
+    ),
+    GoRoute(
+      path: RouteNames.employeeSchedule,
+      builder: (context, state) => const EmployeeSchedulePage(),
     ),
     GoRoute(
       path: RouteNames.managerEmployees,
