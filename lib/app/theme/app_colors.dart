@@ -11,4 +11,6 @@ abstract final class AppColors {
   static const textSecondary = Color(0xFF786F69);
 
   static const error = Color(0xFFBA1A1A);
+  static const border = Color(0xFFE7DBCB);
+  static const accent = Color(0xFFB8763E);
 }
