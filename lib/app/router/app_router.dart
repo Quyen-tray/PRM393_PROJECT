@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/admin/presentation/admin_account_list_page.dart';
+import '../../features/admin/presentation/admin_checklist_page.dart';
+import '../../features/admin/presentation/admin_dashboard_page.dart';
+import '../../features/admin/presentation/admin_position_page.dart';
+import '../../features/admin/presentation/admin_settings_page.dart';
+import '../../features/admin/presentation/admin_training_page.dart';
 import '../../features/approvals/presentation/manager_approval_page.dart';
 import '../../features/approvals/presentation/manager_checklist_approval_page.dart';
 import '../../features/attendance/presentation/employee_check_in_page.dart';
@@ -57,6 +63,30 @@ final appRouter = GoRouter(
     GoRoute(
       path: RouteNames.checkIn,
       builder: (context, state) => const EmployeeCheckInPage(),
+    ),
+    GoRoute(
+      path: RouteNames.adminHome,
+      builder: (context, state) => const AdminDashboardPage(),
+    ),
+    GoRoute(
+      path: RouteNames.adminAccounts,
+      builder: (context, state) => const AdminAccountListPage(),
+    ),
+    GoRoute(
+      path: RouteNames.adminTraining,
+      builder: (context, state) => const AdminTrainingPage(),
+    ),
+    GoRoute(
+      path: RouteNames.adminSettings,
+      builder: (context, state) => const AdminSettingsPage(),
+    ),
+    GoRoute(
+      path: RouteNames.adminPositions,
+      builder: (context, state) => const AdminPositionPage(),
+    ),
+    GoRoute(
+      path: RouteNames.adminChecklists,
+      builder: (context, state) => const AdminChecklistPage(),
     ),
     GoRoute(
       path: RouteNames.profile,
