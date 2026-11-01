@@ -1,92 +1,152 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
-import '../../../data/mock/demo_data.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../core/utils/formatters.dart';
+import '../../../data/repositories/employee_providers.dart';
+import '../../../shared/widgets/employee_bottom_navigation.dart';
 
-class EmployeeTrainingPage extends StatefulWidget {
+enum _TrainingTab { courses, skills, certificates }
+
+enum _CourseFilter { all, mandatory, inProgress, completed }
+
+class EmployeeTrainingPage extends ConsumerStatefulWidget {
   const EmployeeTrainingPage({super.key});
 
   @override
-  State<EmployeeTrainingPage> createState() => _EmployeeTrainingPageState();
+  ConsumerState<EmployeeTrainingPage> createState() => _EmployeeTrainingPageState();
 }
 
-class _EmployeeTrainingPageState extends State<EmployeeTrainingPage> {
-  _TrainingTab _selectedTab = _TrainingTab.courses;
-  _CourseFilter _courseFilter = _CourseFilter.all;
-  final Map<String, int> _progressOverrides = {};
+class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
+  _TrainingTab _tab = _TrainingTab.courses;
+  _CourseFilter _filter = _CourseFilter.all;
+  bool _loading = true;
+  bool _busy = false;
+  String? _error;
+  List<Map<String, dynamic>> _courses = [];
+  List<Map<String, dynamic>> _mine = [];
+  // Khóa bắt buộc của chức vụ, kể cả khóa chưa ghi danh (/training/me/requirements).
+  List<Map<String, dynamic>> _requirements = [];
+  List<Map<String, dynamic>> _skills = [];
+  List<Map<String, dynamic>> _skillHistory = [];
+  int _requiredTotal = 0;
+  int _requiredDone = 0;
+  bool _restricted = false;
+  List<Map<String, dynamic>> _restrictions = [];
 
-  int _progressFor(DemoTrainingCourse course) =>
-      _progressOverrides[course.title] ?? course.progressPercent;
-
-  bool _isComplete(DemoTrainingCourse course) =>
-      course.status == DemoTrainingStatus.complete ||
-      _progressFor(course) >= 100;
-
-  String _courseStatus(DemoTrainingCourse course) {
-    if (course.status == DemoTrainingStatus.expired) return 'Hết hạn';
-    return _isComplete(course) ? 'Đã hoàn thành' : 'Đang học';
+  @override
+  void initState() {
+    super.initState();
+    _load();
   }
 
-  List<DemoTrainingCourse> get _filteredCourses =>
-      DemoData.trainingCourses.where((course) {
-        return switch (_courseFilter) {
-          _CourseFilter.all => true,
-          _CourseFilter.mandatory => course.isMandatory,
-          _CourseFilter.inProgress =>
-            !_isComplete(course) &&
-                course.status != DemoTrainingStatus.expired,
-          _CourseFilter.complete => _isComplete(course),
-        };
-      }).toList();
-
-  int get _completedMandatoryCount => DemoData.trainingCourses
-      .where((course) => course.isMandatory && _isComplete(course))
-      .length;
-
-  int get _mandatoryCount =>
-      DemoData.trainingCourses.where((course) => course.isMandatory).length;
-
-  void _showCourseDetails(DemoTrainingCourse course) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return _CourseDetailsSheet(
-          course: course,
-          progress: _progressFor(course),
-          status: _courseStatus(course),
-          onContinue: () {
-            Navigator.of(sheetContext).pop();
-            _advanceCourse(course);
-          },
-        );
-      },
-    );
-  }
-
-  void _advanceCourse(DemoTrainingCourse course) {
-    final currentProgress = _progressFor(course);
-    if (course.status == DemoTrainingStatus.expired || currentProgress >= 100) {
-      return;
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final repo = ref.read(employeeRepositoryProvider);
+      final profile = await repo.getEmployeeProfile();
+      final employeeId = (profile['employeeId'] as num?)?.toInt();
+      if (employeeId == null) {
+        throw const ApiException(message: 'Tài khoản chưa được liên kết hồ sơ nhân viên.');
+      }
+      final results = await Future.wait<Object>([
+        repo.getTrainingCourses(),
+        repo.getMyTraining(),
+        repo.getSkills(),
+        repo.getEmployeeSkillHistory(employeeId),
+        repo.getEmployeeOverviewById(employeeId),
+        repo.getMyTrainingRequirements(),
+      ]);
+      if (!mounted) return;
+      final overview = results[4] as Map<String, dynamic>;
+      final training = overview['training'] is Map
+          ? Map<String, dynamic>.from(overview['training'] as Map)
+          : <String, dynamic>{};
+      setState(() {
+        _courses = results[0] as List<Map<String, dynamic>>;
+        _mine = results[1] as List<Map<String, dynamic>>;
+        _skills = results[2] as List<Map<String, dynamic>>;
+        _skillHistory = results[3] as List<Map<String, dynamic>>;
+        _requirements = results[5] as List<Map<String, dynamic>>;
+        // Số liệu bắt buộc do máy chủ tính, gồm cả khóa chưa ghi danh.
+        _requiredTotal = (training['requiredCourses'] as num?)?.toInt() ?? 0;
+        _requiredDone = (training['completedCourses'] as num?)?.toInt() ?? 0;
+        _restricted = training['shiftEligibility'] == 'RESTRICTED';
+        _restrictions = (training['restrictions'] as List?)
+                ?.whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item))
+                .toList() ??
+            <Map<String, dynamic>>[];
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (mounted) setState(() { _error = e.message; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() { _error = 'Không tải được dữ liệu đào tạo.'; _loading = false; });
     }
-
-    final nextProgress = (currentProgress + 20).clamp(0, 100).toInt();
-    setState(() => _progressOverrides[course.title] = nextProgress);
-    _showMessage(
-      nextProgress >= 100
-          ? 'Đã hoàn thành khóa học mẫu.'
-          : 'Đã cập nhật tiến độ học.',
-    );
   }
 
-  void _showMessage(String message) {
+  Future<void> _enroll(Map<String, dynamic> course) async {
+    final id = courseIdOf(course);
+    if (id < 0 || _busy) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(employeeRepositoryProvider).enrollTraining(id);
+      if (!mounted) return;
+      _message('Đã ghi danh khóa học.');
+      await _load();
+    } on ApiException catch (e) {
+      _message(e.message);
+    } catch (_) {
+      _message('Không ghi danh được khóa học.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _message(String text) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+      ..showSnackBar(SnackBar(content: Text(text)));
   }
+
+  Map<int, Map<String, dynamic>> get _mineByCourse => {
+        for (final item in _mine)
+          if (item['courseId'] is num) (item['courseId'] as num).toInt(): item,
+      };
+
+  Map<String, dynamic>? _requirementOf(Map<String, dynamic> course) {
+    final id = courseIdOf(course);
+    for (final requirement in _requirements) {
+      if (courseIdOf(requirement) == id) return requirement;
+    }
+    return null;
+  }
+
+  bool _matchesFilter(Map<String, dynamic> course) {
+    final mine = _mineByCourse[courseIdOf(course)];
+    final status = mine?['status']?.toString();
+    return switch (_filter) {
+      _CourseFilter.all => true,
+      _CourseFilter.mandatory => _requirementOf(course) != null,
+      _CourseFilter.inProgress => status == 'IN_PROGRESS' || status == 'NOT_STARTED',
+      _CourseFilter.completed => status == 'PASSED',
+    };
+  }
+
+  String _filterLabel(_CourseFilter filter) => switch (filter) {
+        _CourseFilter.all => 'Tất cả',
+        _CourseFilter.mandatory => 'Bắt buộc',
+        _CourseFilter.inProgress => 'Đang học',
+        _CourseFilter.completed => 'Đã hoàn thành',
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -99,406 +159,400 @@ class _EmployeeTrainingPageState extends State<EmployeeTrainingPage> {
           onPressed: () => context.go(RouteNames.employeeHome),
           icon: const Icon(Icons.arrow_back),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Tải lại',
+            onPressed: _loading ? null : _load,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 620),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-              children: [
-                _TrainingTabSelector(
-                  selectedTab: _selectedTab,
-                  onChanged: (tab) => setState(() => _selectedTab = tab),
-                ),
-                const SizedBox(height: 14),
-                if (_selectedTab == _TrainingTab.courses) ...[
-                  _RequiredTrainingSummary(
-                    completedCount: _completedMandatoryCount,
-                    courseCount: _mandatoryCount,
-                  ),
-                  const SizedBox(height: 16),
-                  _CourseFilterSelector(
-                    selectedFilter: _courseFilter,
-                    onChanged: (filter) =>
-                        setState(() => _courseFilter = filter),
-                  ),
-                  const SizedBox(height: 12),
-                  if (_filteredCourses.isEmpty)
-                    const _EmptyTrainingState(
-                      message: 'Không có khóa học trong mục này.',
-                    )
-                  else
-                    for (final course in _filteredCourses) ...[
-                      _CourseCard(
-                        course: course,
-                        progress: _progressFor(course),
-                        status: _courseStatus(course),
-                        onTap: () => _showCourseDetails(course),
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                    ? _ErrorState(message: _error!, onRetry: _load)
+                    : ListView(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                        children: [
+                          SegmentedButton<_TrainingTab>(
+                            segments: const [
+                              ButtonSegment(value: _TrainingTab.courses, label: Text('Khóa học')),
+                              ButtonSegment(value: _TrainingTab.skills, label: Text('Kỹ năng')),
+                              ButtonSegment(value: _TrainingTab.certificates, label: Text('Chứng chỉ')),
+                            ],
+                            selected: {_tab},
+                            onSelectionChanged: (value) => setState(() => _tab = value.first),
+                          ),
+                          const SizedBox(height: 14),
+                          ..._contentFor(_tab),
+                        ],
                       ),
-                      const SizedBox(height: 10),
-                    ],
-                ] else if (_selectedTab == _TrainingTab.skills) ...[
-                  const _SectionIntro(
-                    title: 'Kỹ năng của tôi',
-                    subtitle: 'Kết quả đánh giá kỹ năng hiện tại.',
-                  ),
-                  const SizedBox(height: 12),
-                  for (final skill in DemoData.managerEmployeeSkills) ...[
-                    _SkillCard(skill: skill),
-                    const SizedBox(height: 10),
-                  ],
-                ] else ...[
-                  const _SectionIntro(
-                    title: 'Chứng chỉ của tôi',
-                    subtitle: 'Chứng chỉ hoàn thành khóa học.',
-                  ),
-                  const SizedBox(height: 12),
-                  for (final certificate in DemoData.employeeCertificates) ...[
-                    _CertificateCard(certificate: certificate),
-                    const SizedBox(height: 10),
-                  ],
-                ],
-              ],
+          ),
+        ),
+      ),
+      bottomNavigationBar: const EmployeeBottomNavigation(selectedIndex: 0),
+    );
+  }
+
+  List<Widget> _contentFor(_TrainingTab tab) => switch (tab) {
+        _TrainingTab.courses => _coursesContent(),
+        _TrainingTab.skills => _skillsContent(),
+        _TrainingTab.certificates => _certificatesContent(),
+      };
+
+  List<Widget> _coursesContent() {
+    final visible = _courses.where(_matchesFilter).toList();
+    return [
+      _progressSummary(),
+      const SizedBox(height: 14),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final filter in _CourseFilter.values)
+            ChoiceChip(
+              label: Text(_filterLabel(filter)),
+              selected: _filter == filter,
+              onSelected: (_) => setState(() => _filter = filter),
+            ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      if (visible.isEmpty)
+        const _EmptyState(message: 'Không có khóa học trong mục này.')
+      else
+        for (final course in visible) ...[
+          _courseCard(course),
+          const SizedBox(height: 10),
+        ],
+    ];
+  }
+
+  Widget _progressSummary() {
+    final requiredTotal = _requiredTotal;
+    final requiredDone = _requiredDone;
+    final progress = requiredTotal == 0
+        ? 0.0
+        : (requiredDone / requiredTotal).clamp(0.0, 1.0).toDouble();
+    return _Panel(
+      title: 'Khóa bắt buộc của chức vụ',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            requiredTotal == 0
+                ? 'Chức vụ hiện tại chưa yêu cầu khóa bắt buộc.'
+                : 'Đã đạt $requiredDone/$requiredTotal khóa bắt buộc',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          if (requiredTotal > 0) ...[
+            const SizedBox(height: 6),
+            LinearProgressIndicator(value: progress, minHeight: 6),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            _restricted ? 'Điều kiện phân ca: đang bị hạn chế' : 'Điều kiện phân ca: đủ điều kiện',
+            style: TextStyle(
+              color: _restricted ? AppColors.error : AppColors.secondary,
+              fontWeight: FontWeight.w600,
             ),
           ),
-        ),
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 0,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Trang chủ',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month),
-            label: 'Lịch',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.checklist_outlined),
-            selectedIcon: Icon(Icons.checklist),
-            label: 'Checklist',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Cá nhân',
-          ),
+          for (final item in _restrictions)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '• Cần hoàn thành: ${item['courseName'] ?? 'Khóa học'} (${item['reason'] ?? 'chưa đạt'})',
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              ),
+            ),
         ],
-        onDestinationSelected: (index) {
-          if (index == 0) {
-            context.go(RouteNames.employeeHome);
-          } else if (index == 1) {
-            context.go(RouteNames.employeeSchedule);
-          } else if (index == 2) {
-            context.go(RouteNames.employeeChecklist);
-          } else if (index == 3) {
-            _showMessage('Hồ sơ cá nhân sẽ được hoàn thiện sau.');
-          }
-        },
+      ),
+    );
+  }
+
+  Widget _courseCard(Map<String, dynamic> course) {
+    final mine = _mineByCourse[courseIdOf(course)];
+    final status = mine?['status']?.toString();
+    final isActive = course['isActive'] != false;
+    final requirement = _requirementOf(course);
+    final color = switch (status) {
+      'PASSED' => AppColors.secondary,
+      'EXPIRED' || 'FAILED' => AppColors.error,
+      'IN_PROGRESS' || 'NOT_STARTED' => AppColors.primary,
+      _ => AppColors.textSecondary,
+    };
+    return Card(
+      color: AppColors.surface,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _showCourseDetails(course),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      (course['courseName'] ?? 'Khóa học').toString(),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  _Tag(label: trainingStatusLabel(status), color: color),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${course['courseCode'] ?? ''} · Điểm đạt ${formatScore(course['passScore'])} · '
+                'Hiệu lực ${course['validityMonths'] ?? '—'} tháng',
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              ),
+              if (mine?['dueAt'] != null)
+                Text('Hạn hoàn thành: ${formatDate(mine!['dueAt'])}',
+                    style: const TextStyle(fontSize: 12)),
+              if (requirement != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    requirement['blocksShiftAssignment'] == true
+                        ? 'Bắt buộc với chức vụ hiện tại · chặn nhận ca nếu chưa đạt'
+                        : 'Bắt buộc với chức vụ hiện tại',
+                    style: const TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              if (mine == null && isActive) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.tonal(
+                    onPressed: _busy ? null : () => _enroll(course),
+                    child: const Text('Ghi danh'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showCourseDetails(Map<String, dynamic> course) {
+    final mine = _mineByCourse[courseIdOf(course)];
+    final canEnroll = mine == null && course['isActive'] != false;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text((course['courseName'] ?? 'Khóa học').toString(),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 4),
+              Text('Mã khóa: ${course['courseCode'] ?? '—'}',
+                  style: const TextStyle(color: AppColors.textSecondary)),
+              const SizedBox(height: 10),
+              if ((course['description'] ?? '').toString().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(course['description'].toString()),
+                ),
+              _detailRow('Điểm đạt', formatScore(course['passScore'])),
+              _detailRow('Thời hạn hiệu lực', '${course['validityMonths'] ?? '—'} tháng'),
+              _detailRow('Bài kiểm tra', course['isMandatoryTest'] == true ? 'Có' : 'Không'),
+              _detailRow('Bắt buộc với chức vụ', _requirementOf(course) != null ? 'Có' : 'Không'),
+              _detailRow('Trạng thái của tôi', trainingStatusLabel(mine?['status']?.toString())),
+              if (mine != null) ...[
+                _detailRow('Điểm bài kiểm tra', formatScore(mine['testScore'])),
+                _detailRow('Hạn hoàn thành', formatDate(mine['dueAt'])),
+                _detailRow('Ngày hoàn thành', formatDate(mine['completedAt'])),
+                _detailRow('Hết hạn', formatDate(mine['expiresAt'])),
+              ],
+              if (canEnroll) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _busy
+                        ? null
+                        : () {
+                            Navigator.pop(sheetContext);
+                            _enroll(course);
+                          },
+                    child: const Text('Ghi danh khóa học'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 150,
+              child: Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+            ),
+            Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600))),
+          ],
+        ),
+      );
+
+  List<Widget> _skillsContent() {
+    final latest = <int, Map<String, dynamic>>{};
+    for (final item in _skillHistory) {
+      final skillId = (item['skillId'] as num?)?.toInt();
+      if (skillId == null) continue;
+      final current = latest[skillId];
+      if (current == null ||
+          (item['assessedAt'] ?? '').toString().compareTo((current['assessedAt'] ?? '').toString()) > 0) {
+        latest[skillId] = item;
+      }
+    }
+    return [
+      const _SectionIntro(
+        title: 'Kỹ năng của tôi',
+        subtitle: 'Mức đánh giá gần nhất từ 1 (cơ bản) đến 5 (thành thạo).',
+      ),
+      const SizedBox(height: 12),
+      if (_skills.isEmpty)
+        const _EmptyState(message: 'Chưa có kỹ năng nào trong danh mục.')
+      else
+        for (final skill in _skills) ...[
+          _skillCard(skill, latest[(skill['skillId'] as num?)?.toInt()]),
+          const SizedBox(height: 10),
+        ],
+    ];
+  }
+
+  Widget _skillCard(Map<String, dynamic> skill, Map<String, dynamic>? assessment) {
+    final level = (assessment?['level'] as num?)?.toInt();
+    return Card(
+      color: AppColors.surface,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text((skill['skillName'] ?? 'Kỹ năng').toString(),
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                ),
+                Text(level == null ? 'Chưa đánh giá' : 'Mức $level/5',
+                    style: TextStyle(
+                      color: level == null ? AppColors.textSecondary : AppColors.primary,
+                      fontWeight: FontWeight.w700,
+                    )),
+              ],
+            ),
+            if (level != null) ...[
+              const SizedBox(height: 8),
+              LinearProgressIndicator(value: level / 5, minHeight: 6),
+            ],
+            if (assessment != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Đánh giá ngày ${formatDate(assessment['assessedAt'])}'
+                '${(assessment['note'] ?? '').toString().isEmpty ? '' : ' · ${assessment['note']}'}',
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _certificatesContent() {
+    final certificates = _mine
+        .where((item) => item['status'] == 'PASSED' || item['status'] == 'EXPIRED')
+        .toList();
+    return [
+      const _SectionIntro(
+        title: 'Chứng chỉ của tôi',
+        subtitle: 'Khóa học đã hoàn thành và thời hạn hiệu lực.',
+      ),
+      const SizedBox(height: 12),
+      if (certificates.isEmpty)
+        const _EmptyState(message: 'Bạn chưa hoàn thành khóa học nào.')
+      else
+        for (final item in certificates) ...[
+          _certificateCard(item),
+          const SizedBox(height: 10),
+        ],
+    ];
+  }
+
+  Widget _certificateCard(Map<String, dynamic> item) {
+    final expired = item['status'] == 'EXPIRED';
+    return Card(
+      color: AppColors.surface,
+      child: ListTile(
+        leading: Icon(
+          expired ? Icons.warning_amber_outlined : Icons.workspace_premium_outlined,
+          color: expired ? AppColors.error : AppColors.secondary,
+        ),
+        title: Text((item['courseName'] ?? 'Khóa học').toString(),
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: Text(
+          'Hoàn thành: ${formatDate(item['completedAt'])} · '
+          'Hiệu lực đến: ${formatDate(item['expiresAt'])}',
+        ),
+        trailing: _Tag(
+          label: trainingStatusLabel(item['status']?.toString()),
+          color: expired ? AppColors.error : AppColors.secondary,
+        ),
       ),
     );
   }
 }
 
-enum _TrainingTab { courses, skills, certificates }
+class _Panel extends StatelessWidget {
+  const _Panel({required this.title, required this.child});
 
-enum _CourseFilter { all, mandatory, inProgress, complete }
-
-class _TrainingTabSelector extends StatelessWidget {
-  const _TrainingTabSelector({
-    required this.selectedTab,
-    required this.onChanged,
-  });
-
-  final _TrainingTab selectedTab;
-  final ValueChanged<_TrainingTab> onChanged;
+  final String title;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return SegmentedButton<_TrainingTab>(
-      segments: const [
-        ButtonSegment(
-          value: _TrainingTab.courses,
-          label: Text('Khóa học'),
-        ),
-        ButtonSegment(
-          value: _TrainingTab.skills,
-          label: Text('Kỹ năng'),
-        ),
-        ButtonSegment(
-          value: _TrainingTab.certificates,
-          label: Text('Chứng chỉ'),
-        ),
-      ],
-      selected: {selectedTab},
-      onSelectionChanged: (selection) => onChanged(selection.first),
-    );
-  }
-}
-
-class _RequiredTrainingSummary extends StatelessWidget {
-  const _RequiredTrainingSummary({
-    required this.completedCount,
-    required this.courseCount,
-  });
-
-  final int completedCount;
-  final int courseCount;
-
-  @override
-  Widget build(BuildContext context) {
-    final progress = courseCount == 0 ? 0.0 : completedCount / courseCount;
-
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFEDE8E3)),
+        border: Border.all(color: const Color(0xFFE5E1DA)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.school_outlined, color: AppColors.primary),
-              const SizedBox(width: 9),
-              const Expanded(
-                child: Text(
-                  'Đào tạo bắt buộc',
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              Text(
-                '$completedCount/$courseCount',
-                style: const TextStyle(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 7,
-              color: const Color(0xFF31A779),
-              backgroundColor: const Color(0xFFECE8E3),
-            ),
-          ),
+          child,
         ],
       ),
     );
   }
 }
 
-class _CourseFilterSelector extends StatelessWidget {
-  const _CourseFilterSelector({
-    required this.selectedFilter,
-    required this.onChanged,
-  });
-
-  final _CourseFilter selectedFilter;
-  final ValueChanged<_CourseFilter> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    const filters = [
-      (value: _CourseFilter.all, label: 'Tất cả'),
-      (value: _CourseFilter.mandatory, label: 'Bắt buộc'),
-      (value: _CourseFilter.inProgress, label: 'Đang học'),
-      (value: _CourseFilter.complete, label: 'Đã hoàn thành'),
-    ];
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (final filter in filters) ...[
-            Padding(
-              padding: const EdgeInsets.only(right: 7),
-              child: ChoiceChip(
-                label: Text(filter.label),
-                selected: selectedFilter == filter.value,
-                onSelected: (_) => onChanged(filter.value),
-                selectedColor: AppColors.primary,
-                labelStyle: TextStyle(
-                  color: selectedFilter == filter.value
-                      ? Colors.white
-                      : AppColors.textPrimary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-                side: BorderSide(
-                  color: selectedFilter == filter.value
-                      ? AppColors.primary
-                      : const Color(0xFFE5E1DA),
-                ),
-                backgroundColor: AppColors.surface,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _CourseCard extends StatelessWidget {
-  const _CourseCard({
-    required this.course,
-    required this.progress,
-    required this.status,
-    required this.onTap,
-  });
-
-  final DemoTrainingCourse course;
-  final int progress;
-  final String status;
-  final VoidCallback onTap;
-
-  Color get _statusColor {
-    if (course.status == DemoTrainingStatus.expired) return AppColors.error;
-    return progress >= 100
-        ? const Color(0xFF25804B)
-        : const Color(0xFFD39A36);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFEDE8E3)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 62,
-                height: 62,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1E6D8),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  course.isMandatory
-                      ? Icons.restaurant_outlined
-                      : Icons.chat_bubble_outline,
-                  color: AppColors.primary,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            course.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Icon(
-                          Icons.chevron_right,
-                          color: AppColors.textSecondary,
-                          size: 20,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
-                    Row(
-                      children: [
-                        _SmallTag(
-                          label: course.isMandatory ? 'Bắt buộc' : 'Tùy chọn',
-                          color: course.isMandatory
-                              ? AppColors.primary
-                              : const Color(0xFF4E86A8),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          status,
-                          style: TextStyle(
-                            color: _statusColor,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 7),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: LinearProgressIndicator(
-                              value: progress / 100,
-                              minHeight: 5,
-                              color: const Color(0xFF31A779),
-                              backgroundColor: const Color(0xFFECE8E3),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '$progress%',
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (course.blocksShiftAssignment) ...[
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Yêu cầu để được phân ca',
-                        style: TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 9,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SmallTag extends StatelessWidget {
-  const _SmallTag({required this.label, required this.color});
+class _Tag extends StatelessWidget {
+  const _Tag({required this.label, required this.color});
 
   final String label;
   final Color color;
@@ -506,176 +560,12 @@ class _SmallTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
+        color: color.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-class _SkillCard extends StatelessWidget {
-  const _SkillCard({required this.skill});
-
-  final DemoManagerSkill skill;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFEDE8E3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F2EC),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.auto_awesome_outlined,
-                  color: Color(0xFF3B8C67),
-                ),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Text(
-                  skill.name,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              Text(
-                skill.levelLabel,
-                style: const TextStyle(
-                  color: Color(0xFF25804B),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: skill.scorePercent / 100,
-                    minHeight: 6,
-                    color: const Color(0xFF31A779),
-                    backgroundColor: const Color(0xFFECE8E3),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 9),
-              Text(
-                '${skill.scorePercent}%',
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 11,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 7),
-          Text(
-            'Đánh giá ngày ${skill.evaluatedAt}',
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 10,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CertificateCard extends StatelessWidget {
-  const _CertificateCard({required this.certificate});
-
-  final DemoEmployeeCertificate certificate;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFEDE8E3)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF1D9),
-              borderRadius: BorderRadius.circular(11),
-            ),
-            child: const Icon(
-              Icons.workspace_premium_outlined,
-              color: Color(0xFFBA821E),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  certificate.title,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Cấp bởi ${certificate.issuer}',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 10,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  'Cấp ${certificate.issuedAt} · Hết hạn ${certificate.expiresAt}',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 10,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          const Icon(Icons.verified, color: Color(0xFF31A779), size: 20),
-        ],
-      ),
+      child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
     );
   }
 }
@@ -691,148 +581,45 @@ class _SectionIntro extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
+        Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
         const SizedBox(height: 4),
-        Text(
-          subtitle,
-          style: const TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: 11,
-          ),
-        ),
+        Text(subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
       ],
     );
   }
 }
 
-class _EmptyTrainingState extends StatelessWidget {
-  const _EmptyTrainingState({required this.message});
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.message});
 
   final String message;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFEDE8E3)),
-      ),
-      child: Center(
-        child: Text(
-          message,
-          style: const TextStyle(color: AppColors.textSecondary),
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Center(child: Text(message, style: const TextStyle(color: AppColors.textSecondary))),
     );
   }
 }
 
-class _CourseDetailsSheet extends StatelessWidget {
-  const _CourseDetailsSheet({
-    required this.course,
-    required this.progress,
-    required this.status,
-    required this.onContinue,
-  });
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({required this.message, required this.onRetry});
 
-  final DemoTrainingCourse course;
-  final int progress;
-  final String status;
-  final VoidCallback onContinue;
+  final String message;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
-    final isComplete = progress >= 100;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-      decoration: const BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      child: SafeArea(
-        top: false,
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Container(
-                width: 38,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFCDC5BC),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              course.title,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              course.isMandatory ? 'Khóa học bắt buộc' : 'Khóa học tự chọn',
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 12,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                const Expanded(child: Text('Trạng thái')),
-                Text(
-                  status,
-                  style: const TextStyle(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 9),
-            Row(
-              children: [
-                const Expanded(child: Text('Hạn hoàn thành')),
-                Text(
-                  course.dueDate,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
-            const SizedBox(height: 9),
-            Row(
-              children: [
-                const Expanded(child: Text('Tiến độ')),
-                Text(
-                  '$progress%',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: isComplete ? null : onContinue,
-                child: Text(isComplete ? 'Đã hoàn thành' : 'Tiếp tục học'),
-              ),
-            ),
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            FilledButton(onPressed: onRetry, child: const Text('Thử lại')),
           ],
         ),
       ),

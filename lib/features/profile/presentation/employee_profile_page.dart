@@ -1,212 +1,167 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
-import '../../../data/mock/demo_data.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../core/utils/formatters.dart';
+import '../../../data/repositories/employee_providers.dart';
 
-class EmployeeProfilePage extends StatefulWidget {
+class EmployeeProfilePage extends ConsumerStatefulWidget {
   const EmployeeProfilePage({super.key});
 
   @override
-  State<EmployeeProfilePage> createState() => _EmployeeProfilePageState();
+  ConsumerState<EmployeeProfilePage> createState() => _EmployeeProfilePageState();
 }
 
-class _EmployeeProfilePageState extends State<EmployeeProfilePage> {
-  _ProfileTab _selectedTab = _ProfileTab.info;
-  final Map<String, String> _overrides = {};
+class _EmployeeProfilePageState extends ConsumerState<EmployeeProfilePage> {
+  int _selectedTab = 0;
+  late Future<Map<String, dynamic>> _profileFuture;
+  late Future<List<Map<String, dynamic>>> _certificatesFuture;
 
-  String _value(String key, String original) => _overrides[key] ?? original;
+  @override
+  void initState() {
+    super.initState();
+    _loadFutures();
+  }
 
-  Future<void> _editProfile() async {
-    final employee = DemoData.employee;
-    final nameController = TextEditingController(
-      text: _value('name', employee.fullName),
-    );
-    final emailController = TextEditingController(
-      text: _value('email', employee.email),
-    );
-    final phoneController = TextEditingController(
-      text: _value('phone', employee.phone),
-    );
+  void _loadFutures() {
+    final repo = ref.read(employeeRepositoryProvider);
+    _profileFuture = repo.getEmployeeProfile();
+    _certificatesFuture = repo.getMyTraining();
+  }
 
-    final updates = await showDialog<Map<String, String>>(
+  void _reload() => setState(_loadFutures);
+
+  Future<void> _editProfile(Map<String, dynamic> employee) async {
+    final name = TextEditingController(text: (employee['fullName'] ?? '').toString());
+    final phone = TextEditingController(text: (employee['phone'] ?? '').toString());
+    final result = await showDialog<Map<String, String>>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Chỉnh sửa thông tin'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Họ và tên'),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Email'),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: phoneController,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'Số điện thoại'),
-              ),
-            ],
-          ),
-        ),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: name, maxLength: 150, decoration: const InputDecoration(labelText: 'Họ và tên')),
+          const SizedBox(height: 8),
+          TextField(controller: phone, maxLength: 20, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Số điện thoại')),
+        ]),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Hủy'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop({
-              'name': nameController.text.trim(),
-              'email': emailController.text.trim(),
-              'phone': phoneController.text.trim(),
-            }),
-            child: const Text('Lưu'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Hủy')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, {'name': name.text.trim(), 'phone': phone.text.trim()}), child: const Text('Lưu')),
         ],
       ),
     );
-
-    nameController.dispose();
-    emailController.dispose();
-    phoneController.dispose();
-
-    if (!mounted || updates == null) return;
-    setState(() => _overrides.addAll(updates));
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(content: Text('Đã cập nhật thông tin trên bản demo.')),
+    name.dispose();
+    phone.dispose();
+    if (!mounted || result == null) return;
+    if (result['name']!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Họ và tên không được để trống.')));
+      return;
+    }
+    try {
+      await ref.read(employeeRepositoryProvider).updateMyAccount(
+        displayName: result['name'],
+        phoneNumber: result['phone'],
       );
+      if (!mounted) return;
+      _reload();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã cập nhật hồ sơ.')));
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final employee = DemoData.employee;
-    final employeeName = _value('name', employee.fullName);
-
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Hồ sơ cá nhân'),
-        leading: IconButton(
-          tooltip: 'Quay lại trang chủ',
-          onPressed: () => context.go(RouteNames.employeeHome),
-          icon: const Icon(Icons.arrow_back),
-        ),
+        leading: IconButton(tooltip: 'Quay lại trang chủ', onPressed: () => context.go(RouteNames.employeeHome), icon: const Icon(Icons.arrow_back)),
+        actions: [IconButton(tooltip: 'Tải lại', onPressed: _reload, icon: const Icon(Icons.refresh))],
       ),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 620),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-              children: [
-                _EmployeeProfileHeader(
-                  name: employeeName,
-                  code: employee.employeeCode,
-                  position: employee.position,
-                  status: employee.employmentStatus,
-                ),
-                const SizedBox(height: 14),
-                SegmentedButton<_ProfileTab>(
-                  segments: const [
-                    ButtonSegment(
-                      value: _ProfileTab.info,
-                      label: Text('Thông tin'),
-                    ),
-                    ButtonSegment(
-                      value: _ProfileTab.position,
-                      label: Text('Chức danh'),
-                    ),
-                    ButtonSegment(
-                      value: _ProfileTab.documents,
-                      label: Text('Hồ sơ'),
-                    ),
-                  ],
-                  selected: {_selectedTab},
-                  onSelectionChanged: (tabs) {
-                    setState(() => _selectedTab = tabs.first);
-                  },
-                ),
-                const SizedBox(height: 14),
-                if (_selectedTab == _ProfileTab.info) ...[
-                  _ProfileSectionCard(
-                    title: 'Thông tin cá nhân',
-                    rows: [
-                      _ProfileRowData('Mã nhân viên', employee.employeeCode),
-                      _ProfileRowData('Email', _value('email', employee.email)),
-                      _ProfileRowData('Số điện thoại', _value('phone', employee.phone)),
-                      _ProfileRowData('Ngày vào làm', employee.hireDate),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _ProfileSectionCard(
-                    title: 'Thông tin công việc',
-                    rows: [
-                      _ProfileRowData('Chức vụ', employee.position),
-                      _ProfileRowData(
-                        'Ca làm mặc định',
-                        '${DemoData.currentShift.startTime} - '
-                            '${DemoData.currentShift.endTime}',
-                      ),
-                      _ProfileRowData('Trạng thái', employee.employmentStatus),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _editProfile,
-                      icon: const Icon(Icons.edit_outlined),
-                      label: const Text('Chỉnh sửa thông tin'),
-                    ),
-                  ),
-                ] else if (_selectedTab == _ProfileTab.position) ...[
-                  _ProfileSectionCard(
-                    title: 'Thông tin chức vụ',
-                    rows: [
-                      _ProfileRowData('Chức vụ', employee.position),
-                      const _ProfileRowData('Chi nhánh', DemoData.storeBranch),
-                      const _ProfileRowData(
-                        'Quản lý trực tiếp',
-                        'Trần Thị Bích Ngọc',
-                      ),
-                      _ProfileRowData(
-                        'Ca làm mặc định',
-                        '${DemoData.currentShift.startTime} - '
-                            '${DemoData.currentShift.endTime}',
-                      ),
-                    ],
-                  ),
-                ] else ...[
-                  const _ProfileSectionCard(
-                    title: 'Thông tin hồ sơ',
-                    rows: [
-                      _ProfileRowData('Mã nhân viên', 'NV0012'),
-                      _ProfileRowData('Ngày vào làm', '01/06/2026'),
-                      _ProfileRowData('Nguồn dữ liệu', 'Hồ sơ demo cố định'),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  const _SectionHeading(
-                    title: 'Chứng chỉ đã hoàn thành',
-                    subtitle: 'Chứng chỉ mẫu từ các khóa đào tạo của nhân viên.',
-                  ),
-                  const SizedBox(height: 8),
-                  for (final certificate in DemoData.employeeCertificates) ...[
-                    _CertificateCard(certificate: certificate),
+            child: FutureBuilder<Map<String, dynamic>>(
+              future: _profileFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                if (snapshot.hasError || !snapshot.hasData) {
+                  return Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.cloud_off_outlined, size: 40),
+                    const SizedBox(height: 12),
+                    const Text('Không tải được hồ sơ'),
                     const SizedBox(height: 8),
+                    Text(snapshot.error?.toString() ?? 'Lỗi không xác định', textAlign: TextAlign.center),
+                    const SizedBox(height: 12),
+                    FilledButton(onPressed: _reload, child: const Text('Thử lại')),
+                  ])));
+                }
+                final employee = snapshot.data!;
+                final name = (employee['fullName'] ?? 'Chưa cập nhật').toString();
+                final code = (employee['employeeCode'] ?? '—').toString();
+                final position = (employee['jobTitle'] ?? 'Chưa phân công').toString();
+                final status = (employee['employmentStatus'] ?? '—').toString();
+                return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 20), children: [
+                  _ProfileHeader(name: name, code: code, position: position, status: status),
+                  const SizedBox(height: 14),
+                  SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(value: 0, label: Text('Thông tin')),
+                      ButtonSegment(value: 1, label: Text('Chức danh')),
+                      ButtonSegment(value: 2, label: Text('Hồ sơ')),
+                    ],
+                    selected: {_selectedTab},
+                    onSelectionChanged: (value) => setState(() => _selectedTab = value.first),
+                  ),
+                  const SizedBox(height: 14),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.payments_outlined),
+                      title: const Text('Thưởng/phạt của tôi'),
+                      subtitle: const Text('Các quyết định về thưởng hoặc phạt liên quan đến bạn'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => context.push(RouteNames.employeeRewards),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  if (_selectedTab == 0) ...[
+                    _InfoCard(title: 'Thông tin cá nhân', rows: {
+                      'Mã nhân viên': code,
+                      'Email': (employee['email'] ?? '—').toString(),
+                      'Số điện thoại': (employee['phone'] ?? '—').toString(),
+                      'Ngày vào làm': formatDate(employee['hireDate']),
+                    }),
+                    const SizedBox(height: 12),
+                    _InfoCard(title: 'Thông tin công việc', rows: {
+                      'Chức vụ': position,
+                      'Loại nhân viên': (employee['employmentType'] ?? '—').toString(),
+                      'Trạng thái': status,
+                      'Tình trạng hồ sơ': (employee['profileStatus'] ?? '—').toString(),
+                      'Điều kiện nhận ca': (employee['shiftEligibility'] ?? '—').toString(),
+                    }),
+                    const SizedBox(height: 12),
+                    SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: () => _editProfile(employee), icon: const Icon(Icons.edit_outlined), label: const Text('Chỉnh sửa thông tin'))),
+                  ] else if (_selectedTab == 1) ...[
+                    _InfoCard(title: 'Thông tin chức danh', rows: {
+                      'Chức vụ': position,
+                      'Mã chức danh': (employee['positionId'] ?? '—').toString(),
+                      'Loại nhân viên': (employee['employmentType'] ?? '—').toString(),
+                    }),
+                  ] else ...[
+                    _InfoCard(title: 'Tình trạng hồ sơ', rows: {
+                      'Trạng thái hồ sơ': (employee['profileStatus'] ?? '—').toString(),
+                      'Ngày vào làm': formatDate(employee['hireDate']),
+                    }),
+                    const SizedBox(height: 12),
+                    _CertificateSection(future: _certificatesFuture),
                   ],
-                ],
-              ],
+                ]);
+              },
             ),
           ),
         ),
@@ -214,297 +169,123 @@ class _EmployeeProfilePageState extends State<EmployeeProfilePage> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: 3,
         destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Trang chủ',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month),
-            label: 'Lịch',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.checklist_outlined),
-            selectedIcon: Icon(Icons.checklist),
-            label: 'Checklist',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Cá nhân',
-          ),
+          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Trang chủ'),
+          NavigationDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month), label: 'Lịch'),
+          NavigationDestination(icon: Icon(Icons.checklist_outlined), selectedIcon: Icon(Icons.checklist), label: 'Checklist'),
+          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Cá nhân'),
         ],
         onDestinationSelected: (index) {
-          if (index == 0) {
-            context.go(RouteNames.employeeHome);
-          } else if (index == 1) {
-            context.go(RouteNames.employeeSchedule);
-          } else if (index == 2) {
-            context.go(RouteNames.employeeChecklist);
-          }
+          if (index == 0) context.go(RouteNames.employeeHome);
+          if (index == 1) context.go(RouteNames.employeeSchedule);
+          if (index == 2) context.go(RouteNames.employeeChecklist);
         },
       ),
     );
   }
 }
 
-enum _ProfileTab { info, position, documents }
-
-class _EmployeeProfileHeader extends StatelessWidget {
-  const _EmployeeProfileHeader({
-    required this.name,
-    required this.code,
-    required this.position,
-    required this.status,
-  });
-
+class _ProfileHeader extends StatelessWidget {
+  const _ProfileHeader({required this.name, required this.code, required this.position, required this.status});
   final String name;
   final String code;
   final String position;
   final String status;
 
   @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE5E1DA))),
+    child: Row(children: [
+      const CircleAvatar(radius: 28, child: Icon(Icons.person, size: 30)),
+      const SizedBox(width: 12),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        Text('$code · $position', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+        const SizedBox(height: 4),
+        Text(status, style: const TextStyle(color: AppColors.primary, fontSize: 11)),
+      ])),
+    ]),
+  );
+}
+
+class _InfoCard extends StatelessWidget {
+  const _InfoCard({required this.title, required this.rows});
+  final String title;
+  final Map<String, String> rows;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(15),
+    decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE5E1DA))),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+      const SizedBox(height: 8),
+      for (final row in rows.entries) Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(width: 145, child: Text(row.key, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12))),
+        Expanded(child: Text(row.value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500))),
+      ])),
+    ]),
+  );
+}
+
+/// Danh sách chứng chỉ: các khóa học đã đạt (PASSED) hoặc đã hết hạn (EXPIRED).
+class _CertificateSection extends StatelessWidget {
+  const _CertificateSection({required this.future});
+
+  final Future<List<Map<String, dynamic>>> future;
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFEDE8E3)),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 32,
-            backgroundColor: const Color(0xFFEAD9CC),
-            child: const Text(
-              'AN',
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '$code · $position',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE5F4E9),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Text(
-                    status,
-                    style: const TextStyle(
-                      color: Color(0xFF25804B),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()));
+        }
+        if (snapshot.hasError) {
+          return const Text('Không tải được danh sách chứng chỉ.', style: TextStyle(color: AppColors.textSecondary));
+        }
+        final certificates = (snapshot.data ?? const <Map<String, dynamic>>[])
+            .where((item) => item['status'] == 'PASSED' || item['status'] == 'EXPIRED')
+            .toList();
+        return Container(
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE5E1DA))),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Chứng chỉ đã hoàn thành', style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              if (certificates.isEmpty)
+                const Text('Chưa có chứng chỉ nào.', style: TextStyle(color: AppColors.textSecondary))
+              else
+                for (final item in certificates)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          item['status'] == 'EXPIRED' ? Icons.warning_amber_outlined : Icons.workspace_premium_outlined,
+                          size: 18,
+                          color: item['status'] == 'EXPIRED' ? AppColors.error : AppColors.secondary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '${item['courseName'] ?? 'Khóa học'}\n'
+                            'Hoàn thành ${formatDate(item['completedAt'])} · Hiệu lực đến ${formatDate(item['expiresAt'])}'
+                            '${item['status'] == 'EXPIRED' ? ' (đã hết hạn)' : ''}',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
-            ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileSectionCard extends StatelessWidget {
-  const _ProfileSectionCard({required this.title, required this.rows});
-
-  final String title;
-  final List<_ProfileRowData> rows;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFEDE8E3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
-              title,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          for (var index = 0; index < rows.length; index++) ...[
-            if (index > 0)
-              const Divider(height: 1, color: Color(0xFFEDE8E3)),
-            _ProfileDataRow(row: rows[index]),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileRowData {
-  const _ProfileRowData(this.label, this.value);
-
-  final String label;
-  final String value;
-}
-
-class _ProfileDataRow extends StatelessWidget {
-  const _ProfileDataRow({required this.row});
-
-  final _ProfileRowData row;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 11),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Text(
-              row.label,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 12,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              row.value,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CertificateCard extends StatelessWidget {
-  const _CertificateCard({required this.certificate});
-
-  final DemoEmployeeCertificate certificate;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFEDE8E3)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF1D9),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(
-              Icons.workspace_premium_outlined,
-              color: Color(0xFFBA821E),
-            ),
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  certificate.title,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  'Cấp ${certificate.issuedAt} · Hết hạn ${certificate.expiresAt}',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 10,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Icon(Icons.verified, color: Color(0xFF31A779), size: 19),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionHeading extends StatelessWidget {
-  const _SectionHeading({required this.title, required this.subtitle});
-
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          subtitle,
-          style: const TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: 11,
-          ),
-        ),
-      ],
+        );
+      },
     );
   }
 }

@@ -1,67 +1,97 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart' show CameraLensDirection;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
-import '../../../data/mock/demo_data.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../core/utils/formatters.dart';
+import '../../../data/repositories/employee_providers.dart';
 import '../../../shared/presentation/camera_capture_page.dart';
 
-class EmployeeCheckInPage extends StatefulWidget {
+/// Chấm công check-in/check-out. Giao diện theo bản gốc; dữ liệu, thiết bị và
+/// kiểm tra điều kiện lấy từ API. Ngưỡng sai số GPS (`gpsMaxAccuracyMeters` của
+/// `/stores/current`) dùng để cảnh báo trước; máy chủ vẫn là nơi quyết định khi check-in.
+class EmployeeCheckInPage extends ConsumerStatefulWidget {
   const EmployeeCheckInPage({super.key});
 
   @override
-  State<EmployeeCheckInPage> createState() => _EmployeeCheckInPageState();
+  ConsumerState<EmployeeCheckInPage> createState() => _EmployeeCheckInPageState();
 }
 
-class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
-  static const _maxAccuracyMeters = 25.0;
-
+class _EmployeeCheckInPageState extends ConsumerState<EmployeeCheckInPage> {
   Position? _position;
   Uint8List? _photoBytes;
-  String? _errorMessage;
-  bool _isLoadingLocation = false;
-  bool _isLoadingPhoto = false;
-  bool _isSubmitting = false;
+  Map<String, dynamic>? _shift;
+  Map<String, dynamic>? _store;
+  List<Map<String, dynamic>> _devices = [];
+  bool _loading = true;
+  bool _loadingLocation = false;
+  bool _loadingPhoto = false;
+  bool _submitting = false;
+  bool _registeringDevice = false;
+  String? _error;
+  /// Lỗi lấy GPS, tách riêng để việc cập nhật vị trí không xóa lỗi tải dữ liệu (`_error`).
+  String? _locationError;
 
-  bool get _hasGpsFix => _position != null;
+  Map<String, dynamic>? get _activeDevice {
+    for (final device in _devices) {
+      if (device['status'] == 'ACTIVE') return device;
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? get _pendingDevice {
+    for (final device in _devices) {
+      if (device['status'] == 'PENDING') return device;
+    }
+    return null;
+  }
+
+  bool get _isCheckOut => _shift?['canCheckOut'] == true;
+  bool get _canCheckIn => _shift?['canCheckIn'] == true;
+  int? _asInt(dynamic value) => value is num ? value.toInt() : int.tryParse('$value');
+
+  double? get _radiusMeters => (_store?['attendanceRadiusMeters'] as num?)?.toDouble();
+
+  /// Sai số GPS tối đa máy chủ chấp nhận khi chấm công (mét).
+  double? get _maxAccuracyMeters => (_store?['gpsMaxAccuracyMeters'] as num?)?.toDouble();
+
+  bool get _accuracyTooLoose {
+    final accuracy = _position?.accuracy;
+    final limit = _maxAccuracyMeters;
+    return accuracy != null && limit != null && accuracy > limit;
+  }
 
   double? get _distanceMeters {
     final position = _position;
-    if (position == null) return null;
-    return Geolocator.distanceBetween(
-      position.latitude,
-      position.longitude,
-      DemoData.storeLatitude,
-      DemoData.storeLongitude,
-    );
+    final latitude = (_store?['latitude'] as num?)?.toDouble();
+    final longitude = (_store?['longitude'] as num?)?.toDouble();
+    if (position == null || latitude == null || longitude == null) return null;
+    return Geolocator.distanceBetween(position.latitude, position.longitude, latitude, longitude);
   }
 
-  bool get _hasValidLocation {
-    final position = _position;
+  bool get _withinRadius {
     final distance = _distanceMeters;
-    return position != null &&
-        distance != null &&
-        distance <= DemoData.attendancePolicy.storeRadiusMeters &&
-        position.accuracy <= _maxAccuracyMeters;
+    final radius = _radiusMeters;
+    return distance != null && radius != null && distance <= radius;
   }
 
   String get _locationMessage {
     final position = _position;
     final distance = _distanceMeters;
-    if (_isLoadingLocation) return 'Đang xác định vị trí GPS...';
-    if (position == null || distance == null) return 'Chưa lấy được vị trí GPS';
-    if (position.accuracy > _maxAccuracyMeters) {
-      return 'Sai số GPS quá lớn (${position.accuracy.toStringAsFixed(0)} m)';
-    }
-    if (_hasValidLocation) {
-      return 'Trong khu vực cửa hàng (${distance.toStringAsFixed(0)} m)';
-    }
+    if (_loadingLocation) return 'Đang xác định vị trí GPS...';
+    if (position == null) return 'Chưa lấy được vị trí GPS';
+    if (distance == null) return 'Chưa xác định được khoảng cách tới cửa hàng';
+    if (_withinRadius) return 'Trong khu vực cửa hàng (${distance.toStringAsFixed(0)} m)';
     return 'Ngoài bán kính cửa hàng (${distance.toStringAsFixed(0)} m)';
   }
 
@@ -69,22 +99,92 @@ class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_refreshLocation());
+      if (!mounted) return;
+      // Tải ca làm trước, rồi mới lấy GPS, để việc lấy GPS không xoá lỗi tải dữ liệu.
+      unawaited(_load().then((_) => _refreshLocation()));
     });
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final repository = ref.read(employeeRepositoryProvider);
+      final values = await Future.wait<Object?>([
+        repository.getCurrentShift(),
+        repository.getMyAttendanceDevices(),
+        repository.getCurrentStore(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _shift = values[0] as Map<String, dynamic>?;
+        _devices = values[1] as List<Map<String, dynamic>>;
+        _store = values[2] as Map<String, dynamic>?;
+      });
+    } catch (error) {
+      if (mounted) setState(() => _error = _message(error));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _message(Object error) =>
+      error is ApiException ? error.message : 'Không thể tải dữ liệu chấm công. Vui lòng thử lại.';
+
+  Future<void> _registerDevice() async {
+    if (kIsWeb) {
+      setState(() => _error = 'Đăng ký thiết bị chấm công chỉ hỗ trợ ứng dụng Android/iOS.');
+      return;
+    }
+    setState(() {
+      _registeringDevice = true;
+      _error = null;
+    });
+    try {
+      final plugin = DeviceInfoPlugin();
+      late String platform;
+      late String fingerprint;
+      late String label;
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final info = await plugin.androidInfo;
+        platform = 'ANDROID';
+        fingerprint = await ref.read(employeeRepositoryProvider).getOrCreateAttendanceDeviceFingerprint();
+        label = '${info.manufacturer} ${info.model}'.trim();
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        final info = await plugin.iosInfo;
+        platform = 'IOS';
+        fingerprint = await ref.read(employeeRepositoryProvider).getOrCreateAttendanceDeviceFingerprint();
+        label = '${info.name} ${info.model}'.trim();
+      } else {
+        throw const FormatException('Chỉ hỗ trợ đăng ký trên Android hoặc iOS.');
+      }
+      if (fingerprint.length < 8) throw const FormatException('Không đọc được mã định danh thiết bị.');
+      await ref.read(employeeRepositoryProvider).registerAttendanceDevice(
+            fingerprint: fingerprint,
+            platform: platform,
+            label: label.isEmpty ? platform : label,
+          );
+      await _load();
+      if (mounted) _show('Đã gửi yêu cầu đăng ký thiết bị. Chờ quản lý phê duyệt.');
+    } catch (error) {
+      if (mounted) setState(() => _error = _message(error));
+    } finally {
+      if (mounted) setState(() => _registeringDevice = false);
+    }
   }
 
   Future<void> _refreshLocation() async {
     setState(() {
-      _isLoadingLocation = true;
+      _loadingLocation = true;
       _position = null;
-      _errorMessage = null;
+      _locationError = null;
     });
-
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
         throw const FormatException('Bật dịch vụ định vị của thiết bị rồi thử lại.');
       }
-
       if (!kIsWeb) {
         var permission = await Geolocator.checkPermission();
         if (permission == LocationPermission.denied) {
@@ -96,10 +196,9 @@ class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
           );
         }
         if (permission == LocationPermission.denied) {
-          throw const FormatException('Cần cấp quyền vị trí để check-in.');
+          throw const FormatException('Cần cấp quyền vị trí để chấm công.');
         }
       }
-
       final position = await Geolocator.getCurrentPosition(
         locationSettings: LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -112,102 +211,143 @@ class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
       setState(() => _position = position);
     } on TimeoutException {
       if (mounted) {
-        setState(() => _errorMessage = kIsWeb
+        setState(() => _locationError = kIsWeb
             ? 'Chrome chưa trả vị trí. Hãy cho phép vị trí cho trang web; nếu đang giả lập điện thoại, đặt vị trí trong DevTools > Sensors > Location rồi cập nhật lại.'
             : 'Điện thoại chưa trả vị trí. Hãy bật dịch vụ vị trí, cấp quyền cho ứng dụng rồi thử cập nhật ở nơi thoáng.');
       }
     } on LocationServiceDisabledException {
-      if (mounted) {
-        setState(() => _errorMessage = 'Dịch vụ định vị đang tắt. Hãy bật GPS.');
-      }
+      if (mounted) setState(() => _locationError = 'Dịch vụ định vị đang tắt. Hãy bật GPS.');
     } on PermissionDeniedException {
       if (mounted) {
-        setState(() => _errorMessage = kIsWeb
+        setState(() => _locationError = kIsWeb
             ? 'Bạn cần cho phép vị trí cho trang web trong Chrome để check-in.'
             : 'Bạn cần cấp quyền vị trí cho ứng dụng trong cài đặt Android để check-in.');
       }
     } on FormatException catch (error) {
-      if (mounted) setState(() => _errorMessage = error.message.toString());
+      if (mounted) setState(() => _locationError = error.message);
     } catch (_) {
-      if (mounted) {
-        setState(() => _errorMessage = 'Không thể lấy GPS. Hãy thử cập nhật lại.');
-      }
+      if (mounted) setState(() => _locationError = 'Không thể lấy GPS. Hãy thử cập nhật lại.');
     } finally {
-      if (mounted) setState(() => _isLoadingLocation = false);
+      if (mounted) setState(() => _loadingLocation = false);
     }
   }
 
   Future<void> _capturePhoto() async {
     setState(() {
-      _isLoadingPhoto = true;
-      _errorMessage = null;
+      _loadingPhoto = true;
+      _error = null;
     });
-
     try {
-      final photo = await Navigator.of(context).push<Uint8List>(
-        MaterialPageRoute(
-          builder: (_) => const CameraCapturePage(
-            preferredDirection: CameraLensDirection.front,
-            title: 'Ảnh xác minh',
-            instruction: 'Đưa khuôn mặt vào giữa khung hình rồi chụp.',
-          ),
+      final photo = await Navigator.of(context).push<Uint8List>(MaterialPageRoute(
+        builder: (_) => const CameraCapturePage(
+          preferredDirection: CameraLensDirection.front,
+          title: 'Ảnh xác minh chấm công',
+          instruction: 'Đưa khuôn mặt vào giữa khung hình rồi chụp.',
         ),
-      );
-      if (!mounted) return;
-      if (photo != null) setState(() => _photoBytes = photo);
+      ));
+      if (mounted && photo != null) setState(() => _photoBytes = photo);
     } catch (_) {
-      if (mounted) {
-        setState(() => _errorMessage = 'Không thể mở camera để chụp ảnh.');
-      }
+      if (mounted) setState(() => _error = 'Không thể mở camera để chụp ảnh. Hãy kiểm tra quyền camera.');
     } finally {
-      if (mounted) setState(() => _isLoadingPhoto = false);
+      if (mounted) setState(() => _loadingPhoto = false);
     }
   }
+
+  String _idempotencyKey() => '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
 
   Future<void> _submit() async {
     final position = _position;
-    final distance = _distanceMeters;
+    final device = _activeDevice;
+    final shiftId = _asInt(_shift?['shiftAssignmentId']);
+    final attendanceId = _asInt(_shift?['attendanceId']);
+    if (device == null) {
+      setState(() => _error = 'Thiết bị chưa được quản lý phê duyệt.');
+      return;
+    }
     if (position == null) {
-      setState(() => _errorMessage = 'Hãy lấy vị trí GPS thật trước khi check-in.');
+      setState(() => _error = 'Hãy lấy vị trí GPS thật trước khi chấm công.');
       return;
     }
-    if (position.accuracy > _maxAccuracyMeters) {
-      setState(() => _errorMessage =
-          'Sai số GPS là ${position.accuracy.toStringAsFixed(0)} m; cần không quá ${_maxAccuracyMeters.toStringAsFixed(0)} m.');
-      return;
-    }
-    if (distance == null ||
-        distance > DemoData.attendancePolicy.storeRadiusMeters) {
-      setState(() => _errorMessage =
-          'Bạn đang ngoài bán kính ${DemoData.attendancePolicy.storeRadiusMeters} m của cửa hàng.');
+    if (!_withinRadius) {
+      final radius = _radiusMeters;
+      final radiusLabel = radius == null ? 'cho phép' : '${radius.toStringAsFixed(0)} m';
+      setState(() => _error = 'Bạn đang ngoài bán kính $radiusLabel của cửa hàng.');
       return;
     }
     if (_photoBytes == null) {
-      setState(() => _errorMessage = 'Hãy chụp ảnh xác minh bằng camera.');
+      setState(() => _error = 'Hãy chụp ảnh xác minh bằng camera.');
       return;
     }
-
+    if (_isCheckOut && attendanceId == null) {
+      setState(() => _error = 'Không tìm thấy mã bản ghi chấm công để check-out.');
+      return;
+    }
+    if (!_isCheckOut && (shiftId == null || !_canCheckIn)) {
+      setState(() => _error = 'Ca làm hiện tại chưa đủ điều kiện check-in. Hãy kiểm tra các điều kiện bên dưới.');
+      return;
+    }
+    final wasCheckOut = _isCheckOut;
     setState(() {
-      _isSubmitting = true;
-      _errorMessage = null;
+      _submitting = true;
+      _error = null;
     });
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    if (!mounted) return;
-
-    setState(() => _isSubmitting = false);
-    context.go(RouteNames.employeeHome);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Đã check-in thành công')),
-    );
+    try {
+      final repository = ref.read(employeeRepositoryProvider);
+      final storageKey = await repository.uploadImage(bytes: _photoBytes!, purpose: 'ATTENDANCE');
+      final capturedAt = position.timestamp.toUtc().toIso8601String();
+      if (wasCheckOut) {
+        await repository.checkOut(
+          attendanceId: attendanceId!,
+          deviceId: _asInt(device['deviceId'])!,
+          latitude: position.latitude,
+          longitude: position.longitude,
+          accuracyMeters: position.accuracy,
+          capturedAt: capturedAt,
+          photoStorageKey: storageKey,
+          idempotencyKey: _idempotencyKey(),
+        );
+      } else {
+        await repository.checkIn(
+          shiftAssignmentId: shiftId!,
+          deviceId: _asInt(device['deviceId'])!,
+          latitude: position.latitude,
+          longitude: position.longitude,
+          accuracyMeters: position.accuracy,
+          capturedAt: capturedAt,
+          photoStorageKey: storageKey,
+          idempotencyKey: _idempotencyKey(),
+        );
+      }
+      if (!mounted) return;
+      setState(() => _photoBytes = null);
+      _show(wasCheckOut ? 'Check-out thành công.' : 'Check-in thành công.');
+      context.go(RouteNames.employeeHome);
+    } catch (error) {
+      if (mounted) setState(() => _error = _message(error));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
+
+  void _show(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 
   @override
   Widget build(BuildContext context) {
-    final canSubmit = _hasValidLocation &&
-        _photoBytes != null &&
-        !_isLoadingLocation &&
-        !_isLoadingPhoto &&
-        !_isSubmitting;
+    final device = _activeDevice;
+    final pending = _pendingDevice;
+    final shift = _shift;
+    final blockers = _blockerLabelsOf(shift);
+    final ruleAllows = _isCheckOut || _canCheckIn;
+    final canSubmit = !_loading &&
+        !_loadingLocation &&
+        !_loadingPhoto &&
+        !_submitting &&
+        !_registeringDevice &&
+        device != null &&
+        shift != null &&
+        ruleAllows &&
+        _withinRadius &&
+        _photoBytes != null;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -218,85 +358,122 @@ class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
           icon: const Icon(Icons.arrow_back),
         ),
         centerTitle: true,
-        title: const Text('Check-in'),
+        title: Text(_isCheckOut ? 'Check-out' : 'Check-in'),
+        actions: [
+          IconButton(
+            tooltip: 'Tải lại ca làm',
+            onPressed: _loading ? null : _load,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 620),
-            child: Column(
-              children: [
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : Column(
                     children: [
-                      _ShiftLabel(shift: DemoData.currentShift),
-                      const SizedBox(height: 14),
-                      _LocationPreview(
-                        accuracyMeters: _position?.accuracy,
-                        isLoading: _isLoadingLocation,
-                        hasGpsFix: _hasGpsFix,
-                        isValid: _hasValidLocation,
-                        statusMessage: _locationMessage,
-                        coordinatesLabel: _position == null
-                            ? null
-                            : '${_position!.latitude.toStringAsFixed(6)}, '
-                                '${_position!.longitude.toStringAsFixed(6)}',
-                        onRefresh: _refreshLocation,
-                      ),
-                      const SizedBox(height: 18),
-                      Row(
-                        children: [
-                          Text(
-                            'Ảnh xác minh',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          const Spacer(),
-                          const Text(
-                            'BẮT BUỘC',
-                            style: TextStyle(
-                              color: Color(0xFF946442),
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
+                      Expanded(
+                        child: ListView(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                          children: [
+                            _ShiftLabel(shift: shift),
+                            if (shift != null && !ruleAllows)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 6),
+                                child: Text(
+                                  'Chưa đủ điều kiện chấm công theo quy tắc máy chủ.',
+                                  style: TextStyle(color: AppColors.error, fontSize: 12),
+                                ),
+                              ),
+                            for (final label in blockers)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text('• $label',
+                                    style: const TextStyle(color: AppColors.error, fontSize: 12)),
+                              ),
+                            const SizedBox(height: 14),
+                            _DeviceCard(
+                              activeDevice: device,
+                              pendingDevice: pending,
+                              registering: _registeringDevice,
+                              onRegister: _registerDevice,
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 9),
-                      _SelfiePreview(
-                        photoBytes: _photoBytes,
-                        isLoading: _isLoadingPhoto,
-                        onCapture: _capturePhoto,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _photoBytes == null
-                            ? 'Chưa có ảnh. Hãy chụp trực tiếp bằng camera.'
-                            : 'Ảnh xác minh đã chụp trực tiếp.',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AppColors.textSecondary,
+                            const SizedBox(height: 14),
+                            _LocationPreview(
+                              accuracyMeters: _position?.accuracy,
+                              accuracyLimitMeters: _maxAccuracyMeters,
+                              accuracyTooLoose: _accuracyTooLoose,
+                              isLoading: _loadingLocation,
+                              hasGpsFix: _position != null,
+                              isValid: _withinRadius,
+                              statusMessage: _locationMessage,
+                              coordinatesLabel: _position == null
+                                  ? null
+                                  : '${_position!.latitude.toStringAsFixed(6)}, '
+                                      '${_position!.longitude.toStringAsFixed(6)}',
+                              onRefresh: _refreshLocation,
                             ),
+                            const SizedBox(height: 18),
+                            Row(
+                              children: [
+                                Text(
+                                  'Ảnh xác minh',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const Spacer(),
+                                const Text(
+                                  'BẮT BUỘC',
+                                  style: TextStyle(
+                                    color: Color(0xFF946442),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 9),
+                            _SelfiePreview(
+                              photoBytes: _photoBytes,
+                              isLoading: _loadingPhoto,
+                              onCapture: _capturePhoto,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _photoBytes == null
+                                  ? 'Chưa có ảnh. Hãy chụp trực tiếp bằng camera.'
+                                  : 'Ảnh xác minh đã chụp trực tiếp.',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
+                            ),
+                            if (_locationError != null) ...[
+                              const SizedBox(height: 12),
+                              _ErrorBanner(message: _locationError!),
+                            ],
+                            if (_error != null) ...[
+                              const SizedBox(height: 12),
+                              _ErrorBanner(message: _error!),
+                            ],
+                          ],
+                        ),
                       ),
-                      if (_errorMessage != null) ...[
-                        const SizedBox(height: 12),
-                        _ErrorBanner(message: _errorMessage!),
-                      ],
+                      _CheckInFooter(
+                        label: _isCheckOut ? 'Xác nhận check-out' : 'Xác nhận check-in',
+                        canSubmit: canSubmit,
+                        isSubmitting: _submitting,
+                        hasLocation: _position != null,
+                        hasPhoto: _photoBytes != null,
+                        onSubmit: _submit,
+                      ),
                     ],
                   ),
-                ),
-                _CheckInFooter(
-                  canSubmit: canSubmit,
-                  isSubmitting: _isSubmitting,
-                  hasLocation: _hasGpsFix,
-                  hasPhoto: _photoBytes != null,
-                  onSubmit: _submit,
-                ),
-              ],
-            ),
           ),
         ),
       ),
@@ -304,20 +481,49 @@ class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
   }
 }
 
+List<String> _blockerLabelsOf(Map<String, dynamic>? shift) {
+  final blockers = shift?['blockers'];
+  if (blockers is! List) return const [];
+  return blockers.map((item) => _blockerLabel(item.toString())).toList();
+}
+
+String _blockerLabel(String code) => switch (code) {
+      'DEVICE_NOT_ACTIVE' => 'Thiết bị chưa được duyệt hoặc không còn hoạt động',
+      'TRAINING_REQUIREMENT_NOT_MET' => 'Chưa hoàn thành khóa đào tạo bắt buộc',
+      _ => code,
+    };
+
 class _ShiftLabel extends StatelessWidget {
   const _ShiftLabel({required this.shift});
 
-  final DemoShiftAssignment shift;
+  final Map<String, dynamic>? shift;
 
   @override
   Widget build(BuildContext context) {
+    final current = shift;
+    if (current == null) {
+      return const Row(
+        children: [
+          Icon(Icons.access_time, size: 17, color: AppColors.textSecondary),
+          SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              'Hiện chưa có ca làm trong khung thời gian chấm công.',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      );
+    }
+    final status = attendanceStatusLabel(current['attendanceStatus']?.toString());
     return Row(
       children: [
         const Icon(Icons.access_time, size: 17, color: AppColors.textSecondary),
         const SizedBox(width: 7),
         Expanded(
           child: Text(
-            '${shift.shiftName} · ${shift.startTime} - ${shift.endTime}',
+            '${current['shiftName'] ?? 'Ca làm'} · '
+            '${formatTimeOfDay(current['plannedStartAt'])} - ${formatTimeOfDay(current['plannedEndAt'])}',
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
         ),
@@ -327,12 +533,152 @@ class _ShiftLabel extends StatelessWidget {
             color: const Color(0xFFFFF1D9),
             borderRadius: BorderRadius.circular(20),
           ),
-          child: const Text(
-            'Chưa check-in',
-            style: TextStyle(color: Color(0xFF946442), fontSize: 11),
-          ),
+          child: Text(status, style: const TextStyle(color: Color(0xFF946442), fontSize: 11)),
         ),
       ],
+    );
+  }
+}
+
+class _DeviceCard extends StatelessWidget {
+  const _DeviceCard({
+    required this.activeDevice,
+    required this.pendingDevice,
+    required this.registering,
+    required this.onRegister,
+  });
+
+  final Map<String, dynamic>? activeDevice;
+  final Map<String, dynamic>? pendingDevice;
+  final bool registering;
+  final VoidCallback onRegister;
+
+  @override
+  Widget build(BuildContext context) {
+    final approved = activeDevice;
+    final pending = pendingDevice;
+    final String message;
+    final Color color;
+    if (approved != null) {
+      final label = approved['deviceLabel'] ?? approved['platform'] ?? 'Thiết bị';
+      message = 'Đã duyệt: $label';
+      color = AppColors.secondary;
+    } else if (pending != null) {
+      message = 'Yêu cầu đăng ký đang chờ quản lý phê duyệt.';
+      color = const Color(0xFFB7791F);
+    } else {
+      message = 'Cần đăng ký và được quản lý phê duyệt trước khi chấm công.';
+      color = AppColors.textSecondary;
+    }
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE9E6E1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.phone_android_outlined, size: 18, color: AppColors.primary),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('Thiết bị chấm công', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(message, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13)),
+          if (pending != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Trạng thái: ${pending['status'] ?? 'PENDING'}',
+                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ),
+          if (approved == null && pending == null) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: registering ? null : onRegister,
+              icon: registering
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.phonelink_setup),
+              label: const Text('Đăng ký thiết bị này'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CheckInFooter extends StatelessWidget {
+  const _CheckInFooter({
+    required this.label,
+    required this.canSubmit,
+    required this.isSubmitting,
+    required this.hasLocation,
+    required this.hasPhoto,
+    required this.onSubmit,
+  });
+
+  final String label;
+  final bool canSubmit;
+  final bool isSubmitting;
+  final bool hasLocation;
+  final bool hasPhoto;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xFFE9E6E1))),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _CheckStatus(label: 'GPS', isReady: hasLocation),
+                const SizedBox(width: 18),
+                _CheckStatus(label: 'Ảnh', isReady: hasPhoto),
+              ],
+            ),
+            const SizedBox(height: 9),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF76503A),
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: const Color(0xFFD6C7BB),
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: canSubmit ? onSubmit : null,
+                child: isSubmitting
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -340,6 +686,8 @@ class _ShiftLabel extends StatelessWidget {
 class _LocationPreview extends StatelessWidget {
   const _LocationPreview({
     required this.accuracyMeters,
+    required this.accuracyLimitMeters,
+    required this.accuracyTooLoose,
     required this.isLoading,
     required this.hasGpsFix,
     required this.isValid,
@@ -349,6 +697,8 @@ class _LocationPreview extends StatelessWidget {
   });
 
   final double? accuracyMeters;
+  final double? accuracyLimitMeters;
+  final bool accuracyTooLoose;
   final bool isLoading;
   final bool hasGpsFix;
   final bool isValid;
@@ -464,10 +814,35 @@ class _LocationPreview extends StatelessWidget {
               accuracyMeters == null
                   ? '±-- m'
                   : '±${accuracyMeters!.toStringAsFixed(0)} m',
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+              style: TextStyle(
+                color: accuracyTooLoose ? AppColors.error : AppColors.textSecondary,
+                fontSize: 11,
+                fontWeight: accuracyTooLoose ? FontWeight.w700 : FontWeight.w400,
+              ),
             ),
           ],
         ),
+        if (accuracyTooLoose && accuracyMeters != null && accuracyLimitMeters != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF4E5),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'Sai số GPS ±${accuracyMeters!.toStringAsFixed(0)} m vượt ngưỡng '
+              '${accuracyLimitMeters!.toStringAsFixed(0)} m của cửa hàng. '
+              'Máy chủ có thể từ chối khi check-in; hãy đứng nơi thoáng rồi cập nhật vị trí.',
+              style: const TextStyle(
+                color: Color(0xFF946442),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
         if (coordinatesLabel != null) ...[
           const SizedBox(height: 4),
           Align(
@@ -654,69 +1029,6 @@ class _FaceFramePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _CheckInFooter extends StatelessWidget {
-  const _CheckInFooter({
-    required this.canSubmit,
-    required this.isSubmitting,
-    required this.hasLocation,
-    required this.hasPhoto,
-    required this.onSubmit,
-  });
-
-  final bool canSubmit;
-  final bool isSubmitting;
-  final bool hasLocation;
-  final bool hasPhoto;
-  final VoidCallback onSubmit;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFE9E6E1))),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _CheckStatus(label: 'GPS', isReady: hasLocation),
-                const SizedBox(width: 18),
-                _CheckStatus(label: 'Ảnh', isReady: hasPhoto),
-              ],
-            ),
-            const SizedBox(height: 9),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF76503A),
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: const Color(0xFFD6C7BB),
-                  minimumSize: const Size.fromHeight(48),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                onPressed: canSubmit ? onSubmit : null,
-                child: isSubmitting
-                    ? const SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Text('Xác nhận check-in', style: TextStyle(fontWeight: FontWeight.w700)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class _CheckStatus extends StatelessWidget {

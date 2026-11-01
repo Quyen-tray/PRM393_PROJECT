@@ -2,56 +2,139 @@ import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../data/mock/demo_data.dart';
+import '../../../data/repositories/employee_providers.dart';
 import '../../../shared/presentation/camera_capture_page.dart';
 
-class EmployeeChecklistPage extends StatefulWidget {
+class EmployeeChecklistPage extends ConsumerStatefulWidget {
   const EmployeeChecklistPage({super.key});
 
   @override
-  State<EmployeeChecklistPage> createState() => _EmployeeChecklistPageState();
+  ConsumerState<EmployeeChecklistPage> createState() => _EmployeeChecklistPageState();
 }
 
-class _EmployeeChecklistPageState extends State<EmployeeChecklistPage> {
-  final Set<int> _completedTaskIndexes = {0, 1};
-  final Set<int> _existingApprovedEvidenceIndexes = {0, 1};
+class _EmployeeChecklistPageState extends ConsumerState<EmployeeChecklistPage> {
   final Map<int, Uint8List> _capturedEvidencePhotos = {};
+  final Set<int> _completedTaskIndexes = {};
+  final Set<int> _existingApprovedEvidenceIndexes = {};
+  Map<String, dynamic>? _activeRun;
+  bool _isLoading = true;
+  bool _isWorking = false;
+  String? _loadError;
   bool _isSubmitted = false;
 
-  List<DemoChecklistTask> get _tasks => DemoData.checklistTasks;
+  List<Map<String, dynamic>> get _runItems =>
+      (_activeRun?['items'] as List? ?? const [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+
+  List<DemoChecklistTask> get _tasks => _runItems.map((item) {
+        final status = (_activeRun?['status'] ?? '').toString().toUpperCase();
+        final completed = item['isCompleted'] == true;
+        final evidenceRequired = item['requiresEvidence'] == true;
+        return DemoChecklistTask(
+          title: (item['itemName'] ?? 'Công việc').toString(),
+          status: status == 'APPROVED'
+              ? DemoChecklistStatus.approved
+              : status == 'SUBMITTED'
+                  ? DemoChecklistStatus.submitted
+                  : status == 'REJECTED'
+                      ? DemoChecklistStatus.rejected
+                      : completed
+                          ? DemoChecklistStatus.inProgress
+                          : DemoChecklistStatus.pending,
+          dueTime: _formatTime(_activeRun?['dueAt']),
+          evidenceRequired: evidenceRequired,
+          managerApprovalRequired: false,
+          reviewReason: item['note']?.toString(),
+        );
+      }).toList();
+
+  int? get _taskId => (_activeRun?['taskId'] as num?)?.toInt();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadChecklists();
+  }
+
+  Future<void> _loadChecklists() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+    try {
+      final repository = ref.read(employeeRepositoryProvider);
+      final runs = await repository.getMyChecklists();
+      if (!mounted) return;
+      final active = runs.where((run) {
+        final status = (run['status'] ?? '').toString().toUpperCase();
+        return status != 'APPROVED' && status != 'SUBMITTED';
+      }).firstOrNull ?? (runs.isNotEmpty ? runs.first : null);
+      setState(() {
+        _activeRun = active;
+        _isSubmitted = active != null &&
+            ['SUBMITTED', 'APPROVED'].contains((active['status'] ?? '').toString().toUpperCase());
+        _completedTaskIndexes.clear();
+        _existingApprovedEvidenceIndexes.clear();
+        for (var i = 0; i < ((active?['items'] as List?)?.length ?? 0); i++) {
+          final item = (active!['items'] as List)[i];
+          if (item is Map && item['isCompleted'] == true) _completedTaskIndexes.add(i);
+          if (item is Map && item['hasEvidence'] == true) _existingApprovedEvidenceIndexes.add(i);
+        }
+      });
+    } catch (error) {
+      if (mounted) setState(() => _loadError = error.toString());
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  String _formatTime(dynamic value) => formatClockVn(value);
 
   bool _isCompleted(int index) =>
-      _tasks[index].status == DemoChecklistStatus.approved ||
-      _completedTaskIndexes.contains(index);
+      _completedTaskIndexes.contains(index) ||
+      (_runItems[index]['isCompleted'] == true);
 
   int get _completedCount =>
       List.generate(_tasks.length, _isCompleted).where((done) => done).length;
 
   bool _hasEvidence(int index) =>
       _existingApprovedEvidenceIndexes.contains(index) ||
+      (_runItems[index]['hasEvidence'] == true) ||
       _capturedEvidencePhotos.containsKey(index);
 
-  void _toggleTask(int index) {
-    if (_isSubmitted ||
-        _tasks[index].status == DemoChecklistStatus.approved) {
-      return;
-    }
-    setState(() {
-      if (_completedTaskIndexes.contains(index)) {
-        _completedTaskIndexes.remove(index);
-      } else {
-        _completedTaskIndexes.add(index);
+  Future<void> _toggleTask(int index) async {
+    if (_isSubmitted || _isWorking || _isCompleted(index)) return;
+    final taskId = _taskId;
+    final runItemId = (_runItems[index]['runItemId'] as num?)?.toInt();
+    if (taskId == null || runItemId == null) return;
+    setState(() => _isWorking = true);
+    try {
+      final repository = ref.read(employeeRepositoryProvider);
+      final status = (_activeRun?['status'] ?? '').toString().toUpperCase();
+      if (['PENDING', 'REJECTED', 'OVERDUE'].contains(status)) {
+        await repository.startChecklist(taskId);
       }
-    });
+      await repository.completeChecklistItem(taskId: taskId, runItemId: runItemId);
+      await _loadChecklists();
+      _showMessage('Đã cập nhật công việc.');
+    } catch (error) {
+      _showMessage(error.toString());
+    } finally {
+      if (mounted) setState(() => _isWorking = false);
+    }
   }
 
   Future<void> _captureEvidence(int index) async {
-    if (_isSubmitted) return;
-
+    if (_isSubmitted || _isWorking) return;
     try {
       final photo = await Navigator.of(context).push<Uint8List>(
         MaterialPageRoute(
@@ -63,38 +146,58 @@ class _EmployeeChecklistPageState extends State<EmployeeChecklistPage> {
         ),
       );
       if (!mounted || photo == null) return;
+      final taskId = _taskId;
+      final runItemId = (_runItems[index]['runItemId'] as num?)?.toInt();
+      if (taskId == null || runItemId == null) return;
+      setState(() => _isWorking = true);
+      final repository = ref.read(employeeRepositoryProvider);
+      final status = (_activeRun?['status'] ?? '').toString().toUpperCase();
+      if (['PENDING', 'REJECTED', 'OVERDUE'].contains(status)) {
+        await repository.startChecklist(taskId);
+      }
+      final storageKey = await repository.uploadImage(bytes: photo, purpose: 'CHECKLIST');
+      await repository.addChecklistEvidence(
+        taskId: taskId,
+        runItemId: runItemId,
+        evidenceStorageKey: storageKey,
+      );
+      if (!mounted) return;
       setState(() => _capturedEvidencePhotos[index] = photo);
-      _showMessage('Đã chụp ảnh minh chứng trực tiếp.');
-    } catch (_) {
-      if (mounted) _showMessage('Không thể mở camera để chụp minh chứng.');
+      await _loadChecklists();
+      _showMessage('Đã tải ảnh minh chứng lên máy chủ.');
+    } catch (error) {
+      if (mounted) _showMessage('Không thể gửi ảnh minh chứng: $error');
+    } finally {
+      if (mounted) setState(() => _isWorking = false);
     }
   }
 
-  void _submitChecklist() {
-    if (_isSubmitted) return;
-
+  Future<void> _submitChecklist() async {
+    if (_isSubmitted || _isWorking) return;
     final incompleteCount = List.generate(_tasks.length, (index) => index)
-        .where((index) => !_isCompleted(index))
-        .length;
+        .where((index) => !_isCompleted(index)).length;
     if (incompleteCount > 0) {
       _showMessage('Còn $incompleteCount việc chưa hoàn thành.');
       return;
     }
-
     final missingEvidenceCount = List.generate(_tasks.length, (index) => index)
-        .where(
-          (index) =>
-              _tasks[index].evidenceRequired &&
-              !_hasEvidence(index),
-        )
-        .length;
+        .where((index) => _tasks[index].evidenceRequired && !_hasEvidence(index)).length;
     if (missingEvidenceCount > 0) {
       _showMessage('Còn $missingEvidenceCount việc cần ảnh minh chứng.');
       return;
     }
-
-    setState(() => _isSubmitted = true);
-    _showMessage('Checklist đã gửi, đang chờ quản lý duyệt.');
+    final taskId = _taskId;
+    if (taskId == null) return;
+    setState(() => _isWorking = true);
+    try {
+      await ref.read(employeeRepositoryProvider).submitChecklist(taskId);
+      await _loadChecklists();
+      _showMessage('Checklist đã gửi cho quản lý.');
+    } catch (error) {
+      _showMessage(error.toString());
+    } finally {
+      if (mounted) setState(() => _isWorking = false);
+    }
   }
 
   void _showMessage(String message) {
@@ -104,166 +207,99 @@ class _EmployeeChecklistPageState extends State<EmployeeChecklistPage> {
   }
 
   String _statusLabel(DemoChecklistTask task, int index) {
-    if (task.status == DemoChecklistStatus.approved) return 'Đã duyệt';
-    if (_isCompleted(index)) {
-      if (task.managerApprovalRequired && _isSubmitted) return 'Chờ duyệt';
-      return task.managerApprovalRequired ? 'Đã hoàn thành' : 'Hoàn tất';
-    }
-    return switch (task.status) {
-      DemoChecklistStatus.pending => 'Chưa làm',
-      DemoChecklistStatus.inProgress => 'Đang làm',
-      DemoChecklistStatus.submitted => 'Chờ duyệt',
-      DemoChecklistStatus.approved => 'Đã duyệt',
-      DemoChecklistStatus.rejected => 'Cần làm lại',
-      DemoChecklistStatus.overdue => 'Quá hạn',
-    };
+    if (_isCompleted(index)) return 'Hoàn tất';
+    final status = (_activeRun?['status'] ?? '').toString().toUpperCase();
+    if (status == 'SUBMITTED') return 'Chờ duyệt';
+    if (status == 'REJECTED') return 'Cần làm lại';
+    if (status == 'OVERDUE') return 'Quá hạn';
+    return 'Chưa làm';
   }
 
   Color _statusColor(DemoChecklistTask task, int index) {
-    if (task.status == DemoChecklistStatus.approved) {
-      return const Color(0xFF25804B);
-    }
-    if (_isCompleted(index)) {
-      return task.managerApprovalRequired && _isSubmitted
-          ? const Color(0xFFAA6500)
-          : const Color(0xFF25804B);
-    }
-    return switch (task.status) {
-      DemoChecklistStatus.pending => AppColors.textSecondary,
-      DemoChecklistStatus.inProgress => const Color(0xFFD39A36),
-      DemoChecklistStatus.submitted => AppColors.primary,
-      DemoChecklistStatus.approved => const Color(0xFF25804B),
-      DemoChecklistStatus.rejected ||
-      DemoChecklistStatus.overdue => AppColors.error,
-    };
+    if (_isCompleted(index)) return const Color(0xFF25804B);
+    final status = (_activeRun?['status'] ?? '').toString().toUpperCase();
+    if (status == 'REJECTED' || status == 'OVERDUE') return AppColors.error;
+    return AppColors.textSecondary;
   }
 
   @override
   Widget build(BuildContext context) {
     final progress = _tasks.isEmpty ? 0.0 : _completedCount / _tasks.length;
-    final shiftLabel =
-        '${DemoData.currentShift.startTime} - ${DemoData.currentShift.endTime}';
+    final checklistName = (_activeRun?['checklistName'] ?? 'Checklist công việc').toString();
+    final dateLabel = _activeRun?['dueAt'] == null
+        ? 'Checklist được giao'
+        : DateTime.tryParse(_activeRun!['dueAt'].toString())?.toLocal().toString().split(' ').first ?? 'Checklist được giao';
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Checklist đầu ca'),
+        title: const Text('Checklist công việc'),
         leading: IconButton(
           tooltip: 'Quay lại trang chủ',
           onPressed: () => context.go(RouteNames.employeeHome),
           icon: const Icon(Icons.arrow_back),
         ),
+        actions: [IconButton(onPressed: _isLoading ? null : _loadChecklists, icon: const Icon(Icons.refresh))],
       ),
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 620),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 18),
-              children: [
-                _ChecklistDateHeader(
-                  dateLabel: DemoData.currentShift.dayLabel,
-                  shiftLabel: shiftLabel,
-                ),
-                const SizedBox(height: 14),
-                _ChecklistProgressCard(
-                  completedCount: _completedCount,
-                  taskCount: _tasks.length,
-                  progress: progress,
-                  isSubmitted: _isSubmitted,
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        'Công việc cần hoàn thành',
-                        style: TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _loadError != null
+                ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [Text(_loadError!, textAlign: TextAlign.center), const SizedBox(height: 12), FilledButton(onPressed: _loadChecklists, child: const Text('Thử lại'))])))
+                : _activeRun == null
+                    ? const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('Hiện chưa có checklist nào được giao.', textAlign: TextAlign.center)))
+                    : Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 620),
+                          child: ListView(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 18),
+                            children: [
+                              _ChecklistDateHeader(dateLabel: dateLabel, shiftLabel: checklistName),
+                              const SizedBox(height: 14),
+                              _ChecklistProgressCard(completedCount: _completedCount, taskCount: _tasks.length, progress: progress, isSubmitted: _isSubmitted),
+                              if (_isWorking) const LinearProgressIndicator(),
+                              const SizedBox(height: 20),
+                              const Text('Công việc cần hoàn thành', style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800)),
+                              const SizedBox(height: 10),
+                              for (var index = 0; index < _tasks.length; index++) ...[
+                                _ChecklistTaskCard(
+                                  task: _tasks[index],
+                                  isCompleted: _isCompleted(index),
+                                  isLocked: _isSubmitted || _isWorking || _isCompleted(index),
+                                  isEvidenceLocked: _isSubmitted || _isWorking,
+                                  hasEvidence: _hasEvidence(index),
+                                  evidencePhoto: _capturedEvidencePhotos[index],
+                                  hasHistoricalEvidence: _existingApprovedEvidenceIndexes.contains(index) && !_capturedEvidencePhotos.containsKey(index),
+                                  statusLabel: _statusLabel(_tasks[index], index),
+                                  statusColor: _statusColor(_tasks[index], index),
+                                  onToggle: () => _toggleTask(index),
+                                  onAddEvidence: () => _captureEvidence(index),
+                                ),
+                                if (index < _tasks.length - 1) const SizedBox(height: 9),
+                              ],
+                              if (_isSubmitted) const _SubmittedNotice(),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    Text(
-                      'Hạn ${DemoData.currentShift.startTime}',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                for (var index = 0; index < _tasks.length; index++) ...[
-                  _ChecklistTaskCard(
-                    task: _tasks[index],
-                    isCompleted: _isCompleted(index),
-                    isLocked: _isSubmitted ||
-                        _tasks[index].status == DemoChecklistStatus.approved,
-                    isEvidenceLocked: _isSubmitted,
-                    hasEvidence: _hasEvidence(index),
-                    evidencePhoto: _capturedEvidencePhotos[index],
-                    hasHistoricalEvidence:
-                        _existingApprovedEvidenceIndexes.contains(index) &&
-                            !_capturedEvidencePhotos.containsKey(index),
-                    statusLabel: _statusLabel(_tasks[index], index),
-                    statusColor: _statusColor(_tasks[index], index),
-                    onToggle: () => _toggleTask(index),
-                    onAddEvidence: () => _captureEvidence(index),
-                  ),
-                  if (index < _tasks.length - 1) const SizedBox(height: 9),
-                ],
-                if (_isSubmitted) ...[
-                  const SizedBox(height: 12),
-                  const _SubmittedNotice(),
-                ],
-              ],
-            ),
-          ),
-        ),
       ),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _ChecklistSubmitFooter(
-            completedCount: _completedCount,
-            taskCount: _tasks.length,
-            isSubmitted: _isSubmitted,
-            onSubmit: _submitChecklist,
-          ),
+          if (_activeRun != null)
+            _ChecklistSubmitFooter(completedCount: _completedCount, taskCount: _tasks.length, isSubmitted: _isSubmitted || _isWorking, onSubmit: _submitChecklist),
           NavigationBar(
             selectedIndex: 2,
             destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.home_outlined),
-                selectedIcon: Icon(Icons.home),
-                label: 'Trang chủ',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.calendar_month_outlined),
-                selectedIcon: Icon(Icons.calendar_month),
-                label: 'Lịch',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.checklist_outlined),
-                selectedIcon: Icon(Icons.checklist),
-                label: 'Checklist',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.person_outline),
-                selectedIcon: Icon(Icons.person),
-                label: 'Cá nhân',
-              ),
+              NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Trang chủ'),
+              NavigationDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month), label: 'Lịch'),
+              NavigationDestination(icon: Icon(Icons.checklist_outlined), selectedIcon: Icon(Icons.checklist), label: 'Checklist'),
+              NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Cá nhân'),
             ],
             onDestinationSelected: (index) {
-              if (index == 0) {
-                context.go(RouteNames.employeeHome);
-              } else if (index == 1) {
-                context.go(RouteNames.employeeSchedule);
-              } else if (index == 3) {
-                _showMessage('Hồ sơ cá nhân sẽ được hoàn thiện sau.');
-              }
+              if (index == 0) context.go(RouteNames.employeeHome);
+              if (index == 1) context.go(RouteNames.employeeSchedule);
+              if (index == 3) context.go(RouteNames.employeeProfile);
             },
           ),
         ],

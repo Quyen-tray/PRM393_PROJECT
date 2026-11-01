@@ -1,27 +1,65 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../data/mock/demo_data.dart';
+import '../../../data/repositories/employee_providers.dart';
 
-class EmployeeSchedulePage extends StatefulWidget {
+class EmployeeSchedulePage extends ConsumerStatefulWidget {
   const EmployeeSchedulePage({super.key});
 
   @override
-  State<EmployeeSchedulePage> createState() => _EmployeeSchedulePageState();
+  ConsumerState<EmployeeSchedulePage> createState() => _EmployeeSchedulePageState();
 }
 
-class _EmployeeSchedulePageState extends State<EmployeeSchedulePage> {
+class _EmployeeSchedulePageState extends ConsumerState<EmployeeSchedulePage> {
   late DateTime _anchorDate;
   late DateTime _selectedDate;
   _ScheduleView _view = _ScheduleView.week;
+  List<DemoShiftAssignment> _apiShifts = [];
+  bool _loadingSchedule = true;
+  String? _scheduleError;
 
   @override
   void initState() {
     super.initState();
-    _anchorDate = DateTime.parse(DemoData.employeeScheduleAnchorDate);
+    _anchorDate = DateTime.now();
     _selectedDate = _anchorDate;
+    _loadSchedule();
+  }
+
+  Future<void> _loadSchedule() async {
+    setState(() { _loadingSchedule = true; _scheduleError = null; });
+    try {
+      final start = DateTime(_anchorDate.year, _anchorDate.month, 1).subtract(const Duration(days: 7));
+      final end = DateTime(_anchorDate.year, _anchorDate.month + 2, 0);
+      String key(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      final rows = await ref.read(employeeRepositoryProvider).getMySchedule(from: key(start), to: key(end));
+      final mapped = rows.map((row) {
+        final shift = row['workShift'] is Map ? Map<String, dynamic>.from(row['workShift'] as Map) : <String, dynamic>{};
+        final date = (row['workDate'] ?? '').toString();
+        final plannedStart = DateTime.tryParse((row['plannedStartAt'] ?? '').toString());
+        final workDate = DateTime.tryParse(date) ?? plannedStart ?? DateTime.now();
+        final status = (row['status'] ?? '').toString();
+        return DemoShiftAssignment(
+          workDate: key(workDate),
+          dayLabel: _dayLabel(workDate),
+          shiftName: (shift['shiftName'] ?? shift['shiftCode'] ?? 'Ca làm').toString(),
+          startTime: formatClockVn(row['plannedStartAt']),
+          endTime: formatClockVn(row['plannedEndAt']),
+          workArea: 'Lịch được phân công',
+          assignmentStatus: status == 'CANCELLED' ? 'Ngày nghỉ' : (status == 'PUBLISHED' ? 'Đã xác nhận' : (status == 'DRAFT' ? 'Chờ duyệt' : status)),
+        );
+      }).toList();
+      if (!mounted) return;
+      setState(() { _apiShifts = mapped; _loadingSchedule = false; });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() { _scheduleError = error.toString(); _loadingSchedule = false; });
+    }
   }
 
   DateTime get _weekStart => _tuesdayOnOrBefore(_anchorDate);
@@ -67,6 +105,7 @@ class _EmployeeSchedulePageState extends State<EmployeeSchedulePage> {
         );
       }
     });
+    _loadSchedule();
   }
 
   String _dateKey(DateTime date) {
@@ -92,33 +131,7 @@ class _EmployeeSchedulePageState extends State<EmployeeSchedulePage> {
 
   List<DemoShiftAssignment> _shiftsForDate(DateTime date) {
     final dateKey = _dateKey(date);
-    final exactShifts = DemoData.employeeScheduleShifts
-        .where((shift) => shift.workDate == dateKey)
-        .toList();
-    if (exactShifts.isNotEmpty) return exactShifts;
-
-    final anchor = DateTime.parse(DemoData.employeeScheduleAnchorDate);
-    final offset = date.difference(anchor).inDays;
-    final patternIndex = ((offset % 7) + 7) % 7;
-    final patternDate = anchor.add(Duration(days: patternIndex));
-    final patternShifts = DemoData.employeeScheduleShifts
-        .where((shift) => shift.workDate == _dateKey(patternDate))
-        .toList();
-    if (patternShifts.isEmpty) return const [];
-
-    // Repeat the weekly pattern; the extra pending shift stays on 13/10 only.
-    final shift = patternShifts.first;
-    return [
-      DemoShiftAssignment(
-        workDate: dateKey,
-        dayLabel: _dayLabel(date),
-        shiftName: shift.shiftName,
-        startTime: shift.startTime,
-        endTime: shift.endTime,
-        workArea: shift.workArea,
-        assignmentStatus: shift.assignmentStatus,
-      ),
-    ];
+    return _apiShifts.where((shift) => shift.workDate == dateKey).toList();
   }
 
   List<DemoShiftAssignment> get _selectedDayShifts =>
@@ -215,7 +228,11 @@ class _EmployeeSchedulePageState extends State<EmployeeSchedulePage> {
                   ],
                 ),
                 const SizedBox(height: 10),
-                if (_selectedDayShifts.isEmpty)
+                if (_loadingSchedule)
+                  const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
+                else if (_scheduleError != null)
+                  Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [Text(_scheduleError!, textAlign: TextAlign.center), const SizedBox(height: 8), TextButton.icon(onPressed: _loadSchedule, icon: const Icon(Icons.refresh), label: const Text('Thử lại'))])))
+                else if (_selectedDayShifts.isEmpty)
                   _NoShiftCard(
                     isDayOff: _shiftsForDate(_selectedDate)
                         .any((shift) => shift.assignmentStatus == 'Ngày nghỉ'),

@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../features/admin/presentation/admin_account_list_page.dart';
-import '../../features/admin/presentation/admin_checklist_page.dart';
-import '../../features/admin/presentation/admin_dashboard_page.dart';
-import '../../features/admin/presentation/admin_position_page.dart';
-import '../../features/admin/presentation/admin_settings_page.dart';
-import '../../features/admin/presentation/admin_training_page.dart';
 import '../../features/approvals/presentation/manager_approval_page.dart';
 import '../../features/approvals/presentation/manager_checklist_approval_page.dart';
+import '../../features/approvals/presentation/manager_device_approval_page.dart';
+import '../../features/approvals/presentation/manager_attendance_requests_page.dart';
 import '../../features/attendance/presentation/employee_check_in_page.dart';
+import '../../features/attendance/presentation/employee_attendance_history_page.dart';
 import '../../features/admin/presentation/admin_dashboard_page.dart';
 import '../../features/admin/presentation/admin_account_management_page.dart';
 import '../../features/admin/presentation/admin_position_management_page.dart';
@@ -21,6 +18,15 @@ import '../../features/auth/presentation/login_page.dart';
 import '../../features/auth/presentation/register_page.dart';
 import '../../features/employees/presentation/manager_employee_list_page.dart';
 import '../../features/employees/presentation/manager_employee_detail_page.dart';
+import '../../features/employees/presentation/employee_profile_form_page.dart';
+import '../../features/admin/presentation/admin_account_permissions_page.dart';
+import '../../features/admin/presentation/admin_audit_log_page.dart';
+import '../../features/admin/presentation/admin_notification_delivery_page.dart';
+import '../../features/admin/presentation/admin_skill_management_page.dart';
+import '../../features/violations/presentation/manager_violation_review_page.dart';
+import '../../features/rewards/presentation/manager_reward_penalty_page.dart';
+import '../../features/payroll/presentation/manager_payroll_page.dart';
+import '../../features/rewards/presentation/employee_rewards_page.dart';
 import '../../features/home/presentation/employee_dashboard_page.dart';
 import '../../features/home/presentation/manager_dashboard_page.dart';
 import '../../features/notifications/presentation/employee_notifications_page.dart';
@@ -97,12 +103,76 @@ final appRouter = GoRouter(
       ),
     ),
     GoRoute(
+      path: RouteNames.managerEmployeeEdit,
+      builder: (context, state) => EmployeeProfileFormPage.edit(
+        employeeId: int.tryParse(state.pathParameters['employeeCode'] ?? ''),
+      ),
+    ),
+    GoRoute(
+      path: RouteNames.adminAccountEmployeeCreate,
+      builder: (context, state) {
+        final extra = state.extra is Map ? Map<String, dynamic>.from(state.extra as Map) : <String, dynamic>{};
+        return EmployeeProfileFormPage.create(
+          userId: int.tryParse(state.pathParameters['userId'] ?? ''),
+          displayName: extra['displayName']?.toString(),
+          email: extra['email']?.toString(),
+        );
+      },
+    ),
+    GoRoute(
+      path: RouteNames.adminAuditLogs,
+      builder: (context, state) => const AdminAuditLogPage(),
+    ),
+    GoRoute(
+      path: RouteNames.adminNotificationDeliveries,
+      builder: (context, state) => const AdminNotificationDeliveryPage(),
+    ),
+    GoRoute(
+      path: RouteNames.adminSkills,
+      builder: (context, state) => const AdminSkillManagementPage(),
+    ),
+    GoRoute(
+      path: RouteNames.managerViolations,
+      builder: (context, state) => const ManagerViolationReviewPage(),
+    ),
+    GoRoute(
+      path: RouteNames.managerRewards,
+      builder: (context, state) => const ManagerRewardPenaltyPage(),
+    ),
+    GoRoute(
+      path: RouteNames.managerPayroll,
+      builder: (context, state) => const ManagerPayrollPage(),
+    ),
+    GoRoute(
+      path: RouteNames.employeeRewards,
+      builder: (context, state) => const EmployeeRewardsPage(),
+    ),
+    GoRoute(
+      path: RouteNames.adminAccountPermissions,
+      builder: (context, state) {
+        final extra = state.extra is Map ? Map<String, dynamic>.from(state.extra as Map) : <String, dynamic>{};
+        return AdminAccountPermissionsPage(
+          userId: int.tryParse(state.pathParameters['userId'] ?? ''),
+          displayName: extra['displayName']?.toString(),
+          email: extra['email']?.toString(),
+        );
+      },
+    ),
+    GoRoute(
       path: RouteNames.managerSchedule,
       builder: (context, state) => const ManagerShiftSchedulePage(),
     ),
     GoRoute(
       path: RouteNames.managerApprovals,
       builder: (context, state) => const ManagerApprovalPage(),
+    ),
+    GoRoute(
+      path: RouteNames.managerDevices,
+      builder: (context, state) => const ManagerDeviceApprovalPage(),
+    ),
+    GoRoute(
+      path: RouteNames.managerAttendanceRequests,
+      builder: (context, state) => const ManagerAttendanceRequestsPage(),
     ),
     GoRoute(
       path: RouteNames.managerChecklistApprovals,
@@ -125,28 +195,8 @@ final appRouter = GoRouter(
       builder: (context, state) => const EmployeeCheckInPage(),
     ),
     GoRoute(
-      path: RouteNames.adminHome,
-      builder: (context, state) => const AdminDashboardPage(),
-    ),
-    GoRoute(
-      path: RouteNames.adminAccounts,
-      builder: (context, state) => const AdminAccountListPage(),
-    ),
-    GoRoute(
-      path: RouteNames.adminTraining,
-      builder: (context, state) => const AdminTrainingPage(),
-    ),
-    GoRoute(
-      path: RouteNames.adminSettings,
-      builder: (context, state) => const AdminSettingsPage(),
-    ),
-    GoRoute(
-      path: RouteNames.adminPositions,
-      builder: (context, state) => const AdminPositionPage(),
-    ),
-    GoRoute(
-      path: RouteNames.adminChecklists,
-      builder: (context, state) => const AdminChecklistPage(),
+      path: RouteNames.employeeAttendanceHistory,
+      builder: (context, state) => const EmployeeAttendanceHistoryPage(),
     ),
     GoRoute(
       path: RouteNames.profile,

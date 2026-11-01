@@ -35,6 +35,30 @@ Future<void> showAdminMoreMenu(BuildContext context) async {
               ),
             ),
             ListTile(
+              leading: const Icon(Icons.psychology_outlined),
+              title: const Text('Danh mục kỹ năng'),
+              onTap: () => Navigator.pop(
+                sheetContext,
+                RouteNames.adminSkills,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.notifications_outlined),
+              title: const Text('Thông báo đã gửi'),
+              onTap: () => Navigator.pop(
+                sheetContext,
+                RouteNames.adminNotificationDeliveries,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.history_outlined),
+              title: const Text('Nhật ký hệ thống'),
+              onTap: () => Navigator.pop(
+                sheetContext,
+                RouteNames.adminAuditLogs,
+              ),
+            ),
+            ListTile(
               leading: const Icon(Icons.settings_outlined),
               title: const Text('Cấu hình hệ thống'),
               onTap: () => Navigator.pop(

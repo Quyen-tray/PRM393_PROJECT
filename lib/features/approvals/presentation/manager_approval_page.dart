@@ -1,173 +1,88 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
-import '../../../data/mock/demo_data.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../data/repositories/employee_providers.dart';
 import '../../home/presentation/widgets/manager_more_menu.dart';
-import 'widgets/manager_review_card.dart';
+import '../data/manager_review_items.dart';
+import 'widgets/manager_review_list.dart';
 
-class ManagerApprovalPage extends StatefulWidget {
+/// Hub Duyệt: mọi yêu cầu chờ quản lý duyệt (giải trình, điều chỉnh công, tăng ca,
+/// checklist, thiết bị), lấy từ API.
+class ManagerApprovalPage extends ConsumerStatefulWidget {
   const ManagerApprovalPage({super.key});
 
   @override
-  State<ManagerApprovalPage> createState() => _ManagerApprovalPageState();
+  ConsumerState<ManagerApprovalPage> createState() => _ManagerApprovalPageState();
 }
 
-class _ManagerApprovalPageState extends State<ManagerApprovalPage> {
-  final Map<String, DemoManagerReviewStatus> _statusOverrides = {};
-  final Map<String, String> _rejectionReasons = {};
+class _ManagerApprovalPageState extends ConsumerState<ManagerApprovalPage> {
+  ManagerReviewBuckets? _buckets;
+  bool _loading = true;
+  bool _acting = false;
+  String? _error;
 
-  List<_ApprovalEntry> get _entries => [
-        for (final request in DemoData.managerAttendanceAdjustmentRequests)
-          _ApprovalEntry(
-            id: 'adjustment-${request.id}',
-            initialStatus: request.status,
-            approvedStatus: DemoManagerReviewStatus.pendingHr,
-            approveMessage: 'Đã duyệt nghiệp vụ và chuyển đơn sang HR.',
-            title: request.employeeName,
-            subtitle: '${request.employeeCode} · ${request.position}',
-            detail: '${request.workDate} · '
-                '${request.adjustmentLabel}: ${request.requestedValue}\n'
-                'Lý do: ${request.reason}\n'
-                'Gửi lúc: ${request.submittedAt}',
-            evidence: request.evidenceLabel,
-          ),
-        for (final request in DemoData.managerOtherRequests)
-          _ApprovalEntry(
-            id: 'manager-request-${request.id}',
-            initialStatus: request.status,
-            approvedStatus: DemoManagerReviewStatus.approved,
-            approveMessage: request.type.approvedMessage,
-            title: request.employeeName,
-            subtitle: '${request.employeeCode} · ${request.position} · '
-                '${request.type.displayLabel}',
-            detail: '${request.detail}\n'
-                'Lý do: ${request.reason}\n'
-                'Gửi lúc: ${request.submittedAt}',
-            evidence: request.evidenceLabel,
-            initialRejectionReason: request.reviewReason,
-          ),
-      ];
-
-  DemoManagerReviewStatus _statusOf(_ApprovalEntry entry) =>
-      _statusOverrides[entry.id] ?? entry.initialStatus;
-
-  bool _isInBucket(_ApprovalEntry entry, _ApprovalBucket bucket) {
-    final status = _statusOf(entry);
-    return switch (bucket) {
-      _ApprovalBucket.pending => status == DemoManagerReviewStatus.pendingManager,
-      _ApprovalBucket.approved =>
-        status == DemoManagerReviewStatus.pendingHr ||
-            status == DemoManagerReviewStatus.approved,
-      _ApprovalBucket.rejected => status == DemoManagerReviewStatus.rejected,
-    };
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  int _countFor(_ApprovalBucket bucket) =>
-      _entries.where((entry) => _isInBucket(entry, bucket)).length;
+  Future<void> _load() async {
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final buckets = await loadManagerReviewBuckets(ref.read(employeeRepositoryProvider));
+      if (mounted) setState(() => _buckets = buckets);
+    } catch (error) {
+      if (mounted) setState(() => _error = _messageOf(error));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
-  void _setStatus(
-    _ApprovalEntry entry,
-    DemoManagerReviewStatus status, {
-    required String message,
-  }) {
-    setState(() => _statusOverrides[entry.id] = status);
+  Future<void> _approve(ManagerReviewItem item) =>
+      _run(() => approveManagerReviewItem(ref.read(employeeRepositoryProvider), item), 'Đã duyệt.');
+
+  Future<void> _reject(ManagerReviewItem item, String reason) => _run(
+        () => rejectManagerReviewItem(ref.read(employeeRepositoryProvider), item, reason: reason),
+        'Đã từ chối.',
+      );
+
+  Future<void> _run(Future<void> Function() action, String successMessage) async {
+    setState(() => _acting = true);
+    try {
+      await action();
+      _message(successMessage);
+      await _load();
+    } catch (error) {
+      _message(_messageOf(error));
+    } finally {
+      if (mounted) setState(() => _acting = false);
+    }
+  }
+
+  String _messageOf(Object error) =>
+      error is ApiException ? error.message : 'Không tải được danh sách duyệt. Vui lòng thử lại.';
+
+  void _message(String text) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  Future<void> _rejectWithReason(_ApprovalEntry entry) async {
-    final controller = TextEditingController();
-
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, updateDialog) => AlertDialog(
-          title: const Text('Từ chối yêu cầu'),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              labelText: 'Lý do từ chối',
-              hintText: 'Nhập lý do để nhân viên biết cần xử lý gì',
-              border: OutlineInputBorder(),
-            ),
-            onChanged: (_) => updateDialog(() {}),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Hủy'),
-            ),
-            FilledButton(
-              onPressed: controller.text.trim().isEmpty
-                  ? null
-                  : () => Navigator.pop(
-                        dialogContext,
-                        controller.text.trim(),
-                      ),
-              child: const Text('Xác nhận từ chối'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    controller.dispose();
-
-    if (!mounted || reason == null || reason.isEmpty) return;
-
-    setState(() {
-      _statusOverrides[entry.id] = DemoManagerReviewStatus.rejected;
-      _rejectionReasons[entry.id] = reason;
-    });
-  }
-
-  Widget _requestList(_ApprovalBucket bucket) {
-    final entries = _entries.where((entry) => _isInBucket(entry, bucket));
-    final items = entries.toList();
-
-    if (items.isEmpty) {
-      return Center(
-        child: Text(
-          bucket.emptyMessage,
-          style: const TextStyle(color: AppColors.textSecondary),
-        ),
-      );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        for (final entry in items)
-          ManagerReviewCard(
-            title: entry.title,
-            subtitle: entry.subtitle,
-            detail: entry.detail,
-            evidence: entry.evidence,
-            status: _statusOf(entry),
-            rejectionReason:
-                _rejectionReasons[entry.id] ?? entry.initialRejectionReason,
-            onApprove: _statusOf(entry) == DemoManagerReviewStatus.pendingManager
-                ? () => _setStatus(
-                      entry,
-                      entry.approvedStatus,
-                      message: entry.approveMessage,
-                    )
-                : null,
-            onReject: _statusOf(entry) == DemoManagerReviewStatus.pendingManager
-                ? () => _rejectWithReason(entry)
-                : null,
-          ),
-      ],
-    );
+      ..showSnackBar(SnackBar(content: Text(text)));
   }
 
   @override
   Widget build(BuildContext context) {
+    final buckets = _buckets;
+    final busy = _loading || _acting;
+
     return DefaultTabController(
       length: 3,
       child: Scaffold(
@@ -176,26 +91,66 @@ class _ManagerApprovalPageState extends State<ManagerApprovalPage> {
           title: const Text('Duyệt yêu cầu'),
           actions: [
             IconButton(
+              tooltip: 'Tải lại',
+              onPressed: busy ? null : _load,
+              icon: const Icon(Icons.refresh),
+            ),
+            IconButton(
+              tooltip: 'Duyệt thiết bị chấm công',
+              onPressed: () => context.go(RouteNames.managerDevices),
+              icon: const Icon(Icons.phone_android),
+            ),
+            IconButton(
               tooltip: 'Duyệt checklist',
               onPressed: () => context.go(RouteNames.managerChecklistApprovals),
               icon: const Icon(Icons.fact_check_outlined),
             ),
+            IconButton(
+              tooltip: 'Duyệt giải trình và điều chỉnh công',
+              onPressed: () => context.go(RouteNames.managerAttendanceRequests),
+              icon: const Icon(Icons.access_time),
+            ),
           ],
           bottom: TabBar(
             tabs: [
-              Tab(text: 'Chờ duyệt (${_countFor(_ApprovalBucket.pending)})'),
+              Tab(text: 'Chờ duyệt (${buckets?.pending.length ?? 0})'),
               const Tab(text: 'Đã duyệt'),
               const Tab(text: 'Đã từ chối'),
             ],
           ),
         ),
-        body: TabBarView(
-          children: [
-            _requestList(_ApprovalBucket.pending),
-            _requestList(_ApprovalBucket.approved),
-            _requestList(_ApprovalBucket.rejected),
-          ],
-        ),
+        body: buckets == null
+            ? (_loading
+                ? const Center(child: CircularProgressIndicator())
+                : _ErrorView(message: _error ?? 'Không tải được danh sách duyệt.', onRetry: _load))
+            : TabBarView(
+                children: [
+                  ManagerReviewList(
+                    items: buckets.pending,
+                    emptyMessage: 'Không có yêu cầu đang chờ duyệt.',
+                    busy: busy,
+                    onApprove: _approve,
+                    onReject: _reject,
+                    onRefresh: _load,
+                  ),
+                  ManagerReviewList(
+                    items: buckets.approved,
+                    emptyMessage: 'Chưa có yêu cầu đã được duyệt.',
+                    busy: busy,
+                    onApprove: _approve,
+                    onReject: _reject,
+                    onRefresh: _load,
+                  ),
+                  ManagerReviewList(
+                    items: buckets.rejected,
+                    emptyMessage: 'Chưa có yêu cầu bị từ chối.',
+                    busy: busy,
+                    onApprove: _approve,
+                    onReject: _reject,
+                    onRefresh: _load,
+                  ),
+                ],
+              ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: 3,
           destinations: const [
@@ -237,53 +192,26 @@ class _ManagerApprovalPageState extends State<ManagerApprovalPage> {
   }
 }
 
-class _ApprovalEntry {
-  const _ApprovalEntry({
-    required this.id,
-    required this.initialStatus,
-    required this.approvedStatus,
-    required this.approveMessage,
-    required this.title,
-    required this.subtitle,
-    required this.detail,
-    required this.evidence,
-    this.initialRejectionReason,
-  });
+class _ErrorView extends StatelessWidget {
+  const _ErrorView({required this.message, required this.onRetry});
 
-  final String id;
-  final DemoManagerReviewStatus initialStatus;
-  final DemoManagerReviewStatus approvedStatus;
-  final String approveMessage;
-  final String title;
-  final String subtitle;
-  final String detail;
-  final String evidence;
-  final String? initialRejectionReason;
-}
+  final String message;
+  final VoidCallback onRetry;
 
-enum _ApprovalBucket { pending, approved, rejected }
-
-extension on _ApprovalBucket {
-  String get emptyMessage => switch (this) {
-        _ApprovalBucket.pending => 'Không có yêu cầu đang chờ duyệt.',
-        _ApprovalBucket.approved => 'Chưa có yêu cầu đã được duyệt.',
-        _ApprovalBucket.rejected => 'Chưa có yêu cầu bị từ chối.',
-      };
-}
-
-extension on DemoManagerRequestType {
-  String get displayLabel => switch (this) {
-        DemoManagerRequestType.gpsException => 'Ngoại lệ GPS',
-        DemoManagerRequestType.deviceChange => 'Đổi thiết bị',
-        DemoManagerRequestType.overtime => 'Đề nghị OT',
-      };
-
-  String get approvedMessage => switch (this) {
-        DemoManagerRequestType.gpsException =>
-          'Đã ghi nhận duyệt ngoại lệ GPS trong phiên demo.',
-        DemoManagerRequestType.deviceChange =>
-          'Đã ghi nhận duyệt thiết bị trong phiên demo.',
-        DemoManagerRequestType.overtime =>
-          'Đã ghi nhận duyệt OT trong phiên demo.',
-      };
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            FilledButton(onPressed: onRetry, child: const Text('Thử lại')),
+          ],
+        ),
+      ),
+    );
+  }
 }

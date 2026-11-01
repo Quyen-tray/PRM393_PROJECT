@@ -35,6 +35,30 @@ Future<void> showManagerMoreMenu(BuildContext context) async {
               ),
             ),
             ListTile(
+              leading: const Icon(Icons.payments_outlined),
+              title: const Text('Thưởng/phạt'),
+              onTap: () => Navigator.pop(
+                sheetContext,
+                RouteNames.managerRewards,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.calendar_month_outlined),
+              title: const Text('Kỳ công'),
+              onTap: () => Navigator.pop(
+                sheetContext,
+                RouteNames.managerPayroll,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.report_outlined),
+              title: const Text('Xét duyệt vi phạm'),
+              onTap: () => Navigator.pop(
+                sheetContext,
+                RouteNames.managerViolations,
+              ),
+            ),
+            ListTile(
               leading: const Icon(Icons.fact_check_outlined),
               title: const Text('Duyệt checklist'),
               onTap: () => Navigator.pop(

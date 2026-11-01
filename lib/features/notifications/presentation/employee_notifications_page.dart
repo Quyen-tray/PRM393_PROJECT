@@ -1,416 +1,118 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
-import '../../../data/mock/demo_data.dart';
+import '../../../core/utils/formatters.dart';
+import '../../../shared/widgets/employee_bottom_navigation.dart';
+import '../../../data/repositories/employee_providers.dart';
 
-class EmployeeNotificationsPage extends StatefulWidget {
+class EmployeeNotificationsPage extends ConsumerStatefulWidget {
   const EmployeeNotificationsPage({super.key});
-
   @override
-  State<EmployeeNotificationsPage> createState() =>
-      _EmployeeNotificationsPageState();
+  ConsumerState<EmployeeNotificationsPage> createState() => _EmployeeNotificationsPageState();
 }
 
-class _EmployeeNotificationsPageState extends State<EmployeeNotificationsPage> {
-  _NotificationFilter _filter = _NotificationFilter.all;
-  final Set<int> _readNotifications = {};
+class _EmployeeNotificationsPageState extends ConsumerState<EmployeeNotificationsPage> {
+  bool _loading = true;
+  bool _markingAll = false;
+  String? _error;
+  int _unreadCount = 0;
+  int _filter = 0;
+  List<Map<String, dynamic>> _items = [];
 
-  int get _unreadCount => DemoData.employeeNotifications
-      .asMap()
-      .entries
-      .where((entry) =>
-          entry.value.isUnread && !_readNotifications.contains(entry.key))
-      .length;
+  @override
+  void initState() { super.initState(); _load(); }
 
-  List<int> get _visibleNotificationIndexes =>
-      List<int>.generate(DemoData.employeeNotifications.length, (index) => index)
-          .where((index) {
-        final notification = DemoData.employeeNotifications[index];
-        return switch (_filter) {
-          _NotificationFilter.all => true,
-          _NotificationFilter.reminders =>
-            notification.category == DemoNotificationCategory.reminder,
-          _NotificationFilter.approvals =>
-            notification.category == DemoNotificationCategory.approval,
-          _NotificationFilter.system =>
-            notification.category == DemoNotificationCategory.system,
-        };
-      }).toList();
-
-  bool _isUnread(int index, DemoEmployeeNotification notification) =>
-      notification.isUnread && !_readNotifications.contains(index);
-
-  void _markRead(int index) {
-    if (_readNotifications.contains(index) ||
-        !DemoData.employeeNotifications[index].isUnread) {
-      return;
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final repo = ref.read(employeeRepositoryProvider);
+      final results = await Future.wait([repo.getMyNotifications(), repo.getUnreadNotificationCount()]);
+      if (!mounted) return;
+      setState(() { _items = results[0] as List<Map<String, dynamic>>; _unreadCount = results[1] as int; _loading = false; });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _error = e.toString(); _loading = false; });
     }
-    setState(() => _readNotifications.add(index));
   }
 
-  void _markAllRead() {
-    setState(() {
-      _readNotifications.addAll(
-        DemoData.employeeNotifications.asMap().entries
-            .where((entry) => entry.value.isUnread)
-            .map((entry) => entry.key),
-      );
-    });
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(content: Text('Đã đánh dấu tất cả thông báo đã đọc.')),
-      );
+  List<Map<String, dynamic>> get _visibleItems => _items.where((n) {
+    if (_filter == 0) return true;
+    final type = '${n['notificationType'] ?? ''}'.toUpperCase();
+    if (_filter == 1) return type.contains('REMIND') || type.contains('DUE') || type.contains('EXPIR');
+    if (_filter == 2) return type.contains('APPROV') || type.contains('REJECT') || type.contains('REQUEST');
+    return type.contains('SYSTEM') || type.contains('ANNOUNCE');
+  }).toList();
+
+  Future<void> _markRead(Map<String, dynamic> item) async {
+    if (item['readAt'] != null) return;
+    final id = (item['notificationId'] as num?)?.toInt();
+    if (id == null) return;
+    try {
+      await ref.read(employeeRepositoryProvider).markNotificationRead(id);
+      if (!mounted) return;
+      setState(() { item['readAt'] = DateTime.now().toIso8601String(); if (_unreadCount > 0) _unreadCount--; });
+    } catch (e) { _message(e.toString()); }
   }
+
+  Future<void> _markAllRead() async {
+    if (_unreadCount == 0 || _markingAll) return;
+    setState(() => _markingAll = true);
+    try {
+      await ref.read(employeeRepositoryProvider).markAllNotificationsRead();
+      if (!mounted) return;
+      setState(() { for (final item in _items) { item['readAt'] ??= DateTime.now().toIso8601String(); } _unreadCount = 0; });
+      _message('Đã đánh dấu tất cả thông báo đã đọc.');
+    } catch (e) { _message(e.toString()); }
+    finally { if (mounted) setState(() => _markingAll = false); }
+  }
+
+  void _message(String text) => ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()..showSnackBar(SnackBar(content: Text(text)));
 
   @override
   Widget build(BuildContext context) {
-    final visibleIndexes = _visibleNotificationIndexes;
-
+    final visible = _visibleItems;
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Thông báo'),
-        leading: IconButton(
-          tooltip: 'Quay lại trang chủ',
-          onPressed: () => context.go(RouteNames.employeeHome),
-          icon: const Icon(Icons.arrow_back),
+        leading: IconButton(onPressed: () => context.go(RouteNames.employeeHome), icon: const Icon(Icons.arrow_back)),
+        actions: [IconButton(tooltip: 'Đánh dấu tất cả đã đọc', onPressed: _unreadCount == 0 || _markingAll ? null : _markAllRead, icon: _markingAll ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.done_all))],
+      ),
+      body: SafeArea(child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 680), child: Column(children: [
+        Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 10), child: Row(children: [
+          const Expanded(child: Text('Cập nhật dành cho bạn', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
+          if (_unreadCount > 0) Chip(label: Text('$_unreadCount chưa đọc')),
+        ])),
+        SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 16), child: Row(children: [
+          _filterChip('Tất cả', 0), _filterChip('Nhắc nhở', 1), _filterChip('Duyệt', 2), _filterChip('Hệ thống', 3),
+        ])),
+        const SizedBox(height: 8),
+        Expanded(child: _loading ? const Center(child: CircularProgressIndicator())
+          : _error != null ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [Text(_error!, textAlign: TextAlign.center), const SizedBox(height: 12), OutlinedButton(onPressed: _load, child: const Text('Thử lại'))])))
+          : RefreshIndicator(onRefresh: _load, child: visible.isEmpty
+            ? ListView(children: const [SizedBox(height: 150), Center(child: Text('Bạn chưa có thông báo nào.'))])
+            : ListView.separated(padding: const EdgeInsets.fromLTRB(16, 4, 16, 20), itemCount: visible.length, separatorBuilder: (_, __) => const SizedBox(height: 8), itemBuilder: (context, index) {
+                final item = visible[index];
+                final unread = item['readAt'] == null;
+                return Card(color: unread ? AppColors.surface : null, child: InkWell(borderRadius: BorderRadius.circular(12), onTap: () => _markRead(item), child: Padding(padding: const EdgeInsets.all(14), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  CircleAvatar(backgroundColor: unread ? AppColors.primary.withOpacity(.12) : Colors.black12, child: Icon(_iconFor('${item['notificationType'] ?? ''}'), color: unread ? AppColors.primary : AppColors.textSecondary)),
+                  const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [Expanded(child: Text('${item['title'] ?? 'Thông báo'}', style: TextStyle(fontWeight: unread ? FontWeight.w800 : FontWeight.w600))), if (unread) Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle))]),
+                    const SizedBox(height: 5), Text('${item['message'] ?? ''}'),
+                    if (item['createdAt'] != null) Padding(padding: const EdgeInsets.only(top: 7), child: Text(formatDate(item['createdAt']), style: Theme.of(context).textTheme.bodySmall)),
+                  ])),
+                ]))));
+              })),
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Đánh dấu tất cả đã đọc',
-            onPressed: _unreadCount == 0 ? null : _markAllRead,
-            icon: const Icon(Icons.done_all),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 620),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
-                  child: Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Cập nhật dành cho bạn',
-                          style: TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      if (_unreadCount > 0)
-                        _UnreadCountBadge(count: _unreadCount),
-                    ],
-                  ),
-                ),
-                _NotificationFilterBar(
-                  selected: _filter,
-                  onChanged: (filter) => setState(() => _filter = filter),
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: visibleIndexes.isEmpty
-                      ? const _EmptyNotifications()
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
-                          itemCount: visibleIndexes.length,
-                          separatorBuilder: (context, index) =>
-                              const SizedBox(height: 9),
-                          itemBuilder: (context, listIndex) {
-                            final notificationIndex =
-                                visibleIndexes[listIndex];
-                            final notification = DemoData
-                                .employeeNotifications[notificationIndex];
-                            return _NotificationCard(
-                              notification: notification,
-                              isUnread:
-                                  _isUnread(notificationIndex, notification),
-                              onTap: () => _markRead(notificationIndex),
-                            );
-                          },
-                        ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 0,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Trang chủ',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month),
-            label: 'Lịch',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.checklist_outlined),
-            selectedIcon: Icon(Icons.checklist),
-            label: 'Checklist',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Cá nhân',
-          ),
-        ],
-        onDestinationSelected: (index) {
-          if (index == 0) {
-            context.go(RouteNames.employeeHome);
-          } else if (index == 1) {
-            context.go(RouteNames.employeeSchedule);
-          } else if (index == 2) {
-            context.go(RouteNames.employeeChecklist);
-          } else if (index == 3) {
-            context.go(RouteNames.employeeProfile);
-          }
-        },
-      ),
+      ])))),
+      bottomNavigationBar: const EmployeeBottomNavigation(selectedIndex: 0),
     );
   }
-}
 
-enum _NotificationFilter { all, reminders, approvals, system }
-
-class _NotificationFilterBar extends StatelessWidget {
-  const _NotificationFilterBar({
-    required this.selected,
-    required this.onChanged,
-  });
-
-  final _NotificationFilter selected;
-  final ValueChanged<_NotificationFilter> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    const filters = [
-      (value: _NotificationFilter.all, label: 'Tất cả'),
-      (value: _NotificationFilter.reminders, label: 'Nhắc nhở'),
-      (value: _NotificationFilter.approvals, label: 'Duyệt'),
-      (value: _NotificationFilter.system, label: 'Hệ thống'),
-    ];
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          for (final filter in filters) ...[
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(filter.label),
-                selected: selected == filter.value,
-                onSelected: (_) => onChanged(filter.value),
-                selectedColor: AppColors.primary,
-                backgroundColor: AppColors.surface,
-                side: BorderSide(
-                  color: selected == filter.value
-                      ? AppColors.primary
-                      : const Color(0xFFE5E1DA),
-                ),
-                labelStyle: TextStyle(
-                  color: selected == filter.value
-                      ? Colors.white
-                      : AppColors.textPrimary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _UnreadCountBadge extends StatelessWidget {
-  const _UnreadCountBadge({required this.count});
-
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFEBDD),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        '$count chưa đọc',
-        style: const TextStyle(
-          color: AppColors.primary,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-class _NotificationCard extends StatelessWidget {
-  const _NotificationCard({
-    required this.notification,
-    required this.isUnread,
-    required this.onTap,
-  });
-
-  final DemoEmployeeNotification notification;
-  final bool isUnread;
-  final VoidCallback onTap;
-
-  IconData get _icon {
-    if (notification.title.toLowerCase().contains('checklist')) {
-      return Icons.checklist_outlined;
-    }
-    if (notification.title.toLowerCase().contains('khóa học')) {
-      return Icons.school_outlined;
-    }
-    return switch (notification.category) {
-      DemoNotificationCategory.reminder => Icons.calendar_month_outlined,
-      DemoNotificationCategory.approval => Icons.swap_horiz,
-      DemoNotificationCategory.system => Icons.campaign_outlined,
-    };
-  }
-
-  Color get _iconColor => switch (notification.category) {
-        DemoNotificationCategory.reminder => const Color(0xFF3486D8),
-        DemoNotificationCategory.approval => const Color(0xFF27965C),
-        DemoNotificationCategory.system => const Color(0xFFDA594C),
-      };
-
-  Color get _iconBackground => switch (notification.category) {
-        DemoNotificationCategory.reminder => const Color(0xFFE8F2FF),
-        DemoNotificationCategory.approval => const Color(0xFFE8F6EC),
-        DemoNotificationCategory.system => const Color(0xFFFFECEA),
-      };
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isUnread
-                  ? const Color(0xFFE5C2AE)
-                  : const Color(0xFFEDE8E3),
-            ),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: _iconBackground,
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: Icon(_icon, color: _iconColor, size: 21),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            notification.title,
-                            style: TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 13,
-                              fontWeight:
-                                  isUnread ? FontWeight.w800 : FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        if (isUnread)
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF3486D8),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      notification.message,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 11,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      notification.timeLabel,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyNotifications extends StatelessWidget {
-  const _EmptyNotifications();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.notifications_none,
-              size: 42,
-              color: AppColors.textSecondary.withValues(alpha: 0.65),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Không có thông báo trong mục này.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _filterChip(String label, int value) => Padding(padding: const EdgeInsets.only(right: 8), child: ChoiceChip(label: Text(label), selected: _filter == value, onSelected: (_) => setState(() => _filter = value)));
+  IconData _iconFor(String type) { final t = type.toUpperCase(); if (t.contains('APPROV') || t.contains('REJECT')) return Icons.fact_check_outlined; if (t.contains('REMIND') || t.contains('DUE')) return Icons.alarm_outlined; if (t.contains('SYSTEM')) return Icons.settings_outlined; return Icons.notifications_outlined; }
 }
