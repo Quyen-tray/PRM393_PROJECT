@@ -1,5 +1,11 @@
 abstract final class RouteNames {
   static const home = '/';
+  static const employeeHome = '/employee';
+  static const employeeSchedule = '/employee/schedule';
+  static const employeeChecklist = '/employee/checklist';
+  static const employeeTraining = '/employee/training';
+  static const employeeNotifications = '/employee/notifications';
+  static const employeeProfile = '/employee/profile';
   static const login = '/login';
   static const register = '/register';
   static const checkIn = '/attendance/check-in';
@@ -12,10 +18,17 @@ abstract final class RouteNames {
   static const managerAttendanceReport = '/manager/reports/attendance';
   static const adminHome = '/admin';
   static const adminAccounts = '/admin/accounts';
+<<<<<<< HEAD
   static const adminTraining = '/admin/training';
   static const adminSettings = '/admin/settings';
   static const adminPositions = '/admin/positions';
   static const adminChecklists = '/admin/checklists';
+=======
+  static const adminPositions = '/admin/positions';
+  static const adminTraining = '/admin/training';
+  static const adminChecklistTemplates = '/admin/checklist-templates';
+  static const adminSettings = '/admin/settings';
+>>>>>>> 5c3baa370fcab08f7ffb19b4b696471f7d945ae6
 
   static String managerEmployeeDetailFor(String employeeCode) =>
       '/manager/employees/$employeeCode';
