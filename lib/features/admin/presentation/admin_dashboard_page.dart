@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hrm_coffee_shop_flutter/features/auth/presentation/sign_out_flow.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
@@ -46,7 +47,8 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
   }
 
   /// Đọc toàn bộ tài khoản theo trang để đếm tổng và số đang hoạt động.
-  Future<List<Map<String, dynamic>>> _allAccounts(EmployeeRepository repo) async {
+  Future<List<Map<String, dynamic>>> _allAccounts(
+      EmployeeRepository repo) async {
     final all = <Map<String, dynamic>>[];
     for (var page = 0; page < 100; page++) {
       final items = await repo.getAdminUsers(page: page);
@@ -81,9 +83,11 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         _stats = _AdminStats(
           storeName: (store['name'] ?? 'Cửa hàng').toString(),
           accountTotal: accounts.length,
-          accountActive: accounts.where((row) => row['status'] == 'ACTIVE').length,
+          accountActive:
+              accounts.where((row) => row['status'] == 'ACTIVE').length,
           courseActive: courses.where((row) => row['isActive'] != false).length,
-          checklistCodes: templates.map((row) => row['checklistCode']).toSet().length,
+          checklistCodes:
+              templates.map((row) => row['checklistCode']).toSet().length,
         );
       });
     } catch (error) {
@@ -111,7 +115,8 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
                   color: AppColors.primary,
                   borderRadius: BorderRadius.circular(14),
@@ -123,7 +128,8 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                     const Expanded(
                       child: Text(
                         'HRM COFFEE SHOP',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+                        style: TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w800),
                       ),
                     ),
                     IconButton(
@@ -157,21 +163,31 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
               else if (stats == null)
                 Column(
                   children: [
-                    Text(_error ?? 'Không tải được số liệu.', textAlign: TextAlign.center),
+                    Text(_error ?? 'Không tải được số liệu.',
+                        textAlign: TextAlign.center),
                     const SizedBox(height: 12),
-                    FilledButton(onPressed: _load, child: const Text('Thử lại')),
+                    FilledButton(
+                        onPressed: _load, child: const Text('Thử lại')),
                   ],
                 )
               else ...[
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final columns = constraints.maxWidth >= 900 ? 4 : 2;
-                    final tileWidth = (constraints.maxWidth - 10 * (columns - 1)) / columns;
+                    final tileWidth =
+                        (constraints.maxWidth - 10 * (columns - 1)) / columns;
                     final metrics = [
-                      _Metric('Tài khoản', '${stats.accountTotal}', Icons.badge_outlined, const Color(0xFF2196F3)),
-                      _Metric('Đang hoạt động', '${stats.accountActive}', Icons.verified_user_outlined, const Color(0xFF28A765)),
-                      _Metric('Khóa học đang mở', '${stats.courseActive}', Icons.school_outlined, const Color(0xFFE39A2F)),
-                      _Metric('Mẫu checklist', '${stats.checklistCodes}', Icons.fact_check_outlined, const Color(0xFFE75B59)),
+                      _Metric('Tài khoản', '${stats.accountTotal}',
+                          Icons.badge_outlined, const Color(0xFF2196F3)),
+                      _Metric(
+                          'Đang hoạt động',
+                          '${stats.accountActive}',
+                          Icons.verified_user_outlined,
+                          const Color(0xFF28A765)),
+                      _Metric('Khóa học đang mở', '${stats.courseActive}',
+                          Icons.school_outlined, const Color(0xFFE39A2F)),
+                      _Metric('Mẫu checklist', '${stats.checklistCodes}',
+                          Icons.fact_check_outlined, const Color(0xFFE75B59)),
                     ];
                     return GridView.count(
                       crossAxisCount: columns,
@@ -180,20 +196,27 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                       crossAxisSpacing: 10,
                       mainAxisSpacing: 10,
                       childAspectRatio: tileWidth / 112,
-                      children: [for (final metric in metrics) _MetricCard(metric: metric)],
+                      children: [
+                        for (final metric in metrics)
+                          _MetricCard(metric: metric)
+                      ],
                     );
                   },
                 ),
                 const SizedBox(height: 8),
                 const Text(
                   'Số nhân viên và biểu đồ xu hướng chưa có trong dashboard admin: vai trò này không có quyền xem danh sách nhân viên.',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                  style:
+                      TextStyle(color: AppColors.textSecondary, fontSize: 11),
                 ),
               ],
               const SizedBox(height: 22),
               const Text(
                 'Truy cập nhanh',
-                style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800),
+                style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 10),
               _QuickLink(
@@ -231,7 +254,12 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
           if (index == 1) context.go(RouteNames.adminAccounts);
           if (index == 2) context.go(RouteNames.adminPositions);
           if (index == 3) context.go(RouteNames.adminTraining);
-          if (index == 4) showAdminMoreMenu(context);
+          if (index == 4) {
+            showAdminMoreMenu(
+              context,
+              onSignOut: () => signOutAndReturnToLogin(context, ref),
+            );
+          }
         },
       ),
     );
@@ -276,13 +304,17 @@ class _MetricCard extends StatelessWidget {
           ),
           Text(
             metric.value,
-            style: const TextStyle(color: AppColors.textPrimary, fontSize: 21, fontWeight: FontWeight.w800),
+            style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 21,
+                fontWeight: FontWeight.w800),
           ),
           Text(
             metric.label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+            style:
+                const TextStyle(color: AppColors.textSecondary, fontSize: 11),
           ),
         ],
       ),
@@ -291,7 +323,8 @@ class _MetricCard extends StatelessWidget {
 }
 
 class _QuickLink extends StatelessWidget {
-  const _QuickLink({required this.label, required this.icon, required this.route});
+  const _QuickLink(
+      {required this.label, required this.icon, required this.route});
 
   final String label;
   final IconData icon;
@@ -310,8 +343,11 @@ class _QuickLink extends StatelessWidget {
         child: ListTile(
           onTap: () => context.go(route),
           leading: Icon(icon, color: AppColors.primary),
-          title: Text(label, style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
-          trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+          title: Text(label,
+              style: const TextStyle(
+                  color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+          trailing:
+              const Icon(Icons.chevron_right, color: AppColors.textSecondary),
         ),
       ),
     );

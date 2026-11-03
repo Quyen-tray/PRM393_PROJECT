@@ -6,6 +6,9 @@ abstract final class RouteNames {
   static const employeeTraining = '/employee/training';
   static const employeeNotifications = '/employee/notifications';
   static const employeeProfile = '/employee/profile';
+  static const employeeDocuments = '/employee/documents';
+  static const employeeViolations = '/employee/violations';
+  static const managerDocumentReview = '/manager/documents';
   static const employeeRewards = '/employee/rewards';
   static const login = '/login';
   static const register = '/register';
@@ -15,7 +18,8 @@ abstract final class RouteNames {
   static const managerEmployees = '/manager/employees';
   static const managerEmployeeDetail = '/manager/employees/:employeeCode';
   static const managerEmployeeEdit = '/manager/employees/:employeeCode/edit';
-  static const adminAccountEmployeeCreate = '/admin/accounts/:userId/employee/new';
+  static const adminAccountEmployeeCreate =
+      '/admin/accounts/:userId/employee/new';
   static const adminAccountPermissions = '/admin/accounts/:userId/permissions';
   static const managerSchedule = '/manager/schedule';
   static const managerApprovals = '/manager/approvals';

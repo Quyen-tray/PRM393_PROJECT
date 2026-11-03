@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hrm_coffee_shop_flutter/features/auth/presentation/sign_out_flow.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
@@ -16,7 +17,8 @@ class ManagerApprovalPage extends ConsumerStatefulWidget {
   const ManagerApprovalPage({super.key});
 
   @override
-  ConsumerState<ManagerApprovalPage> createState() => _ManagerApprovalPageState();
+  ConsumerState<ManagerApprovalPage> createState() =>
+      _ManagerApprovalPageState();
 }
 
 class _ManagerApprovalPageState extends ConsumerState<ManagerApprovalPage> {
@@ -38,7 +40,8 @@ class _ManagerApprovalPageState extends ConsumerState<ManagerApprovalPage> {
       _error = null;
     });
     try {
-      final buckets = await loadManagerReviewBuckets(ref.read(employeeRepositoryProvider));
+      final buckets =
+          await loadManagerReviewBuckets(ref.read(employeeRepositoryProvider));
       if (mounted) setState(() => _buckets = buckets);
     } catch (error) {
       if (mounted) setState(() => _error = _messageOf(error));
@@ -47,15 +50,20 @@ class _ManagerApprovalPageState extends ConsumerState<ManagerApprovalPage> {
     }
   }
 
-  Future<void> _approve(ManagerReviewItem item) =>
-      _run(() => approveManagerReviewItem(ref.read(employeeRepositoryProvider), item), 'Đã duyệt.');
+  Future<void> _approve(ManagerReviewItem item) => _run(
+      () =>
+          approveManagerReviewItem(ref.read(employeeRepositoryProvider), item),
+      'Đã duyệt.');
 
   Future<void> _reject(ManagerReviewItem item, String reason) => _run(
-        () => rejectManagerReviewItem(ref.read(employeeRepositoryProvider), item, reason: reason),
+        () => rejectManagerReviewItem(
+            ref.read(employeeRepositoryProvider), item,
+            reason: reason),
         'Đã từ chối.',
       );
 
-  Future<void> _run(Future<void> Function() action, String successMessage) async {
+  Future<void> _run(
+      Future<void> Function() action, String successMessage) async {
     setState(() => _acting = true);
     try {
       await action();
@@ -68,8 +76,9 @@ class _ManagerApprovalPageState extends ConsumerState<ManagerApprovalPage> {
     }
   }
 
-  String _messageOf(Object error) =>
-      error is ApiException ? error.message : 'Không tải được danh sách duyệt. Vui lòng thử lại.';
+  String _messageOf(Object error) => error is ApiException
+      ? error.message
+      : 'Không tải được danh sách duyệt. Vui lòng thử lại.';
 
   void _message(String text) {
     if (!mounted) return;
@@ -122,7 +131,9 @@ class _ManagerApprovalPageState extends ConsumerState<ManagerApprovalPage> {
         body: buckets == null
             ? (_loading
                 ? const Center(child: CircularProgressIndicator())
-                : _ErrorView(message: _error ?? 'Không tải được danh sách duyệt.', onRetry: _load))
+                : _ErrorView(
+                    message: _error ?? 'Không tải được danh sách duyệt.',
+                    onRetry: _load))
             : TabBarView(
                 children: [
                   ManagerReviewList(
@@ -184,7 +195,12 @@ class _ManagerApprovalPageState extends ConsumerState<ManagerApprovalPage> {
             if (index == 0) context.go(RouteNames.home);
             if (index == 1) context.go(RouteNames.managerEmployees);
             if (index == 2) context.go(RouteNames.managerSchedule);
-            if (index == 4) showManagerMoreMenu(context);
+            if (index == 4) {
+              showManagerMoreMenu(
+                context,
+                onSignOut: () => signOutAndReturnToLogin(context, ref),
+              );
+            }
           },
         ),
       ),

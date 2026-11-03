@@ -1,6 +1,8 @@
 package com.hrm.coffeeshop.shared.service;
 
 import com.hrm.coffeeshop.shared.dto.DocumentDto.DocumentView;
+import com.hrm.coffeeshop.shared.dto.DocumentDto.DocumentCatalogItem;
+import com.hrm.coffeeshop.shared.dto.DocumentDto.DocumentCatalogView;
 import com.hrm.coffeeshop.shared.dto.DocumentDto.ProfileStatusView;
 import com.hrm.coffeeshop.shared.dto.DocumentDto.RequirementStatus;
 import com.hrm.coffeeshop.shared.dto.DocumentDto.SubmitRequest;
@@ -121,6 +123,56 @@ public class DocumentService {
         return new ProfileStatusView(overall, reqs);
     }
 
+    /** Catalog hồ sơ của nhân viên; employeeId phải đến từ SecurityUtils tại controller self-service. */
+    @Transactional(readOnly = true)
+    public DocumentCatalogView catalog(Long employeeId) {
+        Employee e = employees.findById(employeeId)
+                .orElseThrow(() -> BusinessException.notFound("nhân viên"));
+        LocalDate today = TimeUtils.today(clock);
+        Set<Integer> requiredTypes = e.getPositionId() == null ? Set.of()
+                : requirements.findEffective(e.getPositionId(), today).stream()
+                .filter(r -> Boolean.TRUE.equals(r.getIsMandatory()))
+                .map(PositionDocumentRequirement::getDocumentTypeId)
+                .collect(java.util.stream.Collectors.toSet());
+
+        List<EmployeeDocument> history = docs.findByEmployeeIdOrderByUploadedAtDesc(employeeId);
+        Map<Integer, List<EmployeeDocument>> documentsByType = new HashMap<>();
+        history.forEach(d -> documentsByType.computeIfAbsent(d.getDocumentTypeId(), ignored -> new ArrayList<>()).add(d));
+
+        List<DocumentCatalogItem> items = types.findByIsActiveTrue().stream()
+                .sorted(Comparator.comparing(DocumentType::getDocumentName, String.CASE_INSENSITIVE_ORDER))
+                .map(type -> {
+                    List<EmployeeDocument> ownDocuments = documentsByType.getOrDefault(type.getDocumentTypeId(), List.of());
+                    EmployeeDocument latest = ownDocuments.stream().max(Comparator
+                            .comparing(EmployeeDocument::getUploadedAt, Comparator.nullsFirst(Comparator.naturalOrder()))
+                            .thenComparing(EmployeeDocument::getEmployeeDocumentId,
+                                    Comparator.nullsFirst(Comparator.naturalOrder())))
+                            .orElse(null);
+                    String blockReason = submissionBlockReason(ownDocuments, today);
+                    return new DocumentCatalogItem(type.getDocumentTypeId(), type.getDocumentCode(),
+                            type.getDocumentName(), type.getIsActive(), requiredTypes.contains(type.getDocumentTypeId()),
+                            latest == null ? null : latest.getReviewStatus(), blockReason == null, blockReason);
+                }).toList();
+        return new DocumentCatalogView(e.getPositionId(), today, items);
+    }
+
+    /** Eligibility shared by the catalog and submission; the database index is the concurrent-write guard. */
+    @Transactional(readOnly = true)
+    public boolean canSubmit(Long employeeId, Integer documentTypeId, LocalDate today) {
+        List<EmployeeDocument> matching = docs.findByEmployeeId(employeeId).stream()
+                .filter(d -> d.getDocumentTypeId().equals(documentTypeId)).toList();
+        return submissionBlockReason(matching, today) == null;
+    }
+
+    private String submissionBlockReason(List<EmployeeDocument> documents, LocalDate today) {
+        if (documents.stream().anyMatch(d -> "PENDING".equals(d.getReviewStatus())))
+            return "Đã có hồ sơ cùng loại đang chờ duyệt.";
+        if (documents.stream().anyMatch(d -> "APPROVED".equals(d.getReviewStatus())
+                && (d.getExpiresAt() == null || !d.getExpiresAt().isBefore(today))))
+            return "Hồ sơ cùng loại đã được duyệt và còn hiệu lực.";
+        return null;
+    }
+
     /** Đồng bộ cột cache Employee.ProfileStatus (không phải nguồn sự thật). */
     @Transactional
     public void syncProfileStatus(Employee e) {
@@ -142,8 +194,9 @@ public class DocumentService {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Tệp hồ sơ chưa được tải lên hoặc đã bị xóa");
         if (r.expiresAt() != null && r.expiresAt().isBefore(TimeUtils.today(clock)))
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Tài liệu đã hết hạn");
-        if (docs.existsByEmployeeIdAndDocumentTypeIdAndReviewStatus(employeeId, t.getDocumentTypeId(), "PENDING"))
-            throw new BusinessException(ErrorCode.CONFLICT, "Đã có hồ sơ cùng loại đang chờ duyệt");
+        String blockReason = submissionBlockReason(docs.findByEmployeeId(employeeId).stream()
+                .filter(d -> d.getDocumentTypeId().equals(t.getDocumentTypeId())).toList(), TimeUtils.today(clock));
+        if (blockReason != null) throw new BusinessException(ErrorCode.CONFLICT, blockReason);
         EmployeeDocument d = new EmployeeDocument();
         d.setEmployeeId(employeeId);
         d.setDocumentTypeId(t.getDocumentTypeId());
@@ -219,7 +272,8 @@ public class DocumentService {
 
     private EmployeeDocument reviewable(Long id) {
         AuthUser u = SecurityUtils.current();
-        if (!u.isStaffReviewer()) throw BusinessException.forbidden("Bạn không có quyền duyệt hồ sơ");
+        if (!u.hasPermission(Permissions.DOCUMENT_REVIEW))
+            throw BusinessException.forbidden("Bạn không có quyền duyệt hồ sơ");
         EmployeeDocument d = docs.findById(id).orElseThrow(() -> BusinessException.notFound("hồ sơ"));
         Employee e = employees.findById(d.getEmployeeId()).orElseThrow();
         if (e.getUserId().equals(u.userId())) throw BusinessException.forbidden("Không thể tự duyệt hồ sơ của chính mình");
@@ -244,7 +298,7 @@ public class DocumentService {
 
     private void assertCanAccess(Long employeeId) {
         AuthUser u = SecurityUtils.current();
-        if (employeeId.equals(u.employeeId()) || u.hasPermission(Permissions.EMPLOYEE_VIEW)) return;
+        if (employeeId.equals(u.employeeId()) || u.hasPermission(Permissions.DOCUMENT_REVIEW)) return;
         throw BusinessException.forbidden("Bạn không có quyền xem hồ sơ này");
     }
 

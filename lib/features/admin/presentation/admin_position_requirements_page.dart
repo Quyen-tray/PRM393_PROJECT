@@ -13,7 +13,8 @@ String _displayDate(DateTime d) =>
 
 DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
-int _intOf(Object? value) => value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+int _intOf(Object? value) =>
+    value is num ? value.toInt() : int.tryParse('$value') ?? 0;
 
 /// Một mục trong danh mục để chọn (loại hồ sơ hoặc khóa học).
 class _CatalogEntry {
@@ -35,25 +36,35 @@ class _ReqDraft {
   });
 
   factory _ReqDraft.fromDocument(Map<String, dynamic> row) {
-    final type = row['documentType'] is Map ? Map<String, dynamic>.from(row['documentType'] as Map) : <String, dynamic>{};
+    final type = row['documentType'] is Map
+        ? Map<String, dynamic>.from(row['documentType'] as Map)
+        : <String, dynamic>{};
     return _ReqDraft(
       id: _intOf(type['documentTypeId']),
       name: (type['documentName'] ?? 'Loại hồ sơ').toString(),
       isMandatory: row['isMandatory'] != false,
       blocksShift: false,
-      from: _dateOnly(DateTime.tryParse('${row['effectiveFrom']}') ?? DateTime.now()),
-      to: row['effectiveTo'] == null ? null : _dateOnly(DateTime.parse('${row['effectiveTo']}')),
+      from: _dateOnly(
+        DateTime.tryParse('${row['effectiveFrom']}') ?? DateTime.now(),
+      ),
+      to: row['effectiveTo'] == null
+          ? null
+          : _dateOnly(DateTime.parse('${row['effectiveTo']}')),
     );
   }
 
   factory _ReqDraft.fromTraining(Map<String, dynamic> row) => _ReqDraft(
-        id: _intOf(row['courseId']),
-        name: (row['courseName'] ?? 'Khóa học').toString(),
-        isMandatory: row['isMandatory'] != false,
-        blocksShift: row['blocksShiftAssignment'] == true,
-        from: _dateOnly(DateTime.tryParse('${row['effectiveFrom']}') ?? DateTime.now()),
-        to: row['effectiveTo'] == null ? null : _dateOnly(DateTime.parse('${row['effectiveTo']}')),
-      );
+    id: _intOf(row['courseId']),
+    name: (row['courseName'] ?? 'Khóa học').toString(),
+    isMandatory: row['isMandatory'] != false,
+    blocksShift: row['blocksShiftAssignment'] == true,
+    from: _dateOnly(
+      DateTime.tryParse('${row['effectiveFrom']}') ?? DateTime.now(),
+    ),
+    to: row['effectiveTo'] == null
+        ? null
+        : _dateOnly(DateTime.parse('${row['effectiveTo']}')),
+  );
 
   final int id;
   final String name;
@@ -63,19 +74,19 @@ class _ReqDraft {
   DateTime? to;
 
   Map<String, dynamic> toDocumentRequest() => {
-        'documentTypeId': id,
-        'isMandatory': isMandatory,
-        'effectiveFrom': _isoDate(from),
-        if (to != null) 'effectiveTo': _isoDate(to!),
-      };
+    'documentTypeId': id,
+    'isMandatory': isMandatory,
+    'effectiveFrom': _isoDate(from),
+    if (to != null) 'effectiveTo': _isoDate(to!),
+  };
 
   Map<String, dynamic> toTrainingRequest() => {
-        'courseId': id,
-        'isMandatory': isMandatory,
-        'blocksShiftAssignment': blocksShift,
-        'effectiveFrom': _isoDate(from),
-        if (to != null) 'effectiveTo': _isoDate(to!),
-      };
+    'courseId': id,
+    'isMandatory': isMandatory,
+    'blocksShiftAssignment': blocksShift,
+    'effectiveFrom': _isoDate(from),
+    if (to != null) 'effectiveTo': _isoDate(to!),
+  };
 }
 
 /// Màn cấu hình yêu cầu giấy tờ và khóa bắt buộc của một chức vụ.
@@ -86,10 +97,12 @@ class AdminPositionRequirementsPage extends ConsumerStatefulWidget {
   final Map<String, dynamic> position;
 
   @override
-  ConsumerState<AdminPositionRequirementsPage> createState() => _AdminPositionRequirementsPageState();
+  ConsumerState<AdminPositionRequirementsPage> createState() =>
+      _AdminPositionRequirementsPageState();
 }
 
-class _AdminPositionRequirementsPageState extends ConsumerState<AdminPositionRequirementsPage> {
+class _AdminPositionRequirementsPageState
+    extends ConsumerState<AdminPositionRequirementsPage> {
   List<_ReqDraft> _documents = [];
   List<_ReqDraft> _trainings = [];
   List<_CatalogEntry> _documentTypes = [];
@@ -124,27 +137,37 @@ class _AdminPositionRequirementsPageState extends ConsumerState<AdminPositionReq
       setState(() {
         _documentTypes = (results[0] as List<Map<String, dynamic>>)
             .where((row) => row['isActive'] != false)
-            .map((row) => _CatalogEntry(
-                  id: _intOf(row['documentTypeId']),
-                  name: (row['documentName'] ?? 'Loại hồ sơ').toString(),
-                ))
+            .map(
+              (row) => _CatalogEntry(
+                id: _intOf(row['documentTypeId']),
+                name: (row['documentName'] ?? 'Loại hồ sơ').toString(),
+              ),
+            )
             .toList();
-        _documents = (results[1] as List<Map<String, dynamic>>).map(_ReqDraft.fromDocument).toList();
+        _documents = (results[1] as List<Map<String, dynamic>>)
+            .map(_ReqDraft.fromDocument)
+            .toList();
         _courses = (results[2] as List<Map<String, dynamic>>)
             .where((row) => row['isActive'] != false)
-            .map((row) => _CatalogEntry(
-                  id: _intOf(row['courseId']),
-                  name: (row['courseName'] ?? 'Khóa học').toString(),
-                ))
+            .map(
+              (row) => _CatalogEntry(
+                id: _intOf(row['courseId']),
+                name: (row['courseName'] ?? 'Khóa học').toString(),
+              ),
+            )
             .toList();
-        _trainings = (results[3] as List<Map<String, dynamic>>).map(_ReqDraft.fromTraining).toList();
+        _trainings = (results[3] as List<Map<String, dynamic>>)
+            .map(_ReqDraft.fromTraining)
+            .toList();
         _version++;
       });
     } catch (error) {
       if (mounted) {
-        setState(() => _error = error is ApiException
-            ? error.message
-            : 'Không tải được yêu cầu của chức vụ.');
+        setState(
+          () => _error = error is ApiException
+              ? error.message
+              : 'Không tải được yêu cầu của chức vụ.',
+        );
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -152,19 +175,21 @@ class _AdminPositionRequirementsPageState extends ConsumerState<AdminPositionReq
   }
 
   Future<void> _saveDocuments(List<_ReqDraft> drafts) async {
-    await ref.read(employeeRepositoryProvider).replacePositionDocumentRequirements(
-          _positionId,
-          [for (final draft in drafts) draft.toDocumentRequest()],
-        );
+    await ref
+        .read(employeeRepositoryProvider)
+        .replacePositionDocumentRequirements(_positionId, [
+          for (final draft in drafts) draft.toDocumentRequest(),
+        ]);
     _showMessage('Đã lưu yêu cầu giấy tờ.');
     await _load();
   }
 
   Future<void> _saveTrainings(List<_ReqDraft> drafts) async {
-    await ref.read(employeeRepositoryProvider).replacePositionTrainingRequirements(
-          _positionId,
-          [for (final draft in drafts) draft.toTrainingRequest()],
-        );
+    await ref
+        .read(employeeRepositoryProvider)
+        .replacePositionTrainingRequirements(_positionId, [
+          for (final draft in drafts) draft.toTrainingRequest(),
+        ]);
     _showMessage('Đã lưu khóa bắt buộc của chức vụ.');
     await _load();
   }
@@ -192,46 +217,54 @@ class _AdminPositionRequirementsPageState extends ConsumerState<AdminPositionReq
               icon: const Icon(Icons.refresh),
             ),
           ],
-          bottom: const TabBar(tabs: [Tab(text: 'Giấy tờ'), Tab(text: 'Khóa bắt buộc')]),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Giấy tờ'),
+              Tab(text: 'Khóa bắt buộc'),
+            ],
+          ),
         ),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(_error!, textAlign: TextAlign.center),
-                          const SizedBox(height: 12),
-                          FilledButton(onPressed: _load, child: const Text('Thử lại')),
-                        ],
-                      ),
-                    ),
-                  )
-                : TabBarView(
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      _RequirementEditor(
-                        key: ValueKey('docs-$_version'),
-                        initial: _documents,
-                        catalog: _documentTypes,
-                        withBlocking: false,
-                        emptyMessage: 'Chức vụ chưa yêu cầu giấy tờ nào.',
-                        addLabel: 'Thêm loại hồ sơ',
-                        onSave: _saveDocuments,
-                      ),
-                      _RequirementEditor(
-                        key: ValueKey('trainings-$_version'),
-                        initial: _trainings,
-                        catalog: _courses,
-                        withBlocking: true,
-                        emptyMessage: 'Chức vụ chưa yêu cầu khóa bắt buộc nào.',
-                        addLabel: 'Thêm khóa bắt buộc',
-                        onSave: _saveTrainings,
+                      Text(_error!, textAlign: TextAlign.center),
+                      const SizedBox(height: 12),
+                      FilledButton(
+                        onPressed: _load,
+                        child: const Text('Thử lại'),
                       ),
                     ],
                   ),
+                ),
+              )
+            : TabBarView(
+                children: [
+                  _RequirementEditor(
+                    key: ValueKey('docs-$_version'),
+                    initial: _documents,
+                    catalog: _documentTypes,
+                    withBlocking: false,
+                    emptyMessage: 'Chức vụ chưa yêu cầu giấy tờ nào.',
+                    addLabel: 'Thêm loại hồ sơ',
+                    onSave: _saveDocuments,
+                  ),
+                  _RequirementEditor(
+                    key: ValueKey('trainings-$_version'),
+                    initial: _trainings,
+                    catalog: _courses,
+                    withBlocking: true,
+                    emptyMessage: 'Chức vụ chưa yêu cầu khóa bắt buộc nào.',
+                    addLabel: 'Thêm khóa bắt buộc',
+                    onSave: _saveTrainings,
+                  ),
+                ],
+              ),
       ),
     );
   }
@@ -261,7 +294,7 @@ class _RequirementEditor extends StatefulWidget {
 }
 
 class _RequirementEditorState extends State<_RequirementEditor> {
-  late List<_ReqDraft> _drafts = [...widget.initial];
+  late final List<_ReqDraft> _drafts = [...widget.initial];
   bool _saving = false;
 
   Future<void> _addOrEdit({int? index}) async {
@@ -292,9 +325,15 @@ class _RequirementEditorState extends State<_RequirementEditor> {
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(
-            content: Text(error is ApiException ? error.message : 'Không lưu được yêu cầu.'),
-          ));
+          ..showSnackBar(
+            SnackBar(
+              content: Text(
+                error is ApiException
+                    ? error.message
+                    : 'Không lưu được yêu cầu.',
+              ),
+            ),
+          );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -307,7 +346,12 @@ class _RequirementEditorState extends State<_RequirementEditor> {
       children: [
         Expanded(
           child: _drafts.isEmpty
-              ? Center(child: Text(widget.emptyMessage, style: const TextStyle(color: AppColors.textSecondary)))
+              ? Center(
+                  child: Text(
+                    widget.emptyMessage,
+                    style: const TextStyle(color: AppColors.textSecondary),
+                  ),
+                )
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                   itemCount: _drafts.length,
@@ -316,7 +360,9 @@ class _RequirementEditorState extends State<_RequirementEditor> {
                     draft: _drafts[index],
                     withBlocking: widget.withBlocking,
                     onEdit: _saving ? null : () => _addOrEdit(index: index),
-                    onDelete: _saving ? null : () => setState(() => _drafts.removeAt(index)),
+                    onDelete: _saving
+                        ? null
+                        : () => setState(() => _drafts.removeAt(index)),
                   ),
                 ),
         ),
@@ -340,7 +386,10 @@ class _RequirementEditorState extends State<_RequirementEditor> {
                     child: _saving
                         ? const SizedBox.square(
                             dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Text('Lưu'),
                   ),
@@ -389,23 +438,38 @@ class _DraftCard extends StatelessWidget {
                 children: [
                   Text(
                     draft.name,
-                    style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700),
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     flags.join(' · '),
                     style: TextStyle(
-                      color: draft.isMandatory ? AppColors.primary : AppColors.textSecondary,
+                      color: draft.isMandatory
+                          ? AppColors.primary
+                          : AppColors.textSecondary,
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(window, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                  Text(
+                    window,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                    ),
+                  ),
                 ],
               ),
             ),
-            IconButton(tooltip: 'Sửa', onPressed: onEdit, icon: const Icon(Icons.edit_outlined)),
+            IconButton(
+              tooltip: 'Sửa',
+              onPressed: onEdit,
+              icon: const Icon(Icons.edit_outlined),
+            ),
             IconButton(
               tooltip: 'Xóa',
               onPressed: onDelete,
@@ -446,7 +510,10 @@ class _DraftDialogState extends State<_DraftDialog> {
 
   List<_CatalogEntry> get _options {
     if (widget.existing != null) return widget.catalog;
-    return [for (final entry in widget.catalog) if (!widget.usedIds.contains(entry.id)) entry];
+    return [
+      for (final entry in widget.catalog)
+        if (!widget.usedIds.contains(entry.id)) entry,
+    ];
   }
 
   Future<void> _pickFrom() async {
@@ -476,14 +543,21 @@ class _DraftDialogState extends State<_DraftDialog> {
       return;
     }
     if (_to != null && _to!.isBefore(_from)) {
-      setState(() => _error = 'Ngày hết hiệu lực phải sau hoặc bằng ngày có hiệu lực.');
+      setState(
+        () => _error = 'Ngày hết hiệu lực phải sau hoặc bằng ngày có hiệu lực.',
+      );
       return;
     }
-    final name = _options.firstWhere(
-      (entry) => entry.id == id,
-      orElse: () => widget.catalog.firstWhere((entry) => entry.id == id,
-          orElse: () => _CatalogEntry(id: id, name: widget.existing?.name ?? 'Mục')),
-    ).name;
+    final name = _options
+        .firstWhere(
+          (entry) => entry.id == id,
+          orElse: () => widget.catalog.firstWhere(
+            (entry) => entry.id == id,
+            orElse: () =>
+                _CatalogEntry(id: id, name: widget.existing?.name ?? 'Mục'),
+          ),
+        )
+        .name;
     Navigator.pop(
       context,
       _ReqDraft(
@@ -510,13 +584,19 @@ class _DraftDialogState extends State<_DraftDialog> {
           if (editing)
             Text(
               widget.existing!.name,
-              style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700),
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w700,
+              ),
             )
           else
             DropdownButtonFormField<int>(
               initialValue: _id,
               isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Chọn mục', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Chọn mục',
+                border: OutlineInputBorder(),
+              ),
               items: [
                 for (final entry in _options)
                   DropdownMenuItem(value: entry.id, child: Text(entry.name)),
@@ -549,7 +629,11 @@ class _DraftDialogState extends State<_DraftDialog> {
             onPressed: _pickTo,
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text(_to == null ? 'Hết hiệu lực: không thời hạn' : 'Hết hiệu lực: ${_displayDate(_to!)}'),
+              child: Text(
+                _to == null
+                    ? 'Hết hiệu lực: không thời hạn'
+                    : 'Hết hiệu lực: ${_displayDate(_to!)}',
+              ),
             ),
           ),
           if (_to != null)
@@ -560,12 +644,18 @@ class _DraftDialogState extends State<_DraftDialog> {
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Text(_error!, style: const TextStyle(color: AppColors.error, fontSize: 12)),
+              child: Text(
+                _error!,
+                style: const TextStyle(color: AppColors.error, fontSize: 12),
+              ),
             ),
         ],
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Hủy'),
+        ),
         FilledButton(onPressed: _submit, child: const Text('Lưu')),
       ],
     );

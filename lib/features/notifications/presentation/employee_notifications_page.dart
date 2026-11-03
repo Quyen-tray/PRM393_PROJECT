@@ -6,43 +6,109 @@ import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/widgets/employee_bottom_navigation.dart';
-import '../../../data/repositories/employee_providers.dart';
+import '../data/notification_providers.dart';
 
 class EmployeeNotificationsPage extends ConsumerStatefulWidget {
   const EmployeeNotificationsPage({super.key});
   @override
-  ConsumerState<EmployeeNotificationsPage> createState() => _EmployeeNotificationsPageState();
+  ConsumerState<EmployeeNotificationsPage> createState() =>
+      _EmployeeNotificationsPageState();
 }
 
-class _EmployeeNotificationsPageState extends ConsumerState<EmployeeNotificationsPage> {
+class _EmployeeNotificationsPageState
+    extends ConsumerState<EmployeeNotificationsPage> {
   bool _loading = true;
+  bool _loadingMore = false;
   bool _markingAll = false;
+  bool _hasMore = false;
+  int _page = 0;
   String? _error;
   int _unreadCount = 0;
   int _filter = 0;
   List<Map<String, dynamic>> _items = [];
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+  }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+      _page = 0;
+      _hasMore = false;
+    });
     try {
-      final repo = ref.read(employeeRepositoryProvider);
-      final results = await Future.wait([repo.getMyNotifications(), repo.getUnreadNotificationCount()]);
+      final repo = ref.read(notificationRepositoryProvider);
+      final results = await Future.wait<Object>([
+        repo.getMyNotifications(page: 0),
+        repo.getUnreadCount(),
+      ]);
       if (!mounted) return;
-      setState(() { _items = results[0] as List<Map<String, dynamic>>; _unreadCount = results[1] as int; _loading = false; });
+      final items = results[0] as List<Map<String, dynamic>>;
+      setState(() {
+        _items = items;
+        _unreadCount = results[1] as int;
+        _hasMore = items.length == 50;
+        _loading = false;
+      });
     } catch (e) {
       if (!mounted) return;
-      setState(() { _error = e.toString(); _loading = false; });
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final nextPage = _page + 1;
+      final pageItems = await ref
+          .read(notificationRepositoryProvider)
+          .getMyNotifications(page: nextPage);
+      if (!mounted) return;
+      final knownIds = _items
+          .map((item) => (item['notificationId'] as num?)?.toInt())
+          .whereType<int>()
+          .toSet();
+      setState(() {
+        _items.addAll(
+          pageItems.where((item) {
+            final id = (item['notificationId'] as num?)?.toInt();
+            return id == null || !knownIds.contains(id);
+          }),
+        );
+        _page = nextPage;
+        _hasMore = pageItems.length == 50;
+      });
+    } catch (error) {
+      if (mounted) _message(error.toString());
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
     }
   }
 
   List<Map<String, dynamic>> get _visibleItems => _items.where((n) {
-    if (_filter == 0) return true;
+    if (_filter == 0) {
+      return true;
+    }
     final type = '${n['notificationType'] ?? ''}'.toUpperCase();
-    if (_filter == 1) return type.contains('REMIND') || type.contains('DUE') || type.contains('EXPIR');
-    if (_filter == 2) return type.contains('APPROV') || type.contains('REJECT') || type.contains('REQUEST');
+    if (_filter == 1) {
+      return type.contains('REMIND') ||
+          type.contains('DUE') ||
+          type.contains('EXPIR');
+    }
+    if (_filter == 2) {
+      return type.contains('APPROV') ||
+          type.contains('REJECT') ||
+          type.contains('REQUEST') ||
+          type.contains('REVIEW');
+    }
     return type.contains('SYSTEM') || type.contains('ANNOUNCE');
   }).toList();
 
@@ -51,26 +117,40 @@ class _EmployeeNotificationsPageState extends ConsumerState<EmployeeNotification
     final id = (item['notificationId'] as num?)?.toInt();
     if (id == null) return;
     try {
-      await ref.read(employeeRepositoryProvider).markNotificationRead(id);
+      await ref.read(notificationRepositoryProvider).markRead(id);
       if (!mounted) return;
-      setState(() { item['readAt'] = DateTime.now().toIso8601String(); if (_unreadCount > 0) _unreadCount--; });
-    } catch (e) { _message(e.toString()); }
+      setState(() {
+        item['readAt'] = DateTime.now().toIso8601String();
+        if (_unreadCount > 0) _unreadCount--;
+      });
+    } catch (e) {
+      _message(e.toString());
+    }
   }
 
   Future<void> _markAllRead() async {
     if (_unreadCount == 0 || _markingAll) return;
     setState(() => _markingAll = true);
     try {
-      await ref.read(employeeRepositoryProvider).markAllNotificationsRead();
+      await ref.read(notificationRepositoryProvider).markAllRead();
       if (!mounted) return;
-      setState(() { for (final item in _items) { item['readAt'] ??= DateTime.now().toIso8601String(); } _unreadCount = 0; });
+      setState(() {
+        for (final item in _items) {
+          item['readAt'] ??= DateTime.now().toIso8601String();
+        }
+        _unreadCount = 0;
+      });
       _message('Đã đánh dấu tất cả thông báo đã đọc.');
-    } catch (e) { _message(e.toString()); }
-    finally { if (mounted) setState(() => _markingAll = false); }
+    } catch (e) {
+      _message(e.toString());
+    } finally {
+      if (mounted) setState(() => _markingAll = false);
+    }
   }
 
   void _message(String text) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()..showSnackBar(SnackBar(content: Text(text)));
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(text)));
 
   @override
   Widget build(BuildContext context) {
@@ -79,40 +159,278 @@ class _EmployeeNotificationsPageState extends ConsumerState<EmployeeNotification
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Thông báo'),
-        leading: IconButton(onPressed: () => context.go(RouteNames.employeeHome), icon: const Icon(Icons.arrow_back)),
-        actions: [IconButton(tooltip: 'Đánh dấu tất cả đã đọc', onPressed: _unreadCount == 0 || _markingAll ? null : _markAllRead, icon: _markingAll ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.done_all))],
-      ),
-      body: SafeArea(child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 680), child: Column(children: [
-        Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 10), child: Row(children: [
-          const Expanded(child: Text('Cập nhật dành cho bạn', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
-          if (_unreadCount > 0) Chip(label: Text('$_unreadCount chưa đọc')),
-        ])),
-        SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 16), child: Row(children: [
-          _filterChip('Tất cả', 0), _filterChip('Nhắc nhở', 1), _filterChip('Duyệt', 2), _filterChip('Hệ thống', 3),
-        ])),
-        const SizedBox(height: 8),
-        Expanded(child: _loading ? const Center(child: CircularProgressIndicator())
-          : _error != null ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [Text(_error!, textAlign: TextAlign.center), const SizedBox(height: 12), OutlinedButton(onPressed: _load, child: const Text('Thử lại'))])))
-          : RefreshIndicator(onRefresh: _load, child: visible.isEmpty
-            ? ListView(children: const [SizedBox(height: 150), Center(child: Text('Bạn chưa có thông báo nào.'))])
-            : ListView.separated(padding: const EdgeInsets.fromLTRB(16, 4, 16, 20), itemCount: visible.length, separatorBuilder: (_, __) => const SizedBox(height: 8), itemBuilder: (context, index) {
-                final item = visible[index];
-                final unread = item['readAt'] == null;
-                return Card(color: unread ? AppColors.surface : null, child: InkWell(borderRadius: BorderRadius.circular(12), onTap: () => _markRead(item), child: Padding(padding: const EdgeInsets.all(14), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  CircleAvatar(backgroundColor: unread ? AppColors.primary.withOpacity(.12) : Colors.black12, child: Icon(_iconFor('${item['notificationType'] ?? ''}'), color: unread ? AppColors.primary : AppColors.textSecondary)),
-                  const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [Expanded(child: Text('${item['title'] ?? 'Thông báo'}', style: TextStyle(fontWeight: unread ? FontWeight.w800 : FontWeight.w600))), if (unread) Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle))]),
-                    const SizedBox(height: 5), Text('${item['message'] ?? ''}'),
-                    if (item['createdAt'] != null) Padding(padding: const EdgeInsets.only(top: 7), child: Text(formatDate(item['createdAt']), style: Theme.of(context).textTheme.bodySmall)),
-                  ])),
-                ]))));
-              })),
+        leading: IconButton(
+          onPressed: () => context.go(RouteNames.employeeHome),
+          icon: const Icon(Icons.arrow_back),
         ),
-      ])))),
+        actions: [
+          IconButton(
+            tooltip: 'Đánh dấu tất cả đã đọc',
+            onPressed: _unreadCount == 0 || _markingAll ? null : _markAllRead,
+            icon: _markingAll
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.done_all),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 680),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Cập nhật dành cho bạn',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      if (_unreadCount > 0)
+                        Chip(label: Text('$_unreadCount chưa đọc')),
+                    ],
+                  ),
+                ),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      _filterChip('Tất cả', 0),
+                      _filterChip('Nhắc nhở', 1),
+                      _filterChip('Duyệt', 2),
+                      _filterChip('Hệ thống', 3),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _error != null
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(_error!, textAlign: TextAlign.center),
+                                const SizedBox(height: 12),
+                                OutlinedButton(
+                                  onPressed: _load,
+                                  child: const Text('Thử lại'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _load,
+                          child: visible.isEmpty
+                              ? ListView(
+                                  children: [
+                                    const SizedBox(height: 150),
+                                    Center(
+                                      child: Text(
+                                        _items.isEmpty
+                                            ? 'Bạn chưa có thông báo nào.'
+                                            : 'Không có thông báo trong mục này.',
+                                      ),
+                                    ),
+                                    if (_hasMore)
+                                      Center(
+                                        child: TextButton.icon(
+                                          onPressed: _loadingMore
+                                              ? null
+                                              : _loadMore,
+                                          icon: _loadingMore
+                                              ? const SizedBox(
+                                                  width: 16,
+                                                  height: 16,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                      ),
+                                                )
+                                              : const Icon(Icons.expand_more),
+                                          label: Text(
+                                            _loadingMore
+                                                ? 'Đang tải...'
+                                                : 'Tải thêm thông báo',
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                )
+                              : ListView.separated(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    4,
+                                    16,
+                                    20,
+                                  ),
+                                  itemCount:
+                                      visible.length + (_hasMore ? 1 : 0),
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(height: 8),
+                                  itemBuilder: (context, index) {
+                                    if (index >= visible.length) {
+                                      return Center(
+                                        child: TextButton.icon(
+                                          onPressed: _loadingMore
+                                              ? null
+                                              : _loadMore,
+                                          icon: _loadingMore
+                                              ? const SizedBox(
+                                                  width: 16,
+                                                  height: 16,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                      ),
+                                                )
+                                              : const Icon(Icons.expand_more),
+                                          label: Text(
+                                            _loadingMore
+                                                ? 'Đang tải...'
+                                                : 'Tải thêm thông báo',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                    final item = visible[index];
+                                    final unread = item['readAt'] == null;
+                                    return Card(
+                                      color: unread ? AppColors.surface : null,
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(12),
+                                        onTap: () => _markRead(item),
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(14),
+                                          child: Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              CircleAvatar(
+                                                backgroundColor: unread
+                                                    ? AppColors.primary
+                                                          .withValues(
+                                                            alpha: .12,
+                                                          )
+                                                    : Colors.black12,
+                                                child: Icon(
+                                                  _iconFor(
+                                                    '${item['notificationType'] ?? ''}',
+                                                  ),
+                                                  color: unread
+                                                      ? AppColors.primary
+                                                      : AppColors.textSecondary,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Row(
+                                                      children: [
+                                                        Expanded(
+                                                          child: Text(
+                                                            '${item['title'] ?? 'Thông báo'}',
+                                                            style: TextStyle(
+                                                              fontWeight: unread
+                                                                  ? FontWeight
+                                                                        .w800
+                                                                  : FontWeight
+                                                                        .w600,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        if (unread)
+                                                          Container(
+                                                            width: 8,
+                                                            height: 8,
+                                                            decoration:
+                                                                const BoxDecoration(
+                                                                  color: AppColors
+                                                                      .primary,
+                                                                  shape: BoxShape
+                                                                      .circle,
+                                                                ),
+                                                          ),
+                                                      ],
+                                                    ),
+                                                    const SizedBox(height: 5),
+                                                    Text(
+                                                      '${item['message'] ?? ''}',
+                                                    ),
+                                                    if (item['createdAt'] !=
+                                                        null)
+                                                      Padding(
+                                                        padding:
+                                                            const EdgeInsets.only(
+                                                              top: 7,
+                                                            ),
+                                                        child: Text(
+                                                          formatDate(
+                                                            item['createdAt'],
+                                                          ),
+                                                          style: Theme.of(
+                                                            context,
+                                                          ).textTheme.bodySmall,
+                                                        ),
+                                                      ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
       bottomNavigationBar: const EmployeeBottomNavigation(selectedIndex: 0),
     );
   }
 
-  Widget _filterChip(String label, int value) => Padding(padding: const EdgeInsets.only(right: 8), child: ChoiceChip(label: Text(label), selected: _filter == value, onSelected: (_) => setState(() => _filter = value)));
-  IconData _iconFor(String type) { final t = type.toUpperCase(); if (t.contains('APPROV') || t.contains('REJECT')) return Icons.fact_check_outlined; if (t.contains('REMIND') || t.contains('DUE')) return Icons.alarm_outlined; if (t.contains('SYSTEM')) return Icons.settings_outlined; return Icons.notifications_outlined; }
+  Widget _filterChip(String label, int value) => Padding(
+    padding: const EdgeInsets.only(right: 8),
+    child: ChoiceChip(
+      label: Text(label),
+      selected: _filter == value,
+      onSelected: (_) => setState(() => _filter = value),
+    ),
+  );
+  IconData _iconFor(String type) {
+    final t = type.toUpperCase();
+    if (t.contains('APPROV') || t.contains('REJECT') || t.contains('REVIEW')) {
+      return Icons.fact_check_outlined;
+    }
+    if (t.contains('REMIND') || t.contains('DUE')) {
+      return Icons.alarm_outlined;
+    }
+    if (t.contains('SYSTEM')) {
+      return Icons.settings_outlined;
+    }
+    return Icons.notifications_outlined;
+  }
 }

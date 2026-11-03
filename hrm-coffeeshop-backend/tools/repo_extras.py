@@ -278,6 +278,10 @@ EXTRAS = {
     Optional<RuleCatalog> findByRuleCode(String ruleCode);
 ''',
 "ViolationEvent": '''
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select v from ViolationEvent v where v.violationEventId = :id")
+    Optional<ViolationEvent> findByIdForUpdate(@Param("id") Long id);
+
     boolean existsByEmployeeIdAndRuleIdAndAttendanceId(Long employeeId, Integer ruleId, Long attendanceId);
     boolean existsByEmployeeIdAndRuleIdAndChecklistTaskId(Long employeeId, Integer ruleId, Long checklistTaskId);
     long countByRecordStatus(String status);
@@ -285,6 +289,9 @@ EXTRAS = {
     @Query("select d from ViolationEvent d where (:status = '' or d.recordStatus = :status) "
          + "and (:employeeId = 0L or d.employeeId = :employeeId)")
     Page<ViolationEvent> search(@Param("status") String status, @Param("employeeId") Long employeeId, Pageable p);
+''',
+"ViolationExplanation": '''
+    List<ViolationExplanation> findByViolationEventIdOrderBySubmittedAtAscViolationExplanationIdAsc(Long violationEventId);
 ''',
 "EmployeeRewardPenalty": '''
     long countByDecisionStatus(String status);

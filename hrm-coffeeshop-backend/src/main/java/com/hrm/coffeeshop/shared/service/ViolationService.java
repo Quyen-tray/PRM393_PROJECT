@@ -124,7 +124,7 @@ public class ViolationService {
     }
 
     private ViolationView decide(Long id, String status, String note) {
-        ViolationEvent d = records.findById(id).orElseThrow(() -> BusinessException.notFound("vi phạm"));
+        ViolationEvent d = records.findByIdForUpdate(id).orElseThrow(() -> BusinessException.notFound("vi phạm"));
         RuleCatalog rule = rules.findById(d.getRuleId()).orElseThrow();
         AuthUser u = SecurityUtils.current();
         RewardPenaltyService.requireAuthority(u, rule.getSeverity(), null, 0);

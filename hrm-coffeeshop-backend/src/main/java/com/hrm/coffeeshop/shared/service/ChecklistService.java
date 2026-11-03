@@ -13,6 +13,7 @@ import com.hrm.coffeeshop.shared.dto.ChecklistDto.TemplateView;
 import com.hrm.coffeeshop.common.*;
 import com.hrm.coffeeshop.domain.*;
 import com.hrm.coffeeshop.repository.*;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -248,7 +249,9 @@ public class ChecklistService {
     @Transactional(readOnly = true)
     public List<RunView> myTasks(String status) {
         Long empId = SecurityUtils.requireEmployeeId();
-        List<ChecklistTask> list = status == null || status.isBlank() ? runs.findMine(empId, OPEN_STATES) : runs.findByEmployeeIdAndRunStatus(empId, status);
+        List<ChecklistTask> list = status == null || status.isBlank()
+                ? runs.findByEmployeeIdOrderByDueAtDesc(empId)
+                : runs.findByEmployeeIdAndRunStatus(empId, status);
         return list.stream().map(r -> runView(r, false)).toList();
     }
 
@@ -261,7 +264,28 @@ public class ChecklistService {
 
     @Transactional(readOnly = true)
     public PageResponse<RunView> list(String status, Pageable p) {
-        return PageResponse.of(runs.searchByStatus(status == null ? "" : status, p), r -> runView(r, false));
+        Page<ChecklistTask> page = runs.searchByStatus(status == null ? "" : status, p);
+        List<ChecklistTask> pageRuns = page.getContent();
+        if (pageRuns.isEmpty()) return PageResponse.of(page, r -> runView(r, false));
+
+        Set<Long> employeeIds = new HashSet<>();
+        Set<Long> taskIds = new HashSet<>();
+        for (ChecklistTask run : pageRuns) {
+            employeeIds.add(run.getEmployeeId());
+            taskIds.add(run.getChecklistTaskId());
+        }
+        Map<Long, String> employeeNames = people.namesOf(employeeIds);
+        Map<Long, String> reviewNotes = new HashMap<>();
+        for (ChecklistReview review : reviews.findByChecklistTaskIdInOrderByReviewedAtDesc(taskIds)) {
+            if (!reviewNotes.containsKey(review.getChecklistTaskId())) {
+                reviewNotes.put(review.getChecklistTaskId(), review.getReason());
+            }
+        }
+        return PageResponse.of(page, run -> runView(
+                run,
+                false,
+                employeeNames.get(run.getEmployeeId()),
+                reviewNotes.get(run.getChecklistTaskId())));
     }
 
     @Transactional
@@ -433,6 +457,18 @@ public class ChecklistService {
     }
 
     RunView runView(ChecklistTask run, boolean withItems) {
+        return runView(
+                run,
+                withItems,
+                withItems ? people.nameOf(run.getEmployeeId()) : null,
+                withItems ? latestReviewReason(run) : null);
+    }
+
+    private RunView runView(
+            ChecklistTask run,
+            boolean withItems,
+            String employeeName,
+            String reviewNote) {
         ChecklistTemplate t = templates.findById(run.getChecklistTemplateId()).orElseThrow();
         List<RunItemView> iv = List.of();
         if (withItems) {
@@ -449,8 +485,10 @@ public class ChecklistService {
             }).toList();
         }
         return new RunView(run.getChecklistTaskId(), t.getChecklistTemplateId(), t.getChecklistName(), t.getChecklistType(), run.getShiftAssignmentId(),
-                run.getEmployeeId(), people.nameOf(run.getEmployeeId()), TimeUtils.vn(run.getDueAt()), TimeUtils.vn(run.getStartedAt()),
-                TimeUtils.vn(run.getSubmittedAt()), run.getRunStatus(), run.getManagerStatus(), latestReviewReason(run), iv);
+                run.getEmployeeId(), employeeName,
+                TimeUtils.vn(run.getDueAt()), TimeUtils.vn(run.getStartedAt()),
+                TimeUtils.vn(run.getSubmittedAt()), run.getRunStatus(), run.getManagerStatus(),
+                reviewNote, iv);
     }
 
     /** Cần Manager duyệt nếu mẫu bật cờ, hoặc có mục nào của mẫu đặt RequiresManagerApproval (SRS 7.4). */

@@ -1,6 +1,7 @@
 package com.hrm.coffeeshop.employee.controller;
 
 import com.hrm.coffeeshop.shared.dto.DocumentDto.DocumentView;
+import com.hrm.coffeeshop.shared.dto.DocumentDto.DocumentCatalogView;
 import com.hrm.coffeeshop.shared.dto.DocumentDto.SubmitRequest;
 import com.hrm.coffeeshop.shared.service.DocumentService;
 
@@ -17,6 +18,11 @@ public class EmployeeDocumentController {
 
     public EmployeeDocumentController(DocumentService svc) {
         this.svc = svc;
+    }
+
+    @GetMapping("/employees/me/documents/catalog")
+    public ApiResponse<DocumentCatalogView> catalogMine() {
+        return ApiResponse.ok(svc.catalog(SecurityUtils.requireEmployeeId()));
     }
 
     @PostMapping("/employees/me/documents")

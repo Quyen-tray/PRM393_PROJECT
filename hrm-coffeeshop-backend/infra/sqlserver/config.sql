@@ -311,6 +311,16 @@ CREATE TABLE dbo.EmployeeDocument (
 );
 GO
 
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE object_id = OBJECT_ID('dbo.EmployeeDocument')
+      AND name = 'UX_EmployeeDocument_OnePendingPerType'
+)
+    CREATE UNIQUE INDEX UX_EmployeeDocument_OnePendingPerType
+        ON dbo.EmployeeDocument (EmployeeId, DocumentTypeId)
+        WHERE ReviewStatus = 'PENDING';
+GO
+
 IF OBJECT_ID('tempdb..#HrmInstallGuard') IS NULL
     THROW 51001, N'Cài đặt đã bị dừng: không tạo mới được database. Không tiếp tục chạy các batch schema.', 1;
 
@@ -970,6 +980,41 @@ CREATE TABLE dbo.ViolationEvent (
     CONSTRAINT CK_Violation_Status CHECK (RecordStatus IN ('PENDING','APPROVED','REJECTED','CANCELLED','APPLIED')),
     CONSTRAINT CK_Violation_Source CHECK (SourceType IN ('ATTENDANCE','CHECKLIST','MANUAL'))
 );
+
+GO
+
+IF OBJECT_ID('tempdb..#HrmInstallGuard') IS NULL
+    THROW 51001, N'Cài đặt đã bị dừng: không tạo mới được database. Không tiếp tục chạy các batch schema.', 1;
+
+-- 28a. Employee explanations are immutable and stay separate from manager review notes.
+IF OBJECT_ID('dbo.ViolationExplanation', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.ViolationExplanation (
+        ViolationExplanationId BIGINT IDENTITY(1,1) PRIMARY KEY,
+        ViolationEventId BIGINT NOT NULL,
+        EmployeeId BIGINT NOT NULL,
+        Explanation NVARCHAR(2000) NOT NULL,
+        SubmittedAt DATETIME2 NOT NULL,
+        EvidenceStorageKey NVARCHAR(900) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+
+        CONSTRAINT FK_ViolationExplanation_Violation FOREIGN KEY (ViolationEventId)
+            REFERENCES dbo.ViolationEvent(ViolationEventId),
+        CONSTRAINT FK_ViolationExplanation_Employee FOREIGN KEY (EmployeeId)
+            REFERENCES dbo.Employee(EmployeeId),
+        CONSTRAINT CK_ViolationExplanation_Text CHECK (LEN(LTRIM(RTRIM(Explanation))) > 0)
+    );
+END
+
+GO
+
+IF OBJECT_ID('tempdb..#HrmInstallGuard') IS NULL
+    THROW 51001, N'Cài đặt đã bị dừng: không tạo mới được database. Không tiếp tục chạy các batch schema.', 1;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.ViolationExplanation')
+               AND name = 'IX_ViolationExplanation_Violation_Submitted')
+    CREATE INDEX IX_ViolationExplanation_Violation_Submitted
+        ON dbo.ViolationExplanation(ViolationEventId, SubmittedAt, ViolationExplanationId);
 
 GO
 

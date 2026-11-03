@@ -5,5 +5,7 @@ abstract interface class AuthRepository {
 
   Future<User> getCurrentUser();
 
+  Future<User> updateCurrentUser({String? displayName, String? phoneNumber});
+
   Future<void> signOut();
 }

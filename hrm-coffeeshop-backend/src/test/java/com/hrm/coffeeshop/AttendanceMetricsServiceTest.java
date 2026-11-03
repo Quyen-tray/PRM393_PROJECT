@@ -2,6 +2,8 @@ package com.hrm.coffeeshop;
 
 import com.hrm.coffeeshop.shared.service.AttendanceMetricsService;
 import com.hrm.coffeeshop.shared.service.AttendanceMetricsService.Late;
+import com.hrm.coffeeshop.shared.service.StoreService;
+import com.hrm.coffeeshop.domain.Store;
 
 import com.hrm.coffeeshop.repository.AttendanceRepository;
 import com.hrm.coffeeshop.repository.OvertimeRequestRepository;
@@ -23,13 +25,17 @@ import static org.mockito.Mockito.when;
 class AttendanceMetricsServiceTest {
     private final Instant start = Instant.parse("2026-10-14T00:00:00Z");   // 07:00 giờ Việt Nam
     private AttendanceRepository attendance;
+    private StoreService stores;
     private AttendanceMetricsService svc;
 
     @BeforeEach
     void setUp() {
         attendance = mock(AttendanceRepository.class);
-        when(settings.getInt(anyString(), anyInt())).thenReturn(3);          // tối đa 3 lần ân hạn/tháng
-        svc = new AttendanceMetricsService(attendance, mock(OvertimeRequestRepository.class), mock(StoreService.class));
+        stores = mock(StoreService.class);
+        Store store = new Store();
+        store.setMonthlyGraceLimit(3);
+        when(stores.current()).thenReturn(store);
+        svc = new AttendanceMetricsService(attendance, mock(OvertimeRequestRepository.class), stores);
     }
 
     private void graceUsed(long n) {

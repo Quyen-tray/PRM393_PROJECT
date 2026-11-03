@@ -11,11 +11,11 @@ BASE = f"{ROOT}/src/main/java/com/hrm/coffeeshop"
 def read(p):
     return open(p, encoding="utf-8-sig").read().replace("\r\n", "\n")
 
-# Nguồn sự thật duy nhất: config.sql (DDL schema).
-if os.path.exists(f"{ROOT}/config.sql"):
-    sql = read(f"{ROOT}/config.sql")
-else:
-    raise FileNotFoundError("Không tìm thấy config.sql — đây là nguồn DDL duy nhất.")
+# Nguồn sự thật duy nhất: infra/sqlserver/config.sql (DDL schema).
+CONFIG = f"{ROOT}/infra/sqlserver/config.sql"
+if not os.path.exists(CONFIG):
+    raise FileNotFoundError(f"Không tìm thấy {CONFIG} — đây là nguồn DDL duy nhất.")
+sql = read(CONFIG)
 sql = re.sub(r"--[^\n]*", "", sql)
 
 def body_of(text, start):

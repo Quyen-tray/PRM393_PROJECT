@@ -19,8 +19,9 @@ pluginManagement {
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-    id("com.android.application") version "8.11.1" apply false
-    id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+    id("com.android.application") version "9.1.1" apply false
+    // AGP 9 bundles Kotlin 2.2.10, below Flutter 3.47's minimum; declare a newer KGP without applying it.
+    id("org.jetbrains.kotlin.android") version "2.4.10" apply false
 }
 
 include(":app")

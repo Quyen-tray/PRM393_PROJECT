@@ -14,6 +14,7 @@ public interface ChecklistTaskRepository extends JpaRepository<ChecklistTask, Lo
 
     boolean existsByChecklistTemplateId(Integer templateId);
     boolean existsByChecklistTemplateIdAndShiftAssignmentId(Integer templateId, Long shiftAssignmentId);
+    List<ChecklistTask> findByEmployeeIdOrderByDueAtDesc(Long employeeId);
     List<ChecklistTask> findByEmployeeIdAndRunStatus(Long employeeId, String status);
     long countByRunStatus(String status);
     List<ChecklistTask> findByDueAtBetween(Instant from, Instant to);

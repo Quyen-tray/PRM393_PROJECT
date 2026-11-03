@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hrm_coffee_shop_flutter/features/auth/presentation/sign_out_flow.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
@@ -13,10 +14,12 @@ class AdminTrainingManagementPage extends ConsumerStatefulWidget {
   const AdminTrainingManagementPage({super.key});
 
   @override
-  ConsumerState<AdminTrainingManagementPage> createState() => _AdminTrainingManagementPageState();
+  ConsumerState<AdminTrainingManagementPage> createState() =>
+      _AdminTrainingManagementPageState();
 }
 
-class _AdminTrainingManagementPageState extends ConsumerState<AdminTrainingManagementPage> {
+class _AdminTrainingManagementPageState
+    extends ConsumerState<AdminTrainingManagementPage> {
   static const _filterLabels = <String, String>{
     'ALL': 'Tất cả',
     'ACTIVE': 'Đang mở',
@@ -43,7 +46,9 @@ class _AdminTrainingManagementPageState extends ConsumerState<AdminTrainingManag
       _error = null;
     });
     try {
-      final items = await ref.read(employeeRepositoryProvider).getTrainingCourses();
+      final items = await ref
+          .read(employeeRepositoryProvider)
+          .getTrainingCourses();
       if (!mounted) return;
       setState(() {
         _courses = items;
@@ -59,16 +64,17 @@ class _AdminTrainingManagementPageState extends ConsumerState<AdminTrainingManag
   }
 
   bool _matchesFilter(Map<String, dynamic> course) => switch (_filter) {
-        'ACTIVE' => course['isActive'] != false,
-        'INACTIVE' => course['isActive'] == false,
-        'TEST' => course['isMandatoryTest'] == true,
-        _ => true,
-      };
+    'ACTIVE' => course['isActive'] != false,
+    'INACTIVE' => course['isActive'] == false,
+    'TEST' => course['isMandatoryTest'] == true,
+    _ => true,
+  };
 
   List<Map<String, dynamic>> get _visible {
     final q = _query.trim().toLowerCase();
     return _courses.where((course) {
-      final matchesQuery = q.isEmpty ||
+      final matchesQuery =
+          q.isEmpty ||
           (course['courseName'] ?? '').toString().toLowerCase().contains(q) ||
           (course['courseCode'] ?? '').toString().toLowerCase().contains(q);
       return matchesQuery && _matchesFilter(course);
@@ -86,9 +92,13 @@ class _AdminTrainingManagementPageState extends ConsumerState<AdminTrainingManag
     final formKey = GlobalKey<FormState>();
     final code = TextEditingController(text: '${course?['courseCode'] ?? ''}');
     final name = TextEditingController(text: '${course?['courseName'] ?? ''}');
-    final description = TextEditingController(text: '${course?['description'] ?? ''}');
+    final description = TextEditingController(
+      text: '${course?['description'] ?? ''}',
+    );
     final score = TextEditingController(text: '${course?['passScore'] ?? 70}');
-    final months = TextEditingController(text: '${course?['validityMonths'] ?? 12}');
+    final months = TextEditingController(
+      text: '${course?['validityMonths'] ?? 12}',
+    );
     var hasTest = course?['isMandatoryTest'] != false;
     var active = course?['isActive'] != false;
 
@@ -107,13 +117,21 @@ class _AdminTrainingManagementPageState extends ConsumerState<AdminTrainingManag
                   children: [
                     TextFormField(
                       controller: code,
-                      decoration: const InputDecoration(labelText: 'Mã khóa học'),
-                      validator: (v) => v == null || v.trim().isEmpty ? 'Nhập mã khóa học.' : null,
+                      decoration: const InputDecoration(
+                        labelText: 'Mã khóa học',
+                      ),
+                      validator: (v) => v == null || v.trim().isEmpty
+                          ? 'Nhập mã khóa học.'
+                          : null,
                     ),
                     TextFormField(
                       controller: name,
-                      decoration: const InputDecoration(labelText: 'Tên khóa học'),
-                      validator: (v) => v == null || v.trim().isEmpty ? 'Nhập tên khóa học.' : null,
+                      decoration: const InputDecoration(
+                        labelText: 'Tên khóa học',
+                      ),
+                      validator: (v) => v == null || v.trim().isEmpty
+                          ? 'Nhập tên khóa học.'
+                          : null,
                     ),
                     TextFormField(
                       controller: description,
@@ -122,20 +140,28 @@ class _AdminTrainingManagementPageState extends ConsumerState<AdminTrainingManag
                     ),
                     TextFormField(
                       controller: score,
-                      decoration: const InputDecoration(labelText: 'Điểm đạt (0–100)'),
+                      decoration: const InputDecoration(
+                        labelText: 'Điểm đạt (0–100)',
+                      ),
                       keyboardType: TextInputType.number,
                       validator: (v) {
                         final n = num.tryParse(v ?? '');
-                        return n == null || n < 0 || n > 100 ? 'Điểm phải từ 0 đến 100.' : null;
+                        return n == null || n < 0 || n > 100
+                            ? 'Điểm phải từ 0 đến 100.'
+                            : null;
                       },
                     ),
                     TextFormField(
                       controller: months,
-                      decoration: const InputDecoration(labelText: 'Hiệu lực (tháng)'),
+                      decoration: const InputDecoration(
+                        labelText: 'Hiệu lực (tháng)',
+                      ),
                       keyboardType: TextInputType.number,
                       validator: (v) {
                         final n = int.tryParse(v ?? '');
-                        return n == null || n < 1 || n > 120 ? 'Nhập từ 1 đến 120 tháng.' : null;
+                        return n == null || n < 1 || n > 120
+                            ? 'Nhập từ 1 đến 120 tháng.'
+                            : null;
                       },
                     ),
                     SwitchListTile(
@@ -156,10 +182,15 @@ class _AdminTrainingManagementPageState extends ConsumerState<AdminTrainingManag
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Hủy')),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Hủy'),
+            ),
             FilledButton(
               onPressed: () {
-                if (formKey.currentState!.validate()) Navigator.pop(dialogContext, true);
+                if (formKey.currentState!.validate()) {
+                  Navigator.pop(dialogContext, true);
+                }
               },
               child: const Text('Lưu'),
             ),
@@ -172,7 +203,9 @@ class _AdminTrainingManagementPageState extends ConsumerState<AdminTrainingManag
       final payload = <String, dynamic>{
         'courseCode': code.text.trim(),
         'courseName': name.text.trim(),
-        'description': description.text.trim().isEmpty ? null : description.text.trim(),
+        'description': description.text.trim().isEmpty
+            ? null
+            : description.text.trim(),
         'passScore': double.parse(score.text),
         'validityMonths': int.parse(months.text),
         'isMandatoryTest': hasTest,
@@ -214,7 +247,12 @@ class _AdminTrainingManagementPageState extends ConsumerState<AdminTrainingManag
           onPressed: () => context.go(RouteNames.adminHome),
           icon: const Icon(Icons.arrow_back),
         ),
-        actions: [IconButton(onPressed: _loading ? null : _load, icon: const Icon(Icons.refresh))],
+        actions: [
+          IconButton(
+            onPressed: _loading ? null : _load,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _saving ? null : () => _editCourse(),
@@ -228,55 +266,61 @@ class _AdminTrainingManagementPageState extends ConsumerState<AdminTrainingManag
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _error != null
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(_error!, textAlign: TextAlign.center),
-                              const SizedBox(height: 12),
-                              OutlinedButton(onPressed: _load, child: const Text('Thử lại')),
-                            ],
-                          ),
-                        ),
-                      )
-                    : Column(
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                            child: TextField(
-                              onChanged: (v) => setState(() => _query = v),
-                              decoration: InputDecoration(
-                                hintText: 'Tìm theo mã hoặc tên khóa học...',
-                                prefixIcon: const Icon(Icons.search),
-                                filled: true,
-                                fillColor: AppColors.surface,
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                              ),
-                            ),
+                          Text(_error!, textAlign: TextAlign.center),
+                          const SizedBox(height: 12),
+                          OutlinedButton(
+                            onPressed: _load,
+                            child: const Text('Thử lại'),
                           ),
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Row(
-                              children: [
-                                for (final entry in _filterLabels.entries)
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: ChoiceChip(
-                                      label: Text(entry.value),
-                                      selected: _filter == entry.key,
-                                      onSelected: (_) => setState(() => _filter = entry.key),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Expanded(child: _listOrEmpty()),
                         ],
                       ),
+                    ),
+                  )
+                : Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                        child: TextField(
+                          onChanged: (v) => setState(() => _query = v),
+                          decoration: InputDecoration(
+                            hintText: 'Tìm theo mã hoặc tên khóa học...',
+                            prefixIcon: const Icon(Icons.search),
+                            filled: true,
+                            fillColor: AppColors.surface,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                      ),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            for (final entry in _filterLabels.entries)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: ChoiceChip(
+                                  label: Text(entry.value),
+                                  selected: _filter == entry.key,
+                                  onSelected: (_) =>
+                                      setState(() => _filter = entry.key),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Expanded(child: _listOrEmpty()),
+                    ],
+                  ),
           ),
         ),
       ),
@@ -286,7 +330,12 @@ class _AdminTrainingManagementPageState extends ConsumerState<AdminTrainingManag
           if (index == 0) context.go(RouteNames.adminHome);
           if (index == 1) context.go(RouteNames.adminAccounts);
           if (index == 2) context.go(RouteNames.adminPositions);
-          if (index == 4) showAdminMoreMenu(context);
+          if (index == 4) {
+            showAdminMoreMenu(
+              context,
+              onSignOut: () => signOutAndReturnToLogin(context, ref),
+            );
+          }
         },
       ),
     );
@@ -319,10 +368,14 @@ class _AdminTrainingManagementPageState extends ConsumerState<AdminTrainingManag
       child: ListTile(
         isThreeLine: true,
         leading: CircleAvatar(
-          child: Icon(active ? Icons.school_outlined : Icons.pause_circle_outline),
+          child: Icon(
+            active ? Icons.school_outlined : Icons.pause_circle_outline,
+          ),
         ),
-        title: Text((course['courseName'] ?? 'Khóa học').toString(),
-            style: const TextStyle(fontWeight: FontWeight.w700)),
+        title: Text(
+          (course['courseName'] ?? 'Khóa học').toString(),
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
         subtitle: Text(
           '${course['courseCode'] ?? ''} · Điểm đạt ${formatScore(course['passScore'])} · '
           '${course['validityMonths'] ?? '—'} tháng hiệu lực\n'

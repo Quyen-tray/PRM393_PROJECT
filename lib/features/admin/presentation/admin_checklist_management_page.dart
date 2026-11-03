@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hrm_coffee_shop_flutter/features/auth/presentation/sign_out_flow.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
@@ -10,7 +11,8 @@ import 'admin_checklist_template_editor_page.dart';
 import 'widgets/admin_bottom_navigation.dart';
 import 'widgets/admin_more_menu.dart';
 
-int _intOf(Object? value) => value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+int _intOf(Object? value) =>
+    value is num ? value.toInt() : int.tryParse('$value') ?? 0;
 
 /// Quản lý mẫu checklist. Mỗi bản ghi của API là một phiên bản; các phiên bản cùng mã
 /// được gom thành một mẫu. Chỉ một phiên bản của mỗi mã được hoạt động.
@@ -18,10 +20,12 @@ class AdminChecklistManagementPage extends ConsumerStatefulWidget {
   const AdminChecklistManagementPage({super.key});
 
   @override
-  ConsumerState<AdminChecklistManagementPage> createState() => _AdminChecklistManagementPageState();
+  ConsumerState<AdminChecklistManagementPage> createState() =>
+      _AdminChecklistManagementPageState();
 }
 
-class _AdminChecklistManagementPageState extends ConsumerState<AdminChecklistManagementPage> {
+class _AdminChecklistManagementPageState
+    extends ConsumerState<AdminChecklistManagementPage> {
   List<Map<String, dynamic>> _versions = [];
   bool _loading = true;
   bool _acting = false;
@@ -40,7 +44,9 @@ class _AdminChecklistManagementPageState extends ConsumerState<AdminChecklistMan
       _error = null;
     });
     try {
-      final rows = await ref.read(employeeRepositoryProvider).getAdminChecklistTemplates();
+      final rows = await ref
+          .read(employeeRepositoryProvider)
+          .getAdminChecklistTemplates();
       if (mounted) setState(() => _versions = rows);
     } catch (error) {
       if (mounted) {
@@ -68,11 +74,13 @@ class _AdminChecklistManagementPageState extends ConsumerState<AdminChecklistMan
   }
 
   Map<String, dynamic> _representative(List<Map<String, dynamic>> versions) =>
-      versions.firstWhere((v) => v['isActive'] == true, orElse: () => versions.first);
+      versions.firstWhere((v) => v['isActive'] == true,
+          orElse: () => versions.first);
 
   Future<void> _openEditor([Map<String, dynamic>? template]) async {
     final message = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => AdminChecklistTemplateEditorPage(template: template)),
+      MaterialPageRoute(
+          builder: (_) => AdminChecklistTemplateEditorPage(template: template)),
     );
     if (message != null && mounted) {
       _showMessage(message);
@@ -81,7 +89,8 @@ class _AdminChecklistManagementPageState extends ConsumerState<AdminChecklistMan
   }
 
   Future<void> _activate(Map<String, dynamic> version) async {
-    final name = (version['checklistName'] ?? version['checklistCode']).toString();
+    final name =
+        (version['checklistName'] ?? version['checklistCode']).toString();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -91,8 +100,12 @@ class _AdminChecklistManagementPageState extends ConsumerState<AdminChecklistMan
           'Các phiên bản khác cùng mã sẽ ngừng hoạt động.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Hủy')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Kích hoạt')),
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Hủy')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Kích hoạt')),
         ],
       ),
     );
@@ -106,7 +119,9 @@ class _AdminChecklistManagementPageState extends ConsumerState<AdminChecklistMan
       _showMessage('Đã kích hoạt phiên bản checklist.');
       await _load();
     } catch (error) {
-      _showMessage(error is ApiException ? error.message : 'Không kích hoạt được phiên bản.');
+      _showMessage(error is ApiException
+          ? error.message
+          : 'Không kích hoạt được phiên bản.');
     } finally {
       if (mounted) setState(() => _acting = false);
     }
@@ -122,7 +137,8 @@ class _AdminChecklistManagementPageState extends ConsumerState<AdminChecklistMan
   @override
   Widget build(BuildContext context) {
     final sortedCodes = _groups.keys.toList()
-      ..sort((a, b) => _representative(_groups[a]!)['checklistName'].toString()
+      ..sort((a, b) => _representative(_groups[a]!)['checklistName']
+          .toString()
           .compareTo(_representative(_groups[b]!)['checklistName'].toString()));
 
     return DefaultTabController(
@@ -143,7 +159,8 @@ class _AdminChecklistManagementPageState extends ConsumerState<AdminChecklistMan
               icon: const Icon(Icons.refresh),
             ),
           ],
-          bottom: const TabBar(tabs: [Tab(text: 'Template'), Tab(text: 'Phiên bản')]),
+          bottom: const TabBar(
+              tabs: [Tab(text: 'Template'), Tab(text: 'Phiên bản')]),
         ),
         body: _loading && _versions.isEmpty
             ? const Center(child: CircularProgressIndicator())
@@ -156,7 +173,8 @@ class _AdminChecklistManagementPageState extends ConsumerState<AdminChecklistMan
                         children: [
                           Text(_error!, textAlign: TextAlign.center),
                           const SizedBox(height: 12),
-                          FilledButton(onPressed: _load, child: const Text('Thử lại')),
+                          FilledButton(
+                              onPressed: _load, child: const Text('Thử lại')),
                         ],
                       ),
                     ),
@@ -167,7 +185,8 @@ class _AdminChecklistManagementPageState extends ConsumerState<AdminChecklistMan
                         codes: sortedCodes,
                         groups: _groups,
                         representative: _representative,
-                        onTap: (versions) => _openEditor(_representative(versions)),
+                        onTap: (versions) =>
+                            _openEditor(_representative(versions)),
                         onRefresh: _load,
                       ),
                       _VersionsTab(
@@ -197,7 +216,10 @@ class _AdminChecklistManagementPageState extends ConsumerState<AdminChecklistMan
             } else if (index == 3) {
               context.go(RouteNames.adminTraining);
             } else {
-              showAdminMoreMenu(context);
+              showAdminMoreMenu(
+                context,
+                onSignOut: () => signOutAndReturnToLogin(context, ref),
+              );
             }
           },
         ),
@@ -217,7 +239,8 @@ class _TemplatesTab extends StatelessWidget {
 
   final List<String> codes;
   final Map<String, List<Map<String, dynamic>>> groups;
-  final Map<String, dynamic> Function(List<Map<String, dynamic>>) representative;
+  final Map<String, dynamic> Function(List<Map<String, dynamic>>)
+      representative;
   final void Function(List<Map<String, dynamic>> versions) onTap;
   final Future<void> Function() onRefresh;
 
@@ -301,12 +324,16 @@ class _TemplateCard extends StatelessWidget {
             children: [
               Text(
                 name,
-                style: const TextStyle(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w800),
+                style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 4),
               Text(
                 '$code · $type · $itemCount công việc',
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 12),
               ),
               const SizedBox(height: 6),
               Text(
@@ -322,7 +349,8 @@ class _TemplateCard extends StatelessWidget {
                   padding: EdgeInsets.only(top: 4),
                   child: Text(
                     'Quản lý duyệt sau khi nộp',
-                    style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                    style:
+                        TextStyle(color: AppColors.textSecondary, fontSize: 11),
                   ),
                 ),
             ],
@@ -348,10 +376,13 @@ class _VersionsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sorted = [...versions]
-      ..sort((a, b) {
-        final byCode = (a['checklistCode'] ?? '').toString().compareTo((b['checklistCode'] ?? '').toString());
-        return byCode != 0 ? byCode : _intOf(b['version']).compareTo(_intOf(a['version']));
+    final sorted = [...versions]..sort((a, b) {
+        final byCode = (a['checklistCode'] ?? '')
+            .toString()
+            .compareTo((b['checklistCode'] ?? '').toString());
+        return byCode != 0
+            ? byCode
+            : _intOf(b['version']).compareTo(_intOf(a['version']));
       });
 
     return RefreshIndicator(
@@ -387,13 +418,16 @@ class _VersionsTab extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           '${version['checklistCode']} · $itemCount công việc',
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                          style: const TextStyle(
+                              color: AppColors.textSecondary, fontSize: 12),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           active ? 'Đang hoạt động' : 'Chưa kích hoạt',
                           style: TextStyle(
-                            color: active ? AppColors.secondary : AppColors.textSecondary,
+                            color: active
+                                ? AppColors.secondary
+                                : AppColors.textSecondary,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),

@@ -13,4 +13,6 @@ import java.util.*;
 public interface ChecklistReviewRepository extends JpaRepository<ChecklistReview, Long> {
 
     Optional<ChecklistReview> findFirstByChecklistTaskIdOrderByReviewedAtDesc(Long checklistTaskId);
+
+    List<ChecklistReview> findByChecklistTaskIdInOrderByReviewedAtDesc(Collection<Long> checklistTaskIds);
 }

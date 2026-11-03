@@ -4,16 +4,20 @@ import 'package:go_router/go_router.dart';
 import '../../../../app/router/route_names.dart';
 import '../../../../app/theme/app_colors.dart';
 
-Future<void> showManagerMoreMenu(BuildContext context) async {
+const _signOutDestination = '__sign_out__';
+
+Future<void> showManagerMoreMenu(
+  BuildContext context, {
+  required Future<void> Function() onSignOut,
+}) async {
   final destination = await showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
     builder: (sheetContext) => SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: ListView(
+          shrinkWrap: true,
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(8, 4, 8, 8),
@@ -25,6 +29,11 @@ Future<void> showManagerMoreMenu(BuildContext context) async {
                   fontWeight: FontWeight.w800,
                 ),
               ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: const Text('Hồ sơ cá nhân'),
+              onTap: () => Navigator.pop(sheetContext, RouteNames.profile),
             ),
             ListTile(
               leading: const Icon(Icons.bar_chart_outlined),
@@ -66,6 +75,11 @@ Future<void> showManagerMoreMenu(BuildContext context) async {
                 RouteNames.managerChecklistApprovals,
               ),
             ),
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: const Text('\u0110\u0103ng xu\u1ea5t'),
+              onTap: () => Navigator.pop(sheetContext, _signOutDestination),
+            ),
           ],
         ),
       ),
@@ -73,5 +87,9 @@ Future<void> showManagerMoreMenu(BuildContext context) async {
   );
 
   if (!context.mounted || destination == null) return;
+  if (destination == _signOutDestination) {
+    await onSignOut();
+    return;
+  }
   context.go(destination);
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hrm_coffee_shop_flutter/features/auth/presentation/sign_out_flow.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
@@ -17,10 +18,12 @@ class ManagerEmployeeDetailPage extends ConsumerStatefulWidget {
   final String employeeCode;
 
   @override
-  ConsumerState<ManagerEmployeeDetailPage> createState() => _ManagerEmployeeDetailPageState();
+  ConsumerState<ManagerEmployeeDetailPage> createState() =>
+      _ManagerEmployeeDetailPageState();
 }
 
-class _ManagerEmployeeDetailPageState extends ConsumerState<ManagerEmployeeDetailPage> {
+class _ManagerEmployeeDetailPageState
+    extends ConsumerState<ManagerEmployeeDetailPage> {
   Map<String, dynamic>? _employee;
   List<Map<String, dynamic>> _training = [];
   List<Map<String, dynamic>> _skills = [];
@@ -88,7 +91,9 @@ class _ManagerEmployeeDetailPageState extends ConsumerState<ManagerEmployeeDetai
   Future<void> _openEdit() async {
     final id = int.tryParse(widget.employeeCode);
     if (id == null) return;
-    final saved = await context.push<bool>(RouteNames.managerEmployeeEditFor(id.toString()));
+    final saved = await context.push<bool>(
+      RouteNames.managerEmployeeEditFor(id.toString()),
+    );
     if (saved == true && mounted) await _load();
   }
 
@@ -131,7 +136,7 @@ class _ManagerEmployeeDetailPageState extends ConsumerState<ManagerEmployeeDetai
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 DropdownButtonFormField<int>(
-                  value: skillId,
+                  initialValue: skillId,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Kỹ năng'),
                   items: [
@@ -171,8 +176,14 @@ class _ManagerEmployeeDetailPageState extends ConsumerState<ManagerEmployeeDetai
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Hủy')),
-            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Lưu')),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Hủy'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Lưu'),
+            ),
           ],
         ),
       ),
@@ -226,42 +237,67 @@ class _ManagerEmployeeDetailPageState extends ConsumerState<ManagerEmployeeDetai
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? _ErrorView(message: _error!, onRetry: _load)
-              : DefaultTabController(
-                  length: 3,
-                  child: Column(
-                    children: [
-                      _header(),
-                      const TabBar(tabs: [
-                        Tab(text: 'Thông tin'),
-                        Tab(text: 'Đào tạo'),
-                        Tab(text: 'Kỹ năng'),
-                      ]),
-                      Expanded(
-                        child: TabBarView(children: [
-                          _infoTab(),
-                          _trainingTab(),
-                          _skillsTab(),
-                        ]),
-                      ),
+          ? _ErrorView(message: _error!, onRetry: _load)
+          : DefaultTabController(
+              length: 3,
+              child: Column(
+                children: [
+                  _header(),
+                  const TabBar(
+                    tabs: [
+                      Tab(text: 'Thông tin'),
+                      Tab(text: 'Đào tạo'),
+                      Tab(text: 'Kỹ năng'),
                     ],
                   ),
-                ),
+                  Expanded(
+                    child: TabBarView(
+                      children: [_infoTab(), _trainingTab(), _skillsTab()],
+                    ),
+                  ),
+                ],
+              ),
+            ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: 1,
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Tổng quan'),
-          NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: 'Nhân viên'),
-          NavigationDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month), label: 'Lịch'),
-          NavigationDestination(icon: Icon(Icons.fact_check_outlined), selectedIcon: Icon(Icons.fact_check), label: 'Duyệt'),
-          NavigationDestination(icon: Icon(Icons.more_horiz), selectedIcon: Icon(Icons.more_horiz), label: 'Khác'),
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard),
+            label: 'Tổng quan',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.people_outline),
+            selectedIcon: Icon(Icons.people),
+            label: 'Nhân viên',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.calendar_month_outlined),
+            selectedIcon: Icon(Icons.calendar_month),
+            label: 'Lịch',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.fact_check_outlined),
+            selectedIcon: Icon(Icons.fact_check),
+            label: 'Duyệt',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.more_horiz),
+            selectedIcon: Icon(Icons.more_horiz),
+            label: 'Khác',
+          ),
         ],
         onDestinationSelected: (index) {
           if (index == 0) context.go(RouteNames.home);
           if (index == 1) context.go(RouteNames.managerEmployees);
           if (index == 2) context.go(RouteNames.managerSchedule);
           if (index == 3) context.go(RouteNames.managerApprovals);
-          if (index == 4) showManagerMoreMenu(context);
+          if (index == 4) {
+            showManagerMoreMenu(
+              context,
+              onSignOut: () => signOutAndReturnToLogin(context, ref),
+            );
+          }
         },
       ),
     );
@@ -269,7 +305,9 @@ class _ManagerEmployeeDetailPageState extends ConsumerState<ManagerEmployeeDetai
 
   Widget _header() {
     final name = _value('fullName', '?');
-    final initial = name.trim().isEmpty ? '?' : name.trim().substring(0, 1).toUpperCase();
+    final initial = name.trim().isEmpty
+        ? '?'
+        : name.trim().substring(0, 1).toUpperCase();
     return Container(
       color: AppColors.surface,
       padding: const EdgeInsets.all(16),
@@ -281,13 +319,24 @@ class _ManagerEmployeeDetailPageState extends ConsumerState<ManagerEmployeeDetai
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_value('fullName'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                Text(
+                  _value('fullName'),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 17,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text('${_value('employeeCode')} · ${_value('jobTitle')}'),
                 const SizedBox(height: 4),
                 Text(
-                  employmentStatusLabel(_employee?['employmentStatus']?.toString()),
-                  style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700),
+                  employmentStatusLabel(
+                    _employee?['employmentStatus']?.toString(),
+                  ),
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
             ),
@@ -303,27 +352,50 @@ class _ManagerEmployeeDetailPageState extends ConsumerState<ManagerEmployeeDetai
       children: [
         Card(
           color: AppColors.surface,
-          child: Column(children: [
-            _info('Email', _value('email')),
-            _info('Số điện thoại', _value('phone')),
-            _info('Loại hợp đồng', employmentTypeLabel(_employee?['employmentType']?.toString())),
-            _info('Ngày vào làm', formatDate(_employee?['hireDate'], fallback: 'Chưa cập nhật')),
-            _info('Ngày sinh', formatDate(_employee?['dateOfBirth'], fallback: 'Chưa cập nhật')),
-            _info('Địa chỉ', _value('address')),
-            _info('Liên hệ khẩn cấp', _value('emergencyContact')),
-            _info('Trạng thái hồ sơ', _value('profileStatus')),
-            _info('Điều kiện nhận ca', _value('shiftEligibility')),
-          ]),
+          child: Column(
+            children: [
+              _info('Email', _value('email')),
+              _info('Số điện thoại', _value('phone')),
+              _info(
+                'Loại hợp đồng',
+                employmentTypeLabel(_employee?['employmentType']?.toString()),
+              ),
+              _info(
+                'Ngày vào làm',
+                formatDate(_employee?['hireDate'], fallback: 'Chưa cập nhật'),
+              ),
+              _info(
+                'Ngày sinh',
+                formatDate(
+                  _employee?['dateOfBirth'],
+                  fallback: 'Chưa cập nhật',
+                ),
+              ),
+              _info('Địa chỉ', _value('address')),
+              _info('Liên hệ khẩn cấp', _value('emergencyContact')),
+              _info('Trạng thái hồ sơ', _value('profileStatus')),
+              _info('Điều kiện nhận ca', _value('shiftEligibility')),
+            ],
+          ),
         ),
       ],
     );
   }
 
   Widget _info(String title, String value) => ListTile(
-        dense: true,
-        title: Text(title, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-        subtitle: Text(value, style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
-      );
+    dense: true,
+    title: Text(
+      title,
+      style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+    ),
+    subtitle: Text(
+      value,
+      style: const TextStyle(
+        color: AppColors.textPrimary,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
 
   Widget _trainingTab() {
     final requiredCount = (_progress['requiredCourses'] as num?)?.toInt() ?? 0;
@@ -340,9 +412,11 @@ class _ManagerEmployeeDetailPageState extends ConsumerState<ManagerEmployeeDetai
               color: restricted ? AppColors.error : AppColors.secondary,
             ),
             title: Text('Khóa bắt buộc: $completed/$requiredCount hoàn thành'),
-            subtitle: Text(restricted
-                ? 'Đang bị hạn chế phân ca do thiếu khóa bắt buộc.'
-                : 'Đủ điều kiện phân ca theo khóa bắt buộc.'),
+            subtitle: Text(
+              restricted
+                  ? 'Đang bị hạn chế phân ca do thiếu khóa bắt buộc.'
+                  : 'Đủ điều kiện phân ca theo khóa bắt buộc.',
+            ),
           ),
         ),
         const SizedBox(height: 8),
@@ -356,7 +430,10 @@ class _ManagerEmployeeDetailPageState extends ConsumerState<ManagerEmployeeDetai
             Card(
               color: AppColors.surface,
               child: ListTile(
-                leading: const Icon(Icons.school_outlined, color: AppColors.primary),
+                leading: const Icon(
+                  Icons.school_outlined,
+                  color: AppColors.primary,
+                ),
                 title: Text((item['courseName'] ?? 'Khóa học').toString()),
                 subtitle: Text(
                   'Trạng thái: ${trainingStatusLabel(item['status']?.toString())}'
@@ -378,7 +455,10 @@ class _ManagerEmployeeDetailPageState extends ConsumerState<ManagerEmployeeDetai
       if (skillId == null) continue;
       final current = latest[skillId];
       if (current == null ||
-          (item['assessedAt'] ?? '').toString().compareTo((current['assessedAt'] ?? '').toString()) > 0) {
+          (item['assessedAt'] ?? '').toString().compareTo(
+                (current['assessedAt'] ?? '').toString(),
+              ) >
+              0) {
         latest[skillId] = item;
       }
     }
@@ -421,22 +501,39 @@ class _ManagerEmployeeDetailPageState extends ConsumerState<ManagerEmployeeDetai
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(children: [
-                    Expanded(child: Text((item['skillName'] ?? 'Kỹ năng').toString(),
-                        style: const TextStyle(fontWeight: FontWeight.w700))),
-                    Text('Mức ${item['level'] ?? '—'}/5',
-                        style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700)),
-                  ]),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          (item['skillName'] ?? 'Kỹ năng').toString(),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      Text(
+                        'Mức ${item['level'] ?? '—'}/5',
+                        style: const TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 8),
                   LinearProgressIndicator(
-                    value: ((((item['level'] as num?)?.toDouble() ?? 0.0) / 5).clamp(0.0, 1.0)).toDouble(),
+                    value:
+                        ((((item['level'] as num?)?.toDouble() ?? 0.0) / 5)
+                                .clamp(0.0, 1.0))
+                            .toDouble(),
                     minHeight: 6,
                   ),
                   const SizedBox(height: 6),
                   Text(
                     'Đánh giá ngày ${formatDate(item['assessedAt'])}'
                     '${(item['note'] ?? '').toString().isEmpty ? '' : ' · ${item['note']}'}',
-                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),

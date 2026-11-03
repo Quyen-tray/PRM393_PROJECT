@@ -23,6 +23,12 @@ public final class DocumentDto {
                                String reviewStatus, LocalDate expiresAt, OffsetDateTime uploadedAt,
                                OffsetDateTime reviewedAt, String rejectionReason, String viewUrl, String employeeName) {}
 
+    public record DocumentCatalogItem(Integer documentTypeId, String documentCode, String documentName,
+                                       Boolean isActive, boolean required, String latestStatus,
+                                       boolean canSubmit, String blockReason) {}
+
+    public record DocumentCatalogView(Integer positionId, LocalDate asOfDate, List<DocumentCatalogItem> documents) {}
+
     public record RequirementStatus(TypeView documentType, String status) {}
 
     public record ProfileStatusView(String profileStatus, List<RequirementStatus> requirements) {}

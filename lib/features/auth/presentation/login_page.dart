@@ -22,16 +22,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       final user = await ref.read(authRepositoryProvider).signInWithGoogle();
       if (!mounted) return;
 
-      final roles = (user['roles'] as List<dynamic>? ?? const [])
-          .map((role) => role.toString().toUpperCase())
-          .toSet();
-
-      if (roles.contains('SYSTEM_ADMIN')) {
+      if (user.hasRole('SYSTEM_ADMIN')) {
         context.go(RouteNames.adminHome);
-      } else if (roles.contains('STORE_MANAGER') ||
-          roles.contains('OPERATIONS_DIRECTOR')) {
+      } else if (user.hasRole('STORE_MANAGER') ||
+          user.hasRole('OPERATIONS_DIRECTOR')) {
         context.go(RouteNames.home);
-      } else if (roles.contains('EMPLOYEE')) {
+      } else if (user.hasRole('EMPLOYEE')) {
         context.go(RouteNames.employeeHome);
       } else {
         await ref.read(authRepositoryProvider).clearLocalSession();
@@ -82,9 +78,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.g_mobiledata, size: 28),
-                    label: Text(_loading
-                        ? 'Đang đăng nhập...'
-                        : 'Tiếp tục với Google'),
+                    label: Text(
+                      _loading ? 'Đang đăng nhập...' : 'Tiếp tục với Google',
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Text(

@@ -17,15 +17,19 @@ const _employmentTypes = ['FULL_TIME', 'PART_TIME', 'TEMPORARY', 'PROBATION'];
 /// - Sửa: `EmployeeProfileFormPage.edit(employeeId: ...)` — mở từ chi tiết nhân viên khi có EMPLOYEE_MANAGE.
 ///   Chỉ gửi các trường đã đổi (PATCH).
 class EmployeeProfileFormPage extends ConsumerStatefulWidget {
-  const EmployeeProfileFormPage.create({this.userId, this.displayName, this.email, super.key})
-      : isEdit = false,
-        employeeId = null;
+  const EmployeeProfileFormPage.create({
+    this.userId,
+    this.displayName,
+    this.email,
+    super.key,
+  }) : isEdit = false,
+       employeeId = null;
 
   const EmployeeProfileFormPage.edit({this.employeeId, super.key})
-      : isEdit = true,
-        userId = null,
-        displayName = null,
-        email = null;
+    : isEdit = true,
+      userId = null,
+      displayName = null,
+      email = null;
 
   final bool isEdit;
   final int? userId;
@@ -34,10 +38,12 @@ class EmployeeProfileFormPage extends ConsumerStatefulWidget {
   final String? email;
 
   @override
-  ConsumerState<EmployeeProfileFormPage> createState() => _EmployeeProfileFormPageState();
+  ConsumerState<EmployeeProfileFormPage> createState() =>
+      _EmployeeProfileFormPageState();
 }
 
-class _EmployeeProfileFormPageState extends ConsumerState<EmployeeProfileFormPage> {
+class _EmployeeProfileFormPageState
+    extends ConsumerState<EmployeeProfileFormPage> {
   final _formKey = GlobalKey<FormState>();
   final _code = TextEditingController();
   final _fullName = TextEditingController();
@@ -77,7 +83,14 @@ class _EmployeeProfileFormPageState extends ConsumerState<EmployeeProfileFormPag
 
   @override
   void dispose() {
-    for (final controller in [_code, _fullName, _phone, _identity, _address, _emergency]) {
+    for (final controller in [
+      _code,
+      _fullName,
+      _phone,
+      _identity,
+      _address,
+      _emergency,
+    ]) {
       controller.dispose();
     }
     super.dispose();
@@ -91,7 +104,9 @@ class _EmployeeProfileFormPageState extends ConsumerState<EmployeeProfileFormPag
       Map<String, dynamic> employee = {};
       if (widget.isEdit) {
         final id = widget.employeeId;
-        if (id == null) throw const ApiException(message: 'Mã nhân viên không hợp lệ.');
+        if (id == null) {
+          throw const ApiException(message: 'Mã nhân viên không hợp lệ.');
+        }
         employee = await repo.getEmployeeById(id);
       } else if (widget.userId == null) {
         throw const ApiException(message: 'Tài khoản không hợp lệ.');
@@ -130,10 +145,15 @@ class _EmployeeProfileFormPageState extends ConsumerState<EmployeeProfileFormPag
 
         // Chức vụ hiện tại có thể đã ngưng nên không nằm trong danh sách đang dùng: thêm để dropdown hiển thị đúng.
         final current = _positionId;
-        if (positionsReady && current != null && positions.every((p) => _intOf(p['positionId']) != current)) {
+        if (positionsReady &&
+            current != null &&
+            positions.every((p) => _intOf(p['positionId']) != current)) {
           positions = [
             ...positions,
-            {'positionId': current, 'positionName': '${_s(employee['jobTitle'])} (đã ngưng)'},
+            {
+              'positionId': current,
+              'positionName': '${_s(employee['jobTitle'])} (đã ngưng)',
+            },
           ];
         }
       } else {
@@ -244,28 +264,37 @@ class _EmployeeProfileFormPageState extends ConsumerState<EmployeeProfileFormPag
     if (phone != _s(_original['phone'])) changes['phone'] = phone;
 
     final positionId = _positionId;
-    if (_positionsReady && positionId != null && positionId != _intOf(_original['positionId'])) {
+    if (_positionsReady &&
+        positionId != null &&
+        positionId != _intOf(_original['positionId'])) {
       changes['positionId'] = positionId;
     }
 
     final employmentType = _employmentType;
-    if (employmentType != null && employmentType != _nonEmpty(_original['employmentType'])) {
+    if (employmentType != null &&
+        employmentType != _nonEmpty(_original['employmentType'])) {
       changes['employmentType'] = employmentType;
     }
 
     final dateOfBirth = _dateOfBirth;
-    if (dateOfBirth != null && _isoDate(dateOfBirth) != _isoOrEmpty(_parseIsoDate(_original['dateOfBirth']))) {
+    if (dateOfBirth != null &&
+        _isoDate(dateOfBirth) !=
+            _isoOrEmpty(_parseIsoDate(_original['dateOfBirth']))) {
       changes['dateOfBirth'] = _isoDate(dateOfBirth);
     }
 
     final identity = _identity.text.trim();
-    if (identity != _s(_original['identityNumber'])) changes['identityNumber'] = identity;
+    if (identity != _s(_original['identityNumber'])) {
+      changes['identityNumber'] = identity;
+    }
 
     final address = _address.text.trim();
     if (address != _s(_original['address'])) changes['address'] = address;
 
     final emergency = _emergency.text.trim();
-    if (emergency != _s(_original['emergencyContact'])) changes['emergencyContact'] = emergency;
+    if (emergency != _s(_original['emergencyContact'])) {
+      changes['emergencyContact'] = emergency;
+    }
 
     return changes;
   }
@@ -280,7 +309,10 @@ class _EmployeeProfileFormPageState extends ConsumerState<EmployeeProfileFormPag
 
   void _clearServerError(String key) {
     if (!_serverErrors.containsKey(key)) return;
-    setState(() => _serverErrors = Map<String, String>.from(_serverErrors)..remove(key));
+    setState(
+      () =>
+          _serverErrors = Map<String, String>.from(_serverErrors)..remove(key),
+    );
   }
 
   void _snack(String message) {
@@ -296,29 +328,36 @@ class _EmployeeProfileFormPageState extends ConsumerState<EmployeeProfileFormPag
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text(widget.isEdit ? 'Sửa hồ sơ nhân viên' : 'Tạo hồ sơ nhân viên'),
+        title: Text(
+          widget.isEdit ? 'Sửa hồ sơ nhân viên' : 'Tạo hồ sơ nhân viên',
+        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _loadError != null
-              ? _LoadError(message: _loadError!, onRetry: _retry)
-              : Form(
-                  key: _formKey,
-                  // Column thay vì ListView: ListView chỉ dựng các mục gần màn hình nên Form.validate()
-                  // sẽ bỏ qua trường ở xa. Ở đây mọi trường luôn được dựng và kiểm tra.
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _section('Tài khoản', widget.isEdit ? _editAccountFields() : _createAccountFields()),
-                        _section('Công việc', _jobFields()),
-                        _section('Thông tin cá nhân', _personalFields()),
-                        _section('Địa chỉ và liên hệ khẩn cấp', _addressFields()),
-                      ],
+          ? _LoadError(message: _loadError!, onRetry: _retry)
+          : Form(
+              key: _formKey,
+              // Column thay vì ListView: ListView chỉ dựng các mục gần màn hình nên Form.validate()
+              // sẽ bỏ qua trường ở xa. Ở đây mọi trường luôn được dựng và kiểm tra.
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _section(
+                      'Tài khoản',
+                      widget.isEdit
+                          ? _editAccountFields()
+                          : _createAccountFields(),
                     ),
-                  ),
+                    _section('Công việc', _jobFields()),
+                    _section('Thông tin cá nhân', _personalFields()),
+                    _section('Địa chỉ và liên hệ khẩn cấp', _addressFields()),
+                  ],
                 ),
+              ),
+            ),
       bottomNavigationBar: _loading || _loadError != null
           ? null
           : SafeArea(
@@ -330,7 +369,10 @@ class _EmployeeProfileFormPageState extends ConsumerState<EmployeeProfileFormPag
                       ? const SizedBox(
                           height: 18,
                           width: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
                       : Text(widget.isEdit ? 'Lưu thay đổi' : 'Tạo hồ sơ'),
                 ),
@@ -348,9 +390,15 @@ class _EmployeeProfileFormPageState extends ConsumerState<EmployeeProfileFormPag
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+            ),
             const SizedBox(height: 12),
-            for (final child in children) ...[child, const SizedBox(height: 12)],
+            for (final child in children) ...[
+              child,
+              const SizedBox(height: 12),
+            ],
           ],
         ),
       ),
@@ -368,7 +416,10 @@ class _EmployeeProfileFormPageState extends ConsumerState<EmployeeProfileFormPag
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 4),
-          Text(widget.email ?? '—', style: const TextStyle(color: AppColors.textSecondary)),
+          Text(
+            widget.email ?? '—',
+            style: const TextStyle(color: AppColors.textSecondary),
+          ),
         ],
       ),
       const Text(
@@ -405,7 +456,9 @@ class _EmployeeProfileFormPageState extends ConsumerState<EmployeeProfileFormPag
   List<Widget> _jobFields() {
     final codeReadOnly = widget.isEdit;
     final hireReadOnly = widget.isEdit;
-    final employmentType = _employmentTypes.contains(_employmentType) ? _employmentType : null;
+    final employmentType = _employmentTypes.contains(_employmentType)
+        ? _employmentType
+        : null;
     return [
       _textField(
         controller: _code,
@@ -418,13 +471,16 @@ class _EmployeeProfileFormPageState extends ConsumerState<EmployeeProfileFormPag
       ),
       _positionField(),
       DropdownButtonFormField<String>(
-        value: employmentType,
+        initialValue: employmentType,
         isExpanded: true,
         hint: const Text('Chưa cập nhật'),
         decoration: const InputDecoration(labelText: 'Loại hợp đồng *'),
         items: [
           for (final type in _employmentTypes)
-            DropdownMenuItem(value: type, child: Text(employmentTypeLabel(type))),
+            DropdownMenuItem(
+              value: type,
+              child: Text(employmentTypeLabel(type)),
+            ),
         ],
         onChanged: (value) {
           setState(() => _employmentType = value);
@@ -433,7 +489,9 @@ class _EmployeeProfileFormPageState extends ConsumerState<EmployeeProfileFormPag
         validator: (value) {
           final server = _serverErrors['employmentType'];
           if (server != null) return server;
-          if (!widget.isEdit && value == null) return 'Vui lòng chọn loại hợp đồng.';
+          if (!widget.isEdit && value == null) {
+            return 'Vui lòng chọn loại hợp đồng.';
+          }
           return null;
         },
       ),
@@ -452,7 +510,7 @@ class _EmployeeProfileFormPageState extends ConsumerState<EmployeeProfileFormPag
   Widget _positionField() {
     if (_positionsReady) {
       return DropdownButtonFormField<int>(
-        value: _positionId,
+        initialValue: _positionId,
         isExpanded: true,
         decoration: const InputDecoration(labelText: 'Chức vụ *'),
         items: [
@@ -491,7 +549,9 @@ class _EmployeeProfileFormPageState extends ConsumerState<EmployeeProfileFormPag
         label: 'Ngày sinh',
         value: _dateOfBirth,
         clearable: !_dateOfBirthFixed,
-        helper: _dateOfBirthFixed ? 'Đã có ngày sinh nên không xóa được tại đây.' : null,
+        helper: _dateOfBirthFixed
+            ? 'Đã có ngày sinh nên không xóa được tại đây.'
+            : null,
         error: _serverErrors['dateOfBirth'],
         onChanged: (date) {
           setState(() => _dateOfBirth = date);
@@ -656,5 +716,9 @@ String _displayDate(DateTime date) {
 DateTime? _parseIsoDate(Object? value) {
   final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(_s(value));
   if (match == null) return null;
-  return DateTime(int.parse(match.group(1)!), int.parse(match.group(2)!), int.parse(match.group(3)!));
+  return DateTime(
+    int.parse(match.group(1)!),
+    int.parse(match.group(2)!),
+    int.parse(match.group(3)!),
+  );
 }

@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/approvals/presentation/manager_approval_page.dart';
@@ -24,13 +23,15 @@ import '../../features/admin/presentation/admin_audit_log_page.dart';
 import '../../features/admin/presentation/admin_notification_delivery_page.dart';
 import '../../features/admin/presentation/admin_skill_management_page.dart';
 import '../../features/violations/presentation/manager_violation_review_page.dart';
+import '../../features/violations/presentation/employee_violations_page.dart';
 import '../../features/rewards/presentation/manager_reward_penalty_page.dart';
 import '../../features/payroll/presentation/manager_payroll_page.dart';
 import '../../features/rewards/presentation/employee_rewards_page.dart';
 import '../../features/home/presentation/employee_dashboard_page.dart';
 import '../../features/home/presentation/manager_dashboard_page.dart';
 import '../../features/notifications/presentation/employee_notifications_page.dart';
-import '../../features/profile/presentation/employee_profile_page.dart';
+import '../../features/profile/presentation/account_profile_page.dart';
+import '../../features/documents/presentation/manager_document_review_page.dart';
 import '../../features/reports/presentation/manager_attendance_report_page.dart';
 import '../../features/schedule/presentation/employee_schedule_page.dart';
 import '../../features/training/presentation/employee_training_page.dart';
@@ -86,7 +87,19 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: RouteNames.employeeProfile,
-      builder: (context, state) => const EmployeeProfilePage(),
+      builder: (context, state) => const AccountProfilePage(),
+    ),
+    GoRoute(
+      path: RouteNames.employeeDocuments,
+      builder: (context, state) => const AccountProfilePage(initialTab: 2),
+    ),
+    GoRoute(
+      path: RouteNames.employeeViolations,
+      builder: (context, state) => const EmployeeViolationsPage(),
+    ),
+    GoRoute(
+      path: RouteNames.managerDocumentReview,
+      builder: (context, state) => const ManagerDocumentReviewPage(),
     ),
     GoRoute(
       path: RouteNames.employeeNotifications,
@@ -111,7 +124,9 @@ final appRouter = GoRouter(
     GoRoute(
       path: RouteNames.adminAccountEmployeeCreate,
       builder: (context, state) {
-        final extra = state.extra is Map ? Map<String, dynamic>.from(state.extra as Map) : <String, dynamic>{};
+        final extra = state.extra is Map
+            ? Map<String, dynamic>.from(state.extra as Map)
+            : <String, dynamic>{};
         return EmployeeProfileFormPage.create(
           userId: int.tryParse(state.pathParameters['userId'] ?? ''),
           displayName: extra['displayName']?.toString(),
@@ -150,7 +165,9 @@ final appRouter = GoRouter(
     GoRoute(
       path: RouteNames.adminAccountPermissions,
       builder: (context, state) {
-        final extra = state.extra is Map ? Map<String, dynamic>.from(state.extra as Map) : <String, dynamic>{};
+        final extra = state.extra is Map
+            ? Map<String, dynamic>.from(state.extra as Map)
+            : <String, dynamic>{};
         return AdminAccountPermissionsPage(
           userId: int.tryParse(state.pathParameters['userId'] ?? ''),
           displayName: extra['displayName']?.toString(),
@@ -200,19 +217,7 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: RouteNames.profile,
-      builder: (context, state) => const ProfilePage(),
+      builder: (context, state) => const AccountProfilePage(),
     ),
   ],
 );
-
-class ProfilePage extends StatelessWidget {
-  const ProfilePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Cá nhân')),
-      body: const Center(child: Text('Profile - Đang phát triển')),
-    );
-  }
-}

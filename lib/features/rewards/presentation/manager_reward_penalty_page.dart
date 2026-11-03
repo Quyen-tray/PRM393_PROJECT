@@ -44,10 +44,12 @@ class ManagerRewardPenaltyPage extends ConsumerStatefulWidget {
   const ManagerRewardPenaltyPage({super.key});
 
   @override
-  ConsumerState<ManagerRewardPenaltyPage> createState() => _ManagerRewardPenaltyPageState();
+  ConsumerState<ManagerRewardPenaltyPage> createState() =>
+      _ManagerRewardPenaltyPageState();
 }
 
-class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyPage> {
+class _ManagerRewardPenaltyPageState
+    extends ConsumerState<ManagerRewardPenaltyPage> {
   CurrentAccess _access = const CurrentAccess(roles: {}, permissions: {});
   bool _accessLoaded = false;
 
@@ -84,8 +86,9 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
     }
   }
 
-  bool _canDecide(String severity) =>
-      severity == 'CRITICAL' ? _access.canApproveCritical : _access.canApproveRewards;
+  bool _canDecide(String severity) => severity == 'CRITICAL'
+      ? _access.canApproveCritical
+      : _access.canApproveRewards;
 
   int _fetchSeq = 0;
 
@@ -101,11 +104,9 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
       }
     });
     try {
-      final data = await ref.read(employeeRepositoryProvider).getDecisions(
-            type: _type,
-            status: _status,
-            page: page,
-          );
+      final data = await ref
+          .read(employeeRepositoryProvider)
+          .getDecisions(type: _type, status: _status, page: page);
       if (!mounted || seq != _fetchSeq) return;
       final items = (data['items'] as List? ?? const [])
           .whereType<Map>()
@@ -143,7 +144,10 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _runAction(Future<Object> Function() action, String success) async {
+  Future<void> _runAction(
+    Future<Object> Function() action,
+    String success,
+  ) async {
     setState(() => _acting = true);
     try {
       await action();
@@ -167,14 +171,23 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(title),
-        content: TextField(
+        content: _DialogControllerOwner(
           controller: controller,
-          maxLines: 3,
-          maxLength: 500,
-          decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+          child: TextField(
+            controller: controller,
+            maxLines: 3,
+            maxLength: 500,
+            decoration: InputDecoration(
+              labelText: label,
+              border: const OutlineInputBorder(),
+            ),
+          ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Hủy')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Hủy'),
+          ),
           FilledButton(
             onPressed: () {
               final text = controller.text.trim();
@@ -189,17 +202,21 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
         ],
       ),
     );
-    controller.dispose();
     return result;
   }
 
   Future<void> _approve(Map<String, dynamic> row) async {
     final id = _s(row['decisionId']);
     if (id.isEmpty) return;
-    final note = await _askText(title: 'Duyệt quyết định', label: 'Ghi chú (không bắt buộc)', required: false);
+    final note = await _askText(
+      title: 'Duyệt quyết định',
+      label: 'Ghi chú (không bắt buộc)',
+      required: false,
+    );
     if (note == null || !mounted) return;
     await _runAction(
-      () => ref.read(employeeRepositoryProvider).approveDecision(id, note: note),
+      () =>
+          ref.read(employeeRepositoryProvider).approveDecision(id, note: note),
       'Đã duyệt.',
     );
   }
@@ -207,10 +224,16 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
   Future<void> _reject(Map<String, dynamic> row) async {
     final id = _s(row['decisionId']);
     if (id.isEmpty) return;
-    final reason = await _askText(title: 'Từ chối quyết định', label: 'Lý do từ chối *', required: true);
+    final reason = await _askText(
+      title: 'Từ chối quyết định',
+      label: 'Lý do từ chối *',
+      required: true,
+    );
     if (reason == null || !mounted) return;
     await _runAction(
-      () => ref.read(employeeRepositoryProvider).rejectDecision(id, reason: reason),
+      () => ref
+          .read(employeeRepositoryProvider)
+          .rejectDecision(id, reason: reason),
       'Đã từ chối.',
     );
   }
@@ -218,10 +241,16 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
   Future<void> _cancel(Map<String, dynamic> row) async {
     final id = _s(row['decisionId']);
     if (id.isEmpty) return;
-    final reason = await _askText(title: 'Hủy quyết định', label: 'Lý do hủy *', required: true);
+    final reason = await _askText(
+      title: 'Hủy quyết định',
+      label: 'Lý do hủy *',
+      required: true,
+    );
     if (reason == null || !mounted) return;
     await _runAction(
-      () => ref.read(employeeRepositoryProvider).cancelDecision(id, reason: reason),
+      () => ref
+          .read(employeeRepositoryProvider)
+          .cancelDecision(id, reason: reason),
       'Đã hủy quyết định.',
     );
   }
@@ -233,7 +262,9 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
     );
     if (payload == null || !mounted) return;
     await _runAction(
-      () => ref.read(employeeRepositoryProvider).proposeDecision(
+      () => ref
+          .read(employeeRepositoryProvider)
+          .proposeDecision(
             decisionType: payload['decisionType'] as String,
             employeeId: payload['employeeId'] as int,
             reasonCode: payload['reasonCode'] as String,
@@ -268,7 +299,9 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
         actions: [
           IconButton(
             tooltip: 'Tải lại',
-            onPressed: (_loading || !canUse) ? null : () => _fetch(0, replace: true),
+            onPressed: (_loading || !canUse)
+                ? null
+                : () => _fetch(0, replace: true),
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -276,18 +309,21 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
       body: !_accessLoaded
           ? const Center(child: CircularProgressIndicator())
           : !canUse
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text('Tài khoản này không có quyền xem thưởng/phạt.', textAlign: TextAlign.center),
-                  ),
-                )
-              : Column(
-                  children: [
-                    _filters(),
-                    Expanded(child: _body()),
-                  ],
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'Tài khoản này không có quyền xem thưởng/phạt.',
+                  textAlign: TextAlign.center,
                 ),
+              ),
+            )
+          : Column(
+              children: [
+                _filters(),
+                Expanded(child: _body()),
+              ],
+            ),
       floatingActionButton: (canUse && _access.canProposeRewards)
           ? FloatingActionButton.extended(
               onPressed: (_loading || _acting) ? null : _propose,
@@ -365,14 +401,19 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
             children: [
               Text(_error!, textAlign: TextAlign.center),
               const SizedBox(height: 12),
-              FilledButton(onPressed: () => _fetch(0, replace: true), child: const Text('Thử lại')),
+              FilledButton(
+                onPressed: () => _fetch(0, replace: true),
+                child: const Text('Thử lại'),
+              ),
             ],
           ),
         ),
       );
     }
     if (_rows.isEmpty) {
-      return const Center(child: Text('Không có quyết định nào trong mục này.'));
+      return const Center(
+        child: Text('Không có quyết định nào trong mục này.'),
+      );
     }
 
     final canLoadMore = _page + 1 < _totalPages;
@@ -384,14 +425,20 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
             alignment: Alignment.centerLeft,
             child: Text(
               'Hiển thị ${_rows.length} / $_totalElements quyết định',
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
             ),
           ),
         ),
         if (_error != null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(_error!, style: const TextStyle(color: AppColors.error, fontSize: 12)),
+            child: Text(
+              _error!,
+              style: const TextStyle(color: AppColors.error, fontSize: 12),
+            ),
           ),
         Expanded(
           child: ListView.separated(
@@ -402,7 +449,10 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
               if (index == _rows.length) {
                 return Center(
                   child: _loadingMore
-                      ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: CircularProgressIndicator(),
+                        )
                       : OutlinedButton(
                           onPressed: () => _fetch(_page + 1, replace: false),
                           child: const Text('Tải thêm'),
@@ -421,8 +471,12 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
     final isReward = _s(row['decisionType']) == 'REWARD';
     final severity = _s(row['severity']);
     final status = _s(row['status']);
-    final ruleName = _s(row['reasonName']).isEmpty ? _s(row['reasonCode']) : _s(row['reasonName']);
-    final employee = _s(row['employeeName']).isEmpty ? 'Nhân viên #${row['employeeId'] ?? '—'}' : _s(row['employeeName']);
+    final ruleName = _s(row['reasonName']).isEmpty
+        ? _s(row['reasonCode'])
+        : _s(row['reasonName']);
+    final employee = _s(row['employeeName']).isEmpty
+        ? 'Nhân viên #${row['employeeId'] ?? '—'}'
+        : _s(row['employeeName']);
     final note = _s(row['reviewNote']);
     final allowed = _canDecide(severity);
     final pending = status == 'PENDING_APPROVAL';
@@ -441,7 +495,10 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
                 Expanded(
                   child: Text(
                     '${isReward ? 'Thưởng' : 'Phạt'} · $ruleName',
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
                 _chip(_statusFilters[status] ?? status, _statusColor(status)),
@@ -451,15 +508,27 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
             Text(
               '$employee · ${_money(row['amount'])}'
               '${severity.isEmpty ? '' : ' · ${_severityLabels[severity] ?? severity}'}',
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
             ),
             if (_s(row['description']).isNotEmpty) ...[
               const SizedBox(height: 6),
-              Text(_s(row['description']), style: const TextStyle(fontSize: 13)),
+              Text(
+                _s(row['description']),
+                style: const TextStyle(fontSize: 13),
+              ),
             ],
             if (note.isNotEmpty) ...[
               const SizedBox(height: 6),
-              Text('Ghi chú: $note', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+              Text(
+                'Ghi chú: $note',
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                ),
+              ),
             ],
             if (canAct) ...[
               const SizedBox(height: 10),
@@ -490,7 +559,10 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
                 severity == 'CRITICAL'
                     ? 'Mức nghiêm trọng cần Giám đốc vận hành xử lý.'
                     : 'Bạn không có quyền duyệt quyết định này.',
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                ),
               ),
             ],
           ],
@@ -500,20 +572,23 @@ class _ManagerRewardPenaltyPageState extends ConsumerState<ManagerRewardPenaltyP
   }
 
   Color _statusColor(String status) => switch (status) {
-        'APPROVED' || 'APPLIED' => const Color(0xFF25804B),
-        'REJECTED' => AppColors.error,
-        'PENDING_APPROVAL' => const Color(0xFFB96D17),
-        _ => AppColors.textSecondary,
-      };
+    'APPROVED' || 'APPLIED' => const Color(0xFF25804B),
+    'REJECTED' => AppColors.error,
+    'PENDING_APPROVAL' => const Color(0xFFB96D17),
+    _ => AppColors.textSecondary,
+  };
 
   Widget _chip(String label, Color color) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: .12),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: .12),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+    ),
+  );
 }
 
 /// Form đề xuất. Trả về payload khi xác nhận, hoặc null nếu hủy. Việc gọi API do màn cha làm.
@@ -521,10 +596,12 @@ class _ProposeDecisionDialog extends ConsumerStatefulWidget {
   const _ProposeDecisionDialog();
 
   @override
-  ConsumerState<_ProposeDecisionDialog> createState() => _ProposeDecisionDialogState();
+  ConsumerState<_ProposeDecisionDialog> createState() =>
+      _ProposeDecisionDialogState();
 }
 
-class _ProposeDecisionDialogState extends ConsumerState<_ProposeDecisionDialog> {
+class _ProposeDecisionDialogState
+    extends ConsumerState<_ProposeDecisionDialog> {
   final _formKey = GlobalKey<FormState>();
   final _search = TextEditingController();
   final _amount = TextEditingController();
@@ -557,7 +634,9 @@ class _ProposeDecisionDialogState extends ConsumerState<_ProposeDecisionDialog> 
 
   Future<void> _loadEmployees() async {
     try {
-      final rows = await ref.read(employeeRepositoryProvider).getEmployees(q: _search.text.trim());
+      final rows = await ref
+          .read(employeeRepositoryProvider)
+          .getEmployees(q: _search.text.trim());
       if (!mounted) return;
       setState(() {
         _employees = rows;
@@ -571,12 +650,16 @@ class _ProposeDecisionDialogState extends ConsumerState<_ProposeDecisionDialog> 
   Future<void> _loadRules() async {
     final requestedType = _type;
     try {
-      final rows = await ref.read(employeeRepositoryProvider).getRuleCatalog(ruleType: requestedType);
+      final rows = await ref
+          .read(employeeRepositoryProvider)
+          .getRuleCatalog(ruleType: requestedType);
       // Bỏ qua kết quả của loại cũ nếu người dùng đã đổi Thưởng/Phạt trong lúc chờ.
       if (!mounted || requestedType != _type) return;
       setState(() {
         _rules = rows;
-        if (!rows.any((r) => _s(r['ruleCode']) == _reasonCode)) _reasonCode = null;
+        if (!rows.any((r) => _s(r['ruleCode']) == _reasonCode)) {
+          _reasonCode = null;
+        }
       });
     } on ApiException catch (e) {
       if (mounted) setState(() => _loadError = e.message);
@@ -602,7 +685,9 @@ class _ProposeDecisionDialogState extends ConsumerState<_ProposeDecisionDialog> 
       'reasonCode': _reasonCode,
       'description': _description.text.trim(),
       'amount': amount,
-      'effectiveDate': _effectiveDate == null ? null : _isoDate(_effectiveDate!),
+      'effectiveDate': _effectiveDate == null
+          ? null
+          : _isoDate(_effectiveDate!),
     });
   }
 
@@ -620,12 +705,21 @@ class _ProposeDecisionDialogState extends ConsumerState<_ProposeDecisionDialog> 
               if (_loadError != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(_loadError!, style: const TextStyle(color: AppColors.error, fontSize: 12)),
+                  child: Text(
+                    _loadError!,
+                    style: const TextStyle(
+                      color: AppColors.error,
+                      fontSize: 12,
+                    ),
+                  ),
                 ),
               Wrap(
                 spacing: 8,
                 children: [
-                  for (final entry in const {'REWARD': 'Thưởng', 'PENALTY': 'Phạt'}.entries)
+                  for (final entry in const {
+                    'REWARD': 'Thưởng',
+                    'PENALTY': 'Phạt',
+                  }.entries)
                     ChoiceChip(
                       label: Text(entry.value),
                       selected: _type == entry.key,
@@ -659,7 +753,7 @@ class _ProposeDecisionDialogState extends ConsumerState<_ProposeDecisionDialog> 
               ),
               const SizedBox(height: 10),
               DropdownButtonFormField<int>(
-                value: _employeeId,
+                initialValue: _employeeId,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Nhân viên *'),
                 items: [
@@ -676,15 +770,18 @@ class _ProposeDecisionDialogState extends ConsumerState<_ProposeDecisionDialog> 
                 onChanged: (value) {
                   setState(() {
                     _employeeId = value;
-                    final matches = _employeeOptions.where((e) => _intOf(e['employeeId']) == value);
+                    final matches = _employeeOptions.where(
+                      (e) => _intOf(e['employeeId']) == value,
+                    );
                     _selectedEmployee = matches.isEmpty ? null : matches.first;
                   });
                 },
-                validator: (value) => value == null ? 'Vui lòng chọn nhân viên.' : null,
+                validator: (value) =>
+                    value == null ? 'Vui lòng chọn nhân viên.' : null,
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: _reasonCode,
+                initialValue: _reasonCode,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Lý do *'),
                 items: [
@@ -700,12 +797,15 @@ class _ProposeDecisionDialogState extends ConsumerState<_ProposeDecisionDialog> 
                     ),
                 ],
                 onChanged: (value) => setState(() => _reasonCode = value),
-                validator: (value) => value == null ? 'Vui lòng chọn lý do.' : null,
+                validator: (value) =>
+                    value == null ? 'Vui lòng chọn lý do.' : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _amount,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(
                   labelText: 'Số tiền (VND)',
                   helperText: 'Để trống để dùng mức mặc định của lý do.',
@@ -715,7 +815,9 @@ class _ProposeDecisionDialogState extends ConsumerState<_ProposeDecisionDialog> 
                   if (text.isEmpty) return null;
                   final amount = num.tryParse(text);
                   if (amount == null) return 'Số tiền không hợp lệ.';
-                  if (amount < 0 || amount > 1000000000) return 'Từ 0 đến 1.000.000.000.';
+                  if (amount < 0 || amount > 1000000000) {
+                    return 'Từ 0 đến 1.000.000.000.';
+                  }
                   return null;
                 },
               ),
@@ -728,7 +830,9 @@ class _ProposeDecisionDialogState extends ConsumerState<_ProposeDecisionDialog> 
                     firstDate: DateTime(2020),
                     lastDate: DateTime(2100),
                   );
-                  if (picked != null && mounted) setState(() => _effectiveDate = picked);
+                  if (picked != null && mounted) {
+                    setState(() => _effectiveDate = picked);
+                  }
                 },
                 child: InputDecorator(
                   decoration: InputDecoration(
@@ -739,10 +843,15 @@ class _ProposeDecisionDialogState extends ConsumerState<_ProposeDecisionDialog> 
                         : IconButton(
                             tooltip: 'Bỏ ngày',
                             icon: const Icon(Icons.clear, size: 18),
-                            onPressed: () => setState(() => _effectiveDate = null),
+                            onPressed: () =>
+                                setState(() => _effectiveDate = null),
                           ),
                   ),
-                  child: Text(_effectiveDate == null ? 'Hôm nay' : _dmyOf(_effectiveDate!)),
+                  child: Text(
+                    _effectiveDate == null
+                        ? 'Hôm nay'
+                        : _dmyOf(_effectiveDate!),
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -754,14 +863,18 @@ class _ProposeDecisionDialogState extends ConsumerState<_ProposeDecisionDialog> 
                   labelText: 'Mô tả *',
                   border: OutlineInputBorder(),
                 ),
-                validator: (value) => (value ?? '').trim().isEmpty ? 'Vui lòng mô tả.' : null,
+                validator: (value) =>
+                    (value ?? '').trim().isEmpty ? 'Vui lòng mô tả.' : null,
               ),
             ],
           ),
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Hủy'),
+        ),
         FilledButton(onPressed: _submit, child: const Text('Gửi đề xuất')),
       ],
     );
@@ -769,6 +882,27 @@ class _ProposeDecisionDialogState extends ConsumerState<_ProposeDecisionDialog> 
 }
 
 // ---------- Tiện ích ----------
+
+class _DialogControllerOwner extends StatefulWidget {
+  const _DialogControllerOwner({required this.controller, required this.child});
+
+  final TextEditingController controller;
+  final Widget child;
+
+  @override
+  State<_DialogControllerOwner> createState() => _DialogControllerOwnerState();
+}
+
+class _DialogControllerOwnerState extends State<_DialogControllerOwner> {
+  @override
+  Widget build(BuildContext context) => widget.child;
+
+  @override
+  void dispose() {
+    widget.controller.dispose();
+    super.dispose();
+  }
+}
 
 String _s(Object? value) => value?.toString().trim() ?? '';
 
@@ -792,6 +926,8 @@ String _money(Object? value) {
 
 String _two(int value) => value.toString().padLeft(2, '0');
 
-String _isoDate(DateTime date) => '${date.year.toString().padLeft(4, '0')}-${_two(date.month)}-${_two(date.day)}';
+String _isoDate(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-${_two(date.month)}-${_two(date.day)}';
 
-String _dmyOf(DateTime date) => '${_two(date.day)}/${_two(date.month)}/${date.year}';
+String _dmyOf(DateTime date) =>
+    '${_two(date.day)}/${_two(date.month)}/${date.year}';

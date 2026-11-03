@@ -31,7 +31,7 @@ public class ManagerViolationController {
     @PreAuthorize("hasAuthority('VIOLATION_REVIEW')")
     public ApiResponse<PageResponse<ViolationView>> list(@RequestParam(required = false) String status,
                                                          @RequestParam(required = false) Long employeeId,
-                                                         @PageableDefault(size = 20, sort = "incidentAt", direction = Sort.Direction.DESC) Pageable p) {
+                                                         @PageableDefault(size = 20, sort = "occurredAt", direction = Sort.Direction.DESC) Pageable p) {
         return ApiResponse.ok(violations.list(status, employeeId, p));
     }
 

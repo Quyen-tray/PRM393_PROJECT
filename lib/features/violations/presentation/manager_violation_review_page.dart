@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
@@ -34,16 +35,21 @@ class ManagerViolationReviewPage extends ConsumerStatefulWidget {
   const ManagerViolationReviewPage({super.key});
 
   @override
-  ConsumerState<ManagerViolationReviewPage> createState() => _ManagerViolationReviewPageState();
+  ConsumerState<ManagerViolationReviewPage> createState() =>
+      _ManagerViolationReviewPageState();
 }
 
-class _ManagerViolationReviewPageState extends ConsumerState<ManagerViolationReviewPage> {
+class _ManagerViolationReviewPageState
+    extends ConsumerState<ManagerViolationReviewPage> {
   CurrentAccess _access = const CurrentAccess(roles: {}, permissions: {});
   bool _accessLoaded = false;
 
   String _status = 'OPEN';
 
   List<Map<String, dynamic>> _rows = [];
+  final Map<int, List<Map<String, dynamic>>> _employeeExplanations = {};
+  final Map<int, String> _explanationErrors = {};
+  final Set<int> _loadingExplanations = {};
   int _page = 0;
   int _totalPages = 0;
   int _totalElements = 0;
@@ -74,10 +80,59 @@ class _ManagerViolationReviewPageState extends ConsumerState<ManagerViolationRev
   }
 
   /// Nút xác nhận/bác bỏ theo mức độ. Máy chủ vẫn kiểm tra lại.
-  bool _canDecide(String severity) =>
-      severity == 'CRITICAL' ? _access.canApproveCritical : _access.canApproveRewards;
+  bool _canDecide(String severity) => severity == 'CRITICAL'
+      ? _access.canApproveCritical
+      : _access.canApproveRewards;
 
   int _fetchSeq = 0;
+
+  Future<void> _loadEmployeeExplanations(
+    int violationId, {
+    bool retry = false,
+  }) async {
+    if (_loadingExplanations.contains(violationId) ||
+        (!retry && _employeeExplanations.containsKey(violationId))) {
+      return;
+    }
+    setState(() {
+      _loadingExplanations.add(violationId);
+      _explanationErrors.remove(violationId);
+    });
+    try {
+      final rows = await ref
+          .read(employeeRepositoryProvider)
+          .getViolationExplanationsForReview(violationId);
+      if (!mounted) return;
+      setState(() => _employeeExplanations[violationId] = rows);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _explanationErrors[violationId] = error.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(
+        () => _explanationErrors[violationId] =
+            'Không tải được giải trình của nhân viên.',
+      );
+    } finally {
+      if (mounted) setState(() => _loadingExplanations.remove(violationId));
+    }
+  }
+
+  Future<void> _openEmployeeEvidence(Object? value) async {
+    final uri = value is String ? Uri.tryParse(value) : null;
+    if (uri == null || (uri.scheme != 'https' && uri.scheme != 'http')) {
+      _snack('Liên kết minh chứng không hợp lệ.');
+      return;
+    }
+    try {
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        _snack('Không mở được minh chứng trên thiết bị này.');
+      }
+    } catch (_) {
+      if (mounted) _snack('Không mở được minh chứng trên thiết bị này.');
+    }
+  }
 
   Future<void> _fetch(int page, {required bool replace}) async {
     final seq = ++_fetchSeq;
@@ -91,10 +146,9 @@ class _ManagerViolationReviewPageState extends ConsumerState<ManagerViolationRev
       }
     });
     try {
-      final data = await ref.read(employeeRepositoryProvider).getViolations(
-            status: _status,
-            page: page,
-          );
+      final data = await ref
+          .read(employeeRepositoryProvider)
+          .getViolations(status: _status, page: page);
       if (!mounted || seq != _fetchSeq) return;
       final items = (data['items'] as List? ?? const [])
           .whereType<Map>()
@@ -143,39 +197,20 @@ class _ManagerViolationReviewPageState extends ConsumerState<ManagerViolationRev
     required String title,
     required String label,
     required bool required,
-  }) async {
-    final controller = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          maxLines: 3,
-          maxLength: 500,
-          decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Hủy')),
-          FilledButton(
-            onPressed: () {
-              final text = controller.text.trim();
-              if (required && text.isEmpty) {
-                _snack('Vui lòng nhập lý do.');
-                return;
-              }
-              Navigator.pop(dialogContext, text);
-            },
-            child: const Text('Xác nhận'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    return result;
-  }
+  }) => showDialog<String>(
+    context: context,
+    builder: (_) => _ViolationDecisionTextDialog(
+      title: title,
+      label: label,
+      requiredInput: required,
+      onInvalid: () => _snack('Vui lòng nhập lý do.'),
+    ),
+  );
 
-  Future<void> _runAction(Future<Object> Function() action, String success) async {
+  Future<void> _runAction(
+    Future<Object> Function() action,
+    String success,
+  ) async {
     setState(() => _acting = true);
     try {
       await action();
@@ -198,7 +233,8 @@ class _ManagerViolationReviewPageState extends ConsumerState<ManagerViolationRev
     );
     if (note == null || !mounted) return;
     await _runAction(
-      () => ref.read(employeeRepositoryProvider).confirmViolation(id, note: note),
+      () =>
+          ref.read(employeeRepositoryProvider).confirmViolation(id, note: note),
       'Đã xác nhận vi phạm.',
     );
   }
@@ -213,7 +249,9 @@ class _ManagerViolationReviewPageState extends ConsumerState<ManagerViolationRev
     );
     if (reason == null || !mounted) return;
     await _runAction(
-      () => ref.read(employeeRepositoryProvider).dismissViolation(id, reason: reason),
+      () => ref
+          .read(employeeRepositoryProvider)
+          .dismissViolation(id, reason: reason),
       'Đã bác bỏ vi phạm.',
     );
   }
@@ -240,7 +278,8 @@ class _ManagerViolationReviewPageState extends ConsumerState<ManagerViolationRev
         actions: [
           IconButton(
             tooltip: 'Tải lại',
-            onPressed: (_loading || !_accessLoaded || !_access.canReviewViolations)
+            onPressed:
+                (_loading || !_accessLoaded || !_access.canReviewViolations)
                 ? null
                 : () => _fetch(0, replace: true),
             icon: const Icon(Icons.refresh),
@@ -250,37 +289,39 @@ class _ManagerViolationReviewPageState extends ConsumerState<ManagerViolationRev
       body: !_accessLoaded
           ? const Center(child: CircularProgressIndicator())
           : !_access.canReviewViolations
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      'Tài khoản này không có quyền xét duyệt vi phạm.',
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                )
-              : Column(
-                  children: [
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-                      child: Row(
-                        children: [
-                          for (final entry in _statusFilters.entries)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: ChoiceChip(
-                                label: Text(entry.value),
-                                selected: _status == entry.key,
-                                onSelected: _loading ? null : (_) => _selectStatus(entry.key),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    Expanded(child: _body()),
-                  ],
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'Tài khoản này không có quyền xét duyệt vi phạm.',
+                  textAlign: TextAlign.center,
                 ),
+              ),
+            )
+          : Column(
+              children: [
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                  child: Row(
+                    children: [
+                      for (final entry in _statusFilters.entries)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(entry.value),
+                            selected: _status == entry.key,
+                            onSelected: _loading
+                                ? null
+                                : (_) => _selectStatus(entry.key),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Expanded(child: _body()),
+              ],
+            ),
     );
   }
 
@@ -295,7 +336,10 @@ class _ManagerViolationReviewPageState extends ConsumerState<ManagerViolationRev
             children: [
               Text(_error!, textAlign: TextAlign.center),
               const SizedBox(height: 12),
-              FilledButton(onPressed: () => _fetch(0, replace: true), child: const Text('Thử lại')),
+              FilledButton(
+                onPressed: () => _fetch(0, replace: true),
+                child: const Text('Thử lại'),
+              ),
             ],
           ),
         ),
@@ -314,14 +358,20 @@ class _ManagerViolationReviewPageState extends ConsumerState<ManagerViolationRev
             alignment: Alignment.centerLeft,
             child: Text(
               'Hiển thị ${_rows.length} / $_totalElements vi phạm',
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
             ),
           ),
         ),
         if (_error != null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(_error!, style: const TextStyle(color: AppColors.error, fontSize: 12)),
+            child: Text(
+              _error!,
+              style: const TextStyle(color: AppColors.error, fontSize: 12),
+            ),
           ),
         Expanded(
           child: ListView.separated(
@@ -332,7 +382,10 @@ class _ManagerViolationReviewPageState extends ConsumerState<ManagerViolationRev
               if (index == _rows.length) {
                 return Center(
                   child: _loadingMore
-                      ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: CircularProgressIndicator(),
+                        )
                       : OutlinedButton(
                           onPressed: () => _fetch(_page + 1, replace: false),
                           child: const Text('Tải thêm'),
@@ -348,6 +401,7 @@ class _ManagerViolationReviewPageState extends ConsumerState<ManagerViolationRev
   }
 
   Widget _row(Map<String, dynamic> row) {
+    final id = (row['violationId'] as num?)?.toInt();
     final severity = _s(row['severity']);
     final status = _s(row['status']);
     final open = status == 'OPEN';
@@ -367,8 +421,13 @@ class _ManagerViolationReviewPageState extends ConsumerState<ManagerViolationRev
               children: [
                 Expanded(
                   child: Text(
-                    _s(row['ruleName']).isEmpty ? _s(row['ruleCode']) : _s(row['ruleName']),
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                    _s(row['ruleName']).isEmpty
+                        ? _s(row['ruleCode'])
+                        : _s(row['ruleName']),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
                 _severityChip(severity),
@@ -379,19 +438,26 @@ class _ManagerViolationReviewPageState extends ConsumerState<ManagerViolationRev
               '${_s(row['employeeName']).isEmpty ? 'Nhân viên #${row['employeeId'] ?? '—'}' : _s(row['employeeName'])}'
               ' · ${_vnDmyHm(row['incidentAt'])}'
               '${auto ? ' · Tự động ghi nhận' : ''}',
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
             ),
             if (details.isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(details, style: const TextStyle(fontSize: 13)),
             ],
+            if (id != null) _employeeExplanationSection(id),
             if (!open) ...[
               const SizedBox(height: 6),
               Text(
                 '${_statusFilters[status] ?? status}'
                 '${_vnDmyHm(row['reviewedAt']) == '—' ? '' : ' · ${_vnDmyHm(row['reviewedAt'])}'}'
                 '${note.isEmpty ? '' : '\nGhi chú: $note'}',
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                ),
               ),
             ],
             if (open) ...[
@@ -414,12 +480,95 @@ class _ManagerViolationReviewPageState extends ConsumerState<ManagerViolationRev
               else
                 const Text(
                   'Mức nghiêm trọng này cần Giám đốc vận hành xem xét.',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
                 ),
             ],
           ],
         ),
       ),
+    );
+  }
+
+  Widget _employeeExplanationSection(int violationId) => ExpansionTile(
+    key: PageStorageKey('manager-violation-explanations-$violationId'),
+    tilePadding: EdgeInsets.zero,
+    childrenPadding: const EdgeInsets.only(bottom: 8),
+    title: const Text('Giải trình của nhân viên'),
+    subtitle: Text(
+      '${_employeeExplanations[violationId]?.length ?? 0} lần gửi',
+    ),
+    onExpansionChanged: (expanded) {
+      if (expanded) _loadEmployeeExplanations(violationId);
+    },
+    children: [_employeeExplanationContent(violationId)],
+  );
+
+  Widget _employeeExplanationContent(int violationId) {
+    if (_loadingExplanations.contains(violationId)) {
+      return const Padding(
+        padding: EdgeInsets.all(12),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    final error = _explanationErrors[violationId];
+    if (error != null) {
+      return Column(
+        children: [
+          Text(error),
+          TextButton(
+            onPressed: () =>
+                _loadEmployeeExplanations(violationId, retry: true),
+            child: const Text('Thử lại'),
+          ),
+        ],
+      );
+    }
+    if (!_employeeExplanations.containsKey(violationId)) {
+      return const SizedBox.shrink();
+    }
+    final rows = _employeeExplanations[violationId]!;
+    if (rows.isEmpty) return const Text('Nhân viên chưa gửi giải trình.');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final explanation in rows)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8F5F1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(explanation['explanation']?.toString() ?? ''),
+                if (explanation['submittedAt'] != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Đã gửi: ${_vnDmyHm(explanation['submittedAt'])}',
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                if ((explanation['evidenceViewUrl']?.toString() ?? '')
+                    .isNotEmpty)
+                  TextButton.icon(
+                    onPressed: () =>
+                        _openEmployeeEvidence(explanation['evidenceViewUrl']),
+                    icon: const Icon(Icons.open_in_new),
+                    label: const Text('Mở minh chứng'),
+                  ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
@@ -437,10 +586,74 @@ class _ManagerViolationReviewPageState extends ConsumerState<ManagerViolationRev
       ),
       child: Text(
         _severityLabels[severity] ?? (severity.isEmpty ? 'Không rõ' : severity),
-        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
+}
+
+class _ViolationDecisionTextDialog extends StatefulWidget {
+  const _ViolationDecisionTextDialog({
+    required this.title,
+    required this.label,
+    required this.requiredInput,
+    required this.onInvalid,
+  });
+
+  final String title;
+  final String label;
+  final bool requiredInput;
+  final VoidCallback onInvalid;
+
+  @override
+  State<_ViolationDecisionTextDialog> createState() =>
+      _ViolationDecisionTextDialogState();
+}
+
+class _ViolationDecisionTextDialogState
+    extends State<_ViolationDecisionTextDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.title),
+    content: TextField(
+      controller: _controller,
+      maxLines: 3,
+      maxLength: 500,
+      decoration: InputDecoration(
+        labelText: widget.label,
+        border: const OutlineInputBorder(),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Hủy'),
+      ),
+      FilledButton(
+        onPressed: () {
+          final text = _controller.text.trim();
+          if (widget.requiredInput && text.isEmpty) {
+            widget.onInvalid();
+            return;
+          }
+          Navigator.pop(context, text);
+        },
+        child: const Text('Xác nhận'),
+      ),
+    ],
+  );
 }
 
 // ---------- Tiện ích ----------

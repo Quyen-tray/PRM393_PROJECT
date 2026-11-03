@@ -7,12 +7,14 @@ import '../../../app/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/mock/demo_data.dart';
 import '../../../data/repositories/employee_providers.dart';
+import '../../../shared/widgets/employee_bottom_navigation.dart';
 
 class EmployeeSchedulePage extends ConsumerStatefulWidget {
   const EmployeeSchedulePage({super.key});
 
   @override
-  ConsumerState<EmployeeSchedulePage> createState() => _EmployeeSchedulePageState();
+  ConsumerState<EmployeeSchedulePage> createState() =>
+      _EmployeeSchedulePageState();
 }
 
 class _EmployeeSchedulePageState extends ConsumerState<EmployeeSchedulePage> {
@@ -32,42 +34,66 @@ class _EmployeeSchedulePageState extends ConsumerState<EmployeeSchedulePage> {
   }
 
   Future<void> _loadSchedule() async {
-    setState(() { _loadingSchedule = true; _scheduleError = null; });
+    setState(() {
+      _loadingSchedule = true;
+      _scheduleError = null;
+    });
     try {
-      final start = DateTime(_anchorDate.year, _anchorDate.month, 1).subtract(const Duration(days: 7));
+      final start = DateTime(
+        _anchorDate.year,
+        _anchorDate.month,
+        1,
+      ).subtract(const Duration(days: 7));
       final end = DateTime(_anchorDate.year, _anchorDate.month + 2, 0);
-      String key(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-      final rows = await ref.read(employeeRepositoryProvider).getMySchedule(from: key(start), to: key(end));
+      String key(DateTime d) =>
+          '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      final rows = await ref
+          .read(employeeRepositoryProvider)
+          .getMySchedule(from: key(start), to: key(end));
       final mapped = rows.map((row) {
-        final shift = row['workShift'] is Map ? Map<String, dynamic>.from(row['workShift'] as Map) : <String, dynamic>{};
+        final shift = row['workShift'] is Map
+            ? Map<String, dynamic>.from(row['workShift'] as Map)
+            : <String, dynamic>{};
         final date = (row['workDate'] ?? '').toString();
-        final plannedStart = DateTime.tryParse((row['plannedStartAt'] ?? '').toString());
-        final workDate = DateTime.tryParse(date) ?? plannedStart ?? DateTime.now();
+        final plannedStart = DateTime.tryParse(
+          (row['plannedStartAt'] ?? '').toString(),
+        );
+        final workDate =
+            DateTime.tryParse(date) ?? plannedStart ?? DateTime.now();
         final status = (row['status'] ?? '').toString();
         return DemoShiftAssignment(
           workDate: key(workDate),
           dayLabel: _dayLabel(workDate),
-          shiftName: (shift['shiftName'] ?? shift['shiftCode'] ?? 'Ca làm').toString(),
+          shiftName: (shift['shiftName'] ?? shift['shiftCode'] ?? 'Ca làm')
+              .toString(),
           startTime: formatClockVn(row['plannedStartAt']),
           endTime: formatClockVn(row['plannedEndAt']),
           workArea: 'Lịch được phân công',
-          assignmentStatus: status == 'CANCELLED' ? 'Ngày nghỉ' : (status == 'PUBLISHED' ? 'Đã xác nhận' : (status == 'DRAFT' ? 'Chờ duyệt' : status)),
+          assignmentStatus: status == 'CANCELLED'
+              ? 'Ngày nghỉ'
+              : (status == 'PUBLISHED'
+                    ? 'Đã xác nhận'
+                    : (status == 'DRAFT' ? 'Chờ duyệt' : status)),
         );
       }).toList();
       if (!mounted) return;
-      setState(() { _apiShifts = mapped; _loadingSchedule = false; });
+      setState(() {
+        _apiShifts = mapped;
+        _loadingSchedule = false;
+      });
     } catch (error) {
       if (!mounted) return;
-      setState(() { _scheduleError = error.toString(); _loadingSchedule = false; });
+      setState(() {
+        _scheduleError = error.toString();
+        _loadingSchedule = false;
+      });
     }
   }
 
   DateTime get _weekStart => _tuesdayOnOrBefore(_anchorDate);
 
-  List<DateTime> get _weekDays => List.generate(
-        7,
-        (index) => _weekStart.add(Duration(days: index)),
-      );
+  List<DateTime> get _weekDays =>
+      List.generate(7, (index) => _weekStart.add(Duration(days: index)));
 
   DateTime _tuesdayOnOrBefore(DateTime date) {
     final daysSinceTuesday = (date.weekday - DateTime.tuesday + 7) % 7;
@@ -134,10 +160,9 @@ class _EmployeeSchedulePageState extends ConsumerState<EmployeeSchedulePage> {
     return _apiShifts.where((shift) => shift.workDate == dateKey).toList();
   }
 
-  List<DemoShiftAssignment> get _selectedDayShifts =>
-      _shiftsForDate(_selectedDate)
-          .where((shift) => shift.assignmentStatus != 'Ngày nghỉ')
-          .toList();
+  List<DemoShiftAssignment> get _selectedDayShifts => _shiftsForDate(
+    _selectedDate,
+  ).where((shift) => shift.assignmentStatus != 'Ngày nghỉ').toList();
 
   String get _periodLabel {
     if (_view == _ScheduleView.month) {
@@ -150,14 +175,6 @@ class _EmployeeSchedulePageState extends ConsumerState<EmployeeSchedulePage> {
     }
     return 'Tuần ${_weekStart.day}/${_weekStart.month} - '
         '${endDate.day}/${endDate.month}/${endDate.year}';
-  }
-
-  void _showComingSoon(String feature) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text('$feature sẽ được hoàn thiện ở bước sau.')),
-      );
   }
 
   @override
@@ -187,7 +204,7 @@ class _EmployeeSchedulePageState extends ConsumerState<EmployeeSchedulePage> {
                 ),
                 const SizedBox(height: 16),
                 if (_view == _ScheduleView.week)
-                      _WeekDaySelector(
+                  _WeekDaySelector(
                     days: _weekDays,
                     selectedDate: _selectedDate,
                     shiftsForDate: _shiftsForDate,
@@ -229,13 +246,32 @@ class _EmployeeSchedulePageState extends ConsumerState<EmployeeSchedulePage> {
                 ),
                 const SizedBox(height: 10),
                 if (_loadingSchedule)
-                  const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
                 else if (_scheduleError != null)
-                  Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [Text(_scheduleError!, textAlign: TextAlign.center), const SizedBox(height: 8), TextButton.icon(onPressed: _loadSchedule, icon: const Icon(Icons.refresh), label: const Text('Thử lại'))])))
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          Text(_scheduleError!, textAlign: TextAlign.center),
+                          const SizedBox(height: 8),
+                          TextButton.icon(
+                            onPressed: _loadSchedule,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Thử lại'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
                 else if (_selectedDayShifts.isEmpty)
                   _NoShiftCard(
-                    isDayOff: _shiftsForDate(_selectedDate)
-                        .any((shift) => shift.assignmentStatus == 'Ngày nghỉ'),
+                    isDayOff: _shiftsForDate(
+                      _selectedDate,
+                    ).any((shift) => shift.assignmentStatus == 'Ngày nghỉ'),
                   )
                 else
                   for (final shift in _selectedDayShifts) ...[
@@ -249,40 +285,7 @@ class _EmployeeSchedulePageState extends ConsumerState<EmployeeSchedulePage> {
           ),
         ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 1,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Trang chủ',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month),
-            label: 'Lịch',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.checklist_outlined),
-            selectedIcon: Icon(Icons.checklist),
-            label: 'Checklist',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Cá nhân',
-          ),
-        ],
-        onDestinationSelected: (index) {
-          if (index == 0) {
-            context.go(RouteNames.employeeHome);
-          } else if (index == 2) {
-            _showComingSoon('Checklist');
-          } else if (index == 3) {
-            _showComingSoon('Hồ sơ cá nhân');
-          }
-        },
-      ),
+      bottomNavigationBar: const EmployeeBottomNavigation(selectedIndex: 1),
     );
   }
 }
@@ -319,7 +322,9 @@ class _PeriodSelector extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             IconButton(
-              tooltip: view == _ScheduleView.week ? 'Tuần trước' : 'Tháng trước',
+              tooltip: view == _ScheduleView.week
+                  ? 'Tuần trước'
+                  : 'Tháng trước',
               onPressed: () => onPeriodChanged(-1),
               icon: const Icon(Icons.chevron_left),
             ),
@@ -361,9 +366,9 @@ class _WeekDaySelector extends StatelessWidget {
       date.month == selectedDate.month &&
       date.day == selectedDate.day;
 
-  int _shiftCountFor(DateTime date) => shiftsForDate(date)
-      .where((shift) => shift.assignmentStatus != 'Ngày nghỉ')
-      .length;
+  int _shiftCountFor(DateTime date) => shiftsForDate(
+    date,
+  ).where((shift) => shift.assignmentStatus != 'Ngày nghỉ').length;
 
   @override
   Widget build(BuildContext context) {
@@ -501,10 +506,14 @@ class _MonthCalendar extends StatelessWidget {
                 return const SizedBox.shrink();
               }
 
-              final date = DateTime(anchorDate.year, anchorDate.month, dayNumber);
-              final assignedShiftCount = shiftsForDate(date)
-                  .where((shift) => shift.assignmentStatus != 'Ngày nghỉ')
-                  .length;
+              final date = DateTime(
+                anchorDate.year,
+                anchorDate.month,
+                dayNumber,
+              );
+              final assignedShiftCount = shiftsForDate(
+                date,
+              ).where((shift) => shift.assignmentStatus != 'Ngày nghỉ').length;
               final selected = _isSelected(date);
 
               return Padding(
@@ -530,7 +539,9 @@ class _MonthCalendar extends StatelessWidget {
                         Text(
                           '$dayNumber',
                           style: TextStyle(
-                            color: selected ? Colors.white : AppColors.textPrimary,
+                            color: selected
+                                ? Colors.white
+                                : AppColors.textPrimary,
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
                           ),
@@ -595,8 +606,9 @@ class _ShiftAssignmentCard extends StatelessWidget {
     final accentColor = _isPending
         ? const Color(0xFFE89A24)
         : const Color(0xFF31A779);
-    final statusBackground =
-        _isPending ? const Color(0xFFFFE8C2) : const Color(0xFFDDF4E5);
+    final statusBackground = _isPending
+        ? const Color(0xFFFFE8C2)
+        : const Color(0xFFDDF4E5);
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -739,10 +751,7 @@ class _LegendItem extends StatelessWidget {
         const SizedBox(width: 6),
         Text(
           label,
-          style: const TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: 11,
-          ),
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
         ),
       ],
     );

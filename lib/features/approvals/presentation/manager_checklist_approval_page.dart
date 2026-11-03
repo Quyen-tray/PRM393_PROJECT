@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hrm_coffee_shop_flutter/features/auth/presentation/sign_out_flow.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
@@ -19,7 +20,8 @@ class ManagerChecklistApprovalPage extends ConsumerStatefulWidget {
       _ManagerChecklistApprovalPageState();
 }
 
-class _ManagerChecklistApprovalPageState extends ConsumerState<ManagerChecklistApprovalPage> {
+class _ManagerChecklistApprovalPageState
+    extends ConsumerState<ManagerChecklistApprovalPage> {
   static const _kinds = {ManagerReviewKind.checklist};
 
   List<ManagerReviewItem> _pending = [];
@@ -57,15 +59,20 @@ class _ManagerChecklistApprovalPageState extends ConsumerState<ManagerChecklistA
     }
   }
 
-  Future<void> _approve(ManagerReviewItem item) =>
-      _run(() => approveManagerReviewItem(ref.read(employeeRepositoryProvider), item), 'Đã duyệt checklist.');
+  Future<void> _approve(ManagerReviewItem item) => _run(
+      () =>
+          approveManagerReviewItem(ref.read(employeeRepositoryProvider), item),
+      'Đã duyệt checklist.');
 
   Future<void> _reject(ManagerReviewItem item, String reason) => _run(
-        () => rejectManagerReviewItem(ref.read(employeeRepositoryProvider), item, reason: reason),
+        () => rejectManagerReviewItem(
+            ref.read(employeeRepositoryProvider), item,
+            reason: reason),
         'Đã từ chối checklist.',
       );
 
-  Future<void> _run(Future<void> Function() action, String successMessage) async {
+  Future<void> _run(
+      Future<void> Function() action, String successMessage) async {
     setState(() => _acting = true);
     try {
       await action();
@@ -78,8 +85,9 @@ class _ManagerChecklistApprovalPageState extends ConsumerState<ManagerChecklistA
     }
   }
 
-  String _messageOf(Object error) =>
-      error is ApiException ? error.message : 'Không tải được checklist. Vui lòng thử lại.';
+  String _messageOf(Object error) => error is ApiException
+      ? error.message
+      : 'Không tải được checklist. Vui lòng thử lại.';
 
   void _message(String text) {
     if (!mounted) return;
@@ -117,42 +125,45 @@ class _ManagerChecklistApprovalPageState extends ConsumerState<ManagerChecklistA
             ],
           ),
         ),
-        body: _loading && _pending.isEmpty && _processed.isEmpty && _error == null
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null && _pending.isEmpty && _processed.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
+        body:
+            _loading && _pending.isEmpty && _processed.isEmpty && _error == null
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null && _pending.isEmpty && _processed.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(_error!, textAlign: TextAlign.center),
+                              const SizedBox(height: 12),
+                              FilledButton(
+                                  onPressed: _load,
+                                  child: const Text('Thử lại')),
+                            ],
+                          ),
+                        ),
+                      )
+                    : TabBarView(
                         children: [
-                          Text(_error!, textAlign: TextAlign.center),
-                          const SizedBox(height: 12),
-                          FilledButton(onPressed: _load, child: const Text('Thử lại')),
+                          ManagerReviewList(
+                            items: _pending,
+                            emptyMessage: 'Không có checklist đang chờ duyệt.',
+                            busy: busy,
+                            onApprove: _approve,
+                            onReject: _reject,
+                            onRefresh: _load,
+                          ),
+                          ManagerReviewList(
+                            items: _processed,
+                            emptyMessage: 'Chưa có checklist đã xử lý.',
+                            busy: busy,
+                            onApprove: _approve,
+                            onReject: _reject,
+                            onRefresh: _load,
+                          ),
                         ],
                       ),
-                    ),
-                  )
-                : TabBarView(
-                    children: [
-                      ManagerReviewList(
-                        items: _pending,
-                        emptyMessage: 'Không có checklist đang chờ duyệt.',
-                        busy: busy,
-                        onApprove: _approve,
-                        onReject: _reject,
-                        onRefresh: _load,
-                      ),
-                      ManagerReviewList(
-                        items: _processed,
-                        emptyMessage: 'Chưa có checklist đã xử lý.',
-                        busy: busy,
-                        onApprove: _approve,
-                        onReject: _reject,
-                        onRefresh: _load,
-                      ),
-                    ],
-                  ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: 3,
           destinations: const [
@@ -187,7 +198,12 @@ class _ManagerChecklistApprovalPageState extends ConsumerState<ManagerChecklistA
             if (index == 1) context.go(RouteNames.managerEmployees);
             if (index == 2) context.go(RouteNames.managerSchedule);
             if (index == 3) context.go(RouteNames.managerApprovals);
-            if (index == 4) showManagerMoreMenu(context);
+            if (index == 4) {
+              showManagerMoreMenu(
+                context,
+                onSignOut: () => signOutAndReturnToLogin(context, ref),
+              );
+            }
           },
         ),
       ),

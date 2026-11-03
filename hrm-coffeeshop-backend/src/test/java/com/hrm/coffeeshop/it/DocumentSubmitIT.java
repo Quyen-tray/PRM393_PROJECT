@@ -1,14 +1,12 @@
 package com.hrm.coffeeshop.it;
 
 import com.hrm.coffeeshop.common.ErrorCode;
-import com.hrm.coffeeshop.common.Roles;
 import com.hrm.coffeeshop.shared.dto.DocumentDto.SubmitRequest;
 import com.hrm.coffeeshop.shared.service.DocumentService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -21,12 +19,11 @@ class DocumentSubmitIT extends IntegrationTestBase {
     @Test
     void submitAcceptsUploadedPdfAndRejectsMissingFile() {
         long nv = employeeIdByCode("NV001");
-        loginAs(userIdOfEmployee("NV001"), nv, Set.of(Roles.EMPLOYEE));
+        String code = "IT_SUBMIT_" + UUID.randomUUID().toString().replace("-", "").substring(0, 18);
+        jdbc.update("INSERT INTO dbo.DocumentType (DocumentCode, DocumentName, IsActive) VALUES (?, ?, 1)",
+                code, "Submit integration test");
         Integer typeId = jdbc.queryForObject(
-                "SELECT DocumentTypeId FROM dbo.DocumentType WHERE DocumentCode = 'COMMITMENT'", Integer.class);
-        // Tránh xung đột với hồ sơ đang chờ duyệt có sẵn trong seed.
-        jdbc.update("DELETE FROM dbo.EmployeeDocument WHERE EmployeeId = ? AND DocumentTypeId = ? AND ReviewStatus = 'PENDING'",
-                nv, typeId);
+                "SELECT DocumentTypeId FROM dbo.DocumentType WHERE DocumentCode = ?", Integer.class, code);
 
         String pdfKey = "private-documents/employee-" + nv + "/" + UUID.randomUUID() + ".pdf";
         storage.store(pdfKey, "%PDF-1.4\n%it\n".getBytes(StandardCharsets.US_ASCII));

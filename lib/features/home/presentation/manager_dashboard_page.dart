@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hrm_coffee_shop_flutter/features/auth/presentation/sign_out_flow.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/repositories/employee_providers.dart';
+import '../../auth/data/auth_providers.dart';
+import '../../../data/repositories/employee_repository.dart';
 import 'widgets/manager_more_menu.dart';
+import '../../auth/domain/entities/user.dart';
 
 const _borderColor = Color(0xFFEDE8E3);
 
@@ -21,17 +25,40 @@ class _ActionInfo {
 
 const _actionInfo = <String, _ActionInfo>{
   'devices': _ActionInfo('Thiết bị chờ duyệt', RouteNames.managerDevices),
-  'explanations': _ActionInfo('Giải trình chờ duyệt', RouteNames.managerApprovals),
+  'explanations': _ActionInfo(
+    'Giải trình chờ duyệt',
+    RouteNames.managerApprovals,
+  ),
   'overtime': _ActionInfo('Đề nghị tăng ca', RouteNames.managerApprovals),
-  'adjustmentsAwaitingManager': _ActionInfo('Điều chỉnh công chờ duyệt', RouteNames.managerApprovals),
+  'adjustmentsAwaitingManager': _ActionInfo(
+    'Điều chỉnh công chờ duyệt',
+    RouteNames.managerApprovals,
+  ),
   'adjustmentsAwaitingHr': _ActionInfo('Điều chỉnh chờ HR', null),
-  'checklistReviews': _ActionInfo('Checklist chờ duyệt', RouteNames.managerChecklistApprovals),
-  'documents': _ActionInfo('Hồ sơ chờ duyệt', null),
-  'violations': _ActionInfo('Vi phạm chờ xác nhận', RouteNames.managerViolations),
-  'rewardsAndPenalties': _ActionInfo('Thưởng/phạt chờ duyệt', RouteNames.managerRewards),
+  'checklistReviews': _ActionInfo(
+    'Checklist chờ duyệt',
+    RouteNames.managerChecklistApprovals,
+  ),
+  'documents': _ActionInfo('Hồ sơ chờ duyệt', RouteNames.managerDocumentReview),
+  'violations': _ActionInfo(
+    'Vi phạm chờ xác nhận',
+    RouteNames.managerViolations,
+  ),
+  'rewardsAndPenalties': _ActionInfo(
+    'Thưởng/phạt chờ duyệt',
+    RouteNames.managerRewards,
+  ),
 };
 
-const _weekdays = ['Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy', 'Chủ nhật'];
+const _weekdays = [
+  'Thứ Hai',
+  'Thứ Ba',
+  'Thứ Tư',
+  'Thứ Năm',
+  'Thứ Sáu',
+  'Thứ Bảy',
+  'Chủ nhật',
+];
 
 /// "2026-11-02" -> "Thứ Hai, 02/11/2026".
 String _dateLabel(String? iso) {
@@ -42,7 +69,8 @@ String _dateLabel(String? iso) {
   return '${_weekdays[date.weekday - 1]}, $dd/$mm/${date.year}';
 }
 
-int _intOf(Object? value) => value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+int _intOf(Object? value) =>
+    value is num ? value.toInt() : int.tryParse('$value') ?? 0;
 
 Map<String, dynamic> _mapOf(Object? value) =>
     value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
@@ -58,6 +86,7 @@ class _DashboardData {
     required this.pendingTotal,
     required this.nextActions,
     required this.entries,
+    required this.canReviewDocuments,
   });
 
   final String? date;
@@ -68,6 +97,7 @@ class _DashboardData {
   final int pendingTotal;
   final List<({String queue, int count})> nextActions;
   final List<_AttendanceEntry> entries;
+  final bool canReviewDocuments;
 }
 
 class _AttendanceEntry {
@@ -100,17 +130,21 @@ class _AttendanceEntry {
     final late = _intOf(row['lateMinutes']);
     final checkIn = formatTimeOfDay(row['checkInAt'], fallback: '');
     final isLate = status == 'LATE' || late > 0;
-    final needsAttention = isLate || status == 'MISSING' || (status ?? '').startsWith('PENDING');
+    final needsAttention =
+        isLate || status == 'MISSING' || (status ?? '').startsWith('PENDING');
     final timeParts = <String>[
       checkIn.isEmpty ? 'Chưa check-in' : 'Vào lúc $checkIn',
       if (late > 0) 'trễ $late phút',
     ];
     return _AttendanceEntry(
-      name: (row['employeeName'] ?? 'Mã ${row['employeeId'] ?? '—'}').toString(),
+      name: (row['employeeName'] ?? 'Mã ${row['employeeId'] ?? '—'}')
+          .toString(),
       subtitle: 'Mã nhân viên ${row['employeeId'] ?? '—'}',
       timeLabel: timeParts.join(' · '),
       statusLabel: attendanceStatusLabel(status),
-      statusColor: needsAttention ? const Color(0xFFB96D17) : const Color(0xFF287A38),
+      statusColor: needsAttention
+          ? const Color(0xFFB96D17)
+          : const Color(0xFF287A38),
       isLate: isLate,
     );
   }
@@ -120,7 +154,8 @@ class ManagerDashboardPage extends ConsumerStatefulWidget {
   const ManagerDashboardPage({super.key});
 
   @override
-  ConsumerState<ManagerDashboardPage> createState() => _ManagerDashboardPageState();
+  ConsumerState<ManagerDashboardPage> createState() =>
+      _ManagerDashboardPageState();
 }
 
 class _ManagerDashboardPageState extends ConsumerState<ManagerDashboardPage> {
@@ -144,52 +179,64 @@ class _ManagerDashboardPageState extends ConsumerState<ManagerDashboardPage> {
     try {
       final repo = ref.read(employeeRepositoryProvider);
       final today = DateTime.now();
-      final todayIso = '${today.year.toString().padLeft(4, '0')}-'
+      final todayIso =
+          '${today.year.toString().padLeft(4, '0')}-'
           '${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
 
       final results = await Future.wait<Object>([
         repo.getManagerDashboardOverview(),
         repo.getAttendanceRecords(from: todayIso, to: todayIso),
-        repo.getMyUserAccount(),
+        ref.read(authRepositoryProvider).getCurrentUser(),
+        repo.getCurrentAccess(),
       ]);
       if (!mounted) return;
 
       final overview = results[0] as Map<String, dynamic>;
       final stats = _mapOf(overview['attendanceToday']);
       final pending = _mapOf(overview['pending']);
-      final actions = (overview['nextActions'] as List?)
+      final actions =
+          (overview['nextActions'] as List?)
               ?.whereType<Map>()
-              .map((item) => (
-                    queue: item['queue']?.toString() ?? '',
-                    count: _intOf(item['count']),
-                  ))
+              .map(
+                (item) => (
+                  queue: item['queue']?.toString() ?? '',
+                  count: _intOf(item['count']),
+                ),
+              )
               .toList() ??
           <({String queue, int count})>[];
       final records = (results[1] as List<Map<String, dynamic>>)
           .map(_AttendanceEntry.fromRecord)
           .toList();
-      final account = results[2] as Map<String, dynamic>;
+      final account = results[2] as User;
+      final access = results[3] as CurrentAccess;
 
       setState(() {
-        _managerName = (account['displayName'] ?? '').toString().trim().isEmpty
+        _managerName = account.fullName.trim().isEmpty
             ? 'Quản lý'
-            : account['displayName'].toString();
+            : account.fullName;
         _data = _DashboardData(
           date: overview['date']?.toString(),
           present: _intOf(stats['checkedInOnTime']) + _intOf(stats['late']),
           scheduled: _intOf(stats['scheduledShifts']),
           late: _intOf(stats['late']),
           absent: _intOf(stats['absent']),
-          pendingTotal: pending.values.fold<int>(0, (sum, value) => sum + _intOf(value)),
+          pendingTotal: pending.values.fold<int>(
+            0,
+            (sum, value) => sum + _intOf(value),
+          ),
           nextActions: actions,
           entries: records,
+          canReviewDocuments: access.canReviewDocuments,
         );
       });
     } catch (error) {
       if (mounted) {
-        setState(() => _error = error is ApiException
-            ? error.message
-            : 'Không tải được tổng quan. Vui lòng thử lại.');
+        setState(
+          () => _error = error is ApiException
+              ? error.message
+              : 'Không tải được tổng quan. Vui lòng thử lại.',
+        );
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -197,6 +244,7 @@ class _ManagerDashboardPageState extends ConsumerState<ManagerDashboardPage> {
   }
 
   void _openAction(String queue) {
+    if (queue == 'documents' && _data?.canReviewDocuments != true) return;
     final route = _actionInfo[queue]?.route;
     if (route != null) context.go(route);
   }
@@ -215,44 +263,63 @@ class _ManagerDashboardPageState extends ConsumerState<ManagerDashboardPage> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
                   children: [
-                    _ManagerHeader(onRefresh: _loading ? null : _load),
+                    _ManagerHeader(
+                      onRefresh: _loading ? null : _load,
+                      onSignOut: () => signOutAndReturnToLogin(context, ref),
+                    ),
                     const SizedBox(height: 40),
                     if (_loading)
                       const Center(child: CircularProgressIndicator())
                     else
-                      _ErrorBlock(message: _error ?? 'Không tải được tổng quan.', onRetry: _load),
+                      _ErrorBlock(
+                        message: _error ?? 'Không tải được tổng quan.',
+                        onRetry: _load,
+                      ),
                   ],
                 )
               : ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
                   children: [
-                    _ManagerHeader(onRefresh: _loading ? null : _load),
+                    _ManagerHeader(
+                      onRefresh: _loading ? null : _load,
+                      onSignOut: () => signOutAndReturnToLogin(context, ref),
+                    ),
                     const SizedBox(height: 18),
                     Text(
                       'Xin chào, $_managerName',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.textPrimary,
-                          ),
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     const Text(
                       'Quản lý cửa hàng',
-                      style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 13,
+                      ),
                     ),
                     const SizedBox(height: 18),
                     _DateLabel(date: _dateLabel(data.date)),
                     if (_error != null) ...[
                       const SizedBox(height: 10),
-                      Text(_error!, style: const TextStyle(color: AppColors.error, fontSize: 12)),
+                      Text(
+                        _error!,
+                        style: const TextStyle(
+                          color: AppColors.error,
+                          fontSize: 12,
+                        ),
+                      ),
                     ],
                     const SizedBox(height: 12),
                     LayoutBuilder(
                       builder: (context, constraints) {
                         final columnCount = constraints.maxWidth >= 900 ? 4 : 2;
                         final tileWidth =
-                            (constraints.maxWidth - 10.0 * (columnCount - 1)) / columnCount;
+                            (constraints.maxWidth - 10.0 * (columnCount - 1)) /
+                            columnCount;
                         final metrics = [
                           _ManagerMetric(
                             label: 'Có mặt hôm nay',
@@ -286,7 +353,10 @@ class _ManagerDashboardPageState extends ConsumerState<ManagerDashboardPage> {
                           crossAxisSpacing: 10,
                           mainAxisSpacing: 10,
                           childAspectRatio: tileWidth / 112,
-                          children: [for (final metric in metrics) _ManagerMetricCard(metric: metric)],
+                          children: [
+                            for (final metric in metrics)
+                              _ManagerMetricCard(metric: metric),
+                          ],
                         );
                       },
                     ),
@@ -300,7 +370,11 @@ class _ManagerDashboardPageState extends ConsumerState<ManagerDashboardPage> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    _NextActions(actions: data.nextActions, onTap: _openAction),
+                    _NextActions(
+                      actions: data.nextActions,
+                      canReviewDocuments: data.canReviewDocuments,
+                      onTap: _openAction,
+                    ),
                     const SizedBox(height: 22),
                     Row(
                       children: [
@@ -315,14 +389,17 @@ class _ManagerDashboardPageState extends ConsumerState<ManagerDashboardPage> {
                           ),
                         ),
                         TextButton(
-                          onPressed: () => context.go(RouteNames.managerAttendanceReport),
+                          onPressed: () =>
+                              context.go(RouteNames.managerAttendanceReport),
                           child: const Text('Xem tất cả'),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
                     if (data.entries.isEmpty)
-                      const _EmptyBlock(message: 'Chưa có bản ghi chấm công hôm nay.')
+                      const _EmptyBlock(
+                        message: 'Chưa có bản ghi chấm công hôm nay.',
+                      )
                     else
                       _AttendanceList(entries: _sortedEntries(data.entries)),
                   ],
@@ -362,7 +439,12 @@ class _ManagerDashboardPageState extends ConsumerState<ManagerDashboardPage> {
           if (index == 1) context.go(RouteNames.managerEmployees);
           if (index == 2) context.go(RouteNames.managerSchedule);
           if (index == 3) context.go(RouteNames.managerApprovals);
-          if (index == 4) showManagerMoreMenu(context);
+          if (index == 4) {
+            showManagerMoreMenu(
+              context,
+              onSignOut: () => signOutAndReturnToLogin(context, ref),
+            );
+          }
         },
       ),
     );
@@ -377,9 +459,10 @@ class _ManagerDashboardPageState extends ConsumerState<ManagerDashboardPage> {
 }
 
 class _ManagerHeader extends StatelessWidget {
-  const _ManagerHeader({required this.onRefresh});
+  const _ManagerHeader({required this.onRefresh, required this.onSignOut});
 
   final VoidCallback? onRefresh;
+  final Future<void> Function() onSignOut;
 
   @override
   Widget build(BuildContext context) {
@@ -393,7 +476,7 @@ class _ManagerHeader extends StatelessWidget {
         children: [
           IconButton(
             tooltip: 'Mở chức năng khác',
-            onPressed: () => showManagerMoreMenu(context),
+            onPressed: () => showManagerMoreMenu(context, onSignOut: onSignOut),
             color: Colors.white,
             iconSize: 18,
             padding: EdgeInsets.zero,
@@ -406,7 +489,11 @@ class _ManagerHeader extends StatelessWidget {
           const Expanded(
             child: Text(
               'HRM COFFEE SHOP',
-              style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
           IconButton(
@@ -430,7 +517,11 @@ class _DateLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Icon(Icons.calendar_today_outlined, size: 16, color: AppColors.primary),
+        const Icon(
+          Icons.calendar_today_outlined,
+          size: 16,
+          color: AppColors.primary,
+        ),
         const SizedBox(width: 7),
         Text(
           date,
@@ -498,7 +589,10 @@ class _ManagerMetricCard extends StatelessWidget {
             metric.label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+            ),
           ),
         ],
       ),
@@ -507,9 +601,14 @@ class _ManagerMetricCard extends StatelessWidget {
 }
 
 class _NextActions extends StatelessWidget {
-  const _NextActions({required this.actions, required this.onTap});
+  const _NextActions({
+    required this.actions,
+    required this.canReviewDocuments,
+    required this.onTap,
+  });
 
   final List<({String queue, int count})> actions;
+  final bool canReviewDocuments;
   final ValueChanged<String> onTap;
 
   @override
@@ -528,9 +627,13 @@ class _NextActions extends StatelessWidget {
           for (var index = 0; index < actions.length; index++) ...[
             if (index > 0) const Divider(height: 1),
             _ActionRow(
-              label: _actionInfo[actions[index].queue]?.label ?? actions[index].queue,
+              label:
+                  _actionInfo[actions[index].queue]?.label ??
+                  actions[index].queue,
               count: actions[index].count,
-              route: _actionInfo[actions[index].queue]?.route,
+              route: actions[index].queue == 'documents' && !canReviewDocuments
+                  ? null
+                  : _actionInfo[actions[index].queue]?.route,
               onTap: () => onTap(actions[index].queue),
             ),
           ],
@@ -556,39 +659,50 @@ class _ActionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tappable = route != null;
-    return ListTile(
-      dense: true,
-      enabled: tappable,
-      onTap: tappable ? onTap : null,
-      title: Text(
-        label,
-        style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
-      ),
-      subtitle: tappable
-          ? null
-          : const Text(
-              'Xử lý ở màn khác hoặc chưa có trong app',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
-            ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              '$count',
-              style: const TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w800),
-            ),
+    return Material(
+      color: Colors.transparent,
+      child: ListTile(
+        dense: true,
+        enabled: tappable,
+        onTap: tappable ? onTap : null,
+        title: Text(
+          label,
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
           ),
-          if (tappable) ...[
-            const SizedBox(width: 4),
-            const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+        ),
+        subtitle: tappable
+            ? null
+            : const Text(
+                'Xử lý ở màn khác hoặc chưa có trong app',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+              ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '$count',
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            if (tappable) ...[
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -639,7 +753,11 @@ class _AttendanceRow extends StatelessWidget {
             backgroundColor: const Color(0xFFEAD9CC),
             child: Text(
               entry.initials,
-              style: const TextStyle(color: AppColors.textPrimary, fontSize: 11, fontWeight: FontWeight.w700),
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           const SizedBox(width: 10),
@@ -649,12 +767,19 @@ class _AttendanceRow extends StatelessWidget {
               children: [
                 Text(
                   entry.name,
-                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   entry.subtitle,
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 10),
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 10,
+                  ),
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -673,7 +798,11 @@ class _AttendanceRow extends StatelessWidget {
             ),
             child: Text(
               entry.statusLabel,
-              style: TextStyle(color: entry.statusColor, fontSize: 9, fontWeight: FontWeight.w700),
+              style: TextStyle(
+                color: entry.statusColor,
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
@@ -689,11 +818,14 @@ class _EmptyBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        child: Center(
-          child: Text(message, style: const TextStyle(color: AppColors.textSecondary)),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(vertical: 18),
+    child: Center(
+      child: Text(
+        message,
+        style: const TextStyle(color: AppColors.textSecondary),
+      ),
+    ),
+  );
 }
 
 class _ErrorBlock extends StatelessWidget {
@@ -704,13 +836,13 @@ class _ErrorBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton(onPressed: onRetry, child: const Text('Thử lại')),
-          ],
-        ),
-      );
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(message, textAlign: TextAlign.center),
+        const SizedBox(height: 12),
+        FilledButton(onPressed: onRetry, child: const Text('Thử lại')),
+      ],
+    ),
+  );
 }
