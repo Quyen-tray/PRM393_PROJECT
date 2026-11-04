@@ -8,6 +8,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/repositories/employee_providers.dart';
 import '../../../shared/widgets/employee_bottom_navigation.dart';
+import 'employee_training_quiz_page.dart';
 
 enum _TrainingTab { courses, skills, certificates }
 
@@ -17,9 +18,9 @@ class EmployeeTrainingPage extends ConsumerStatefulWidget {
   const EmployeeTrainingPage({super.key});
 
   @override
-  ConsumerState<EmployeeTrainingPage> createState() => _EmployeeTrainingPageState();
+  ConsumerState<EmployeeTrainingPage> createState() =>
+      _EmployeeTrainingPageState();
 }
-
 class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
   _TrainingTab _tab = _TrainingTab.courses;
   _CourseFilter _filter = _CourseFilter.all;
@@ -28,14 +29,12 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
   String? _error;
   List<Map<String, dynamic>> _courses = [];
   List<Map<String, dynamic>> _mine = [];
-  // Khóa bắt buộc của chức vụ, kể cả khóa chưa ghi danh (/training/me/requirements).
+  // Các khóa được theo dõi theo chức vụ, kể cả khóa chưa ghi danh.
   List<Map<String, dynamic>> _requirements = [];
   List<Map<String, dynamic>> _skills = [];
   List<Map<String, dynamic>> _skillHistory = [];
   int _requiredTotal = 0;
   int _requiredDone = 0;
-  bool _restricted = false;
-  List<Map<String, dynamic>> _restrictions = [];
 
   @override
   void initState() {
@@ -53,7 +52,9 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
       final profile = await repo.getEmployeeProfile();
       final employeeId = (profile['employeeId'] as num?)?.toInt();
       if (employeeId == null) {
-        throw const ApiException(message: 'Tài khoản chưa được liên kết hồ sơ nhân viên.');
+        throw const ApiException(
+          message: 'Tài khoản chưa được liên kết hồ sơ nhân viên.',
+        );
       }
       final results = await Future.wait<Object>([
         repo.getTrainingCourses(),
@@ -74,21 +75,24 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
         _skills = results[2] as List<Map<String, dynamic>>;
         _skillHistory = results[3] as List<Map<String, dynamic>>;
         _requirements = results[5] as List<Map<String, dynamic>>;
-        // Số liệu bắt buộc do máy chủ tính, gồm cả khóa chưa ghi danh.
         _requiredTotal = (training['requiredCourses'] as num?)?.toInt() ?? 0;
         _requiredDone = (training['completedCourses'] as num?)?.toInt() ?? 0;
-        _restricted = training['shiftEligibility'] == 'RESTRICTED';
-        _restrictions = (training['restrictions'] as List?)
-                ?.whereType<Map>()
-                .map((item) => Map<String, dynamic>.from(item))
-                .toList() ??
-            <Map<String, dynamic>>[];
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (mounted) setState(() { _error = e.message; _loading = false; });
+      if (mounted) {
+        setState(() {
+          _error = e.message;
+          _loading = false;
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() { _error = 'Không tải được dữ liệu đào tạo.'; _loading = false; });
+      if (mounted) {
+        setState(() {
+          _error = 'Không tải được dữ liệu đào tạo.';
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -110,6 +114,21 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
     }
   }
 
+  Future<void> _launchQuiz(Map<String, dynamic> course) async {
+    final id = courseIdOf(course);
+    if (id < 0 || _busy) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    final recorded = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => EmployeeTrainingQuizPage(
+          courseId: id,
+          courseName: (course['courseName'] ?? 'Khóa học').toString(),
+        ),
+      ),
+    );
+    if (recorded == true && mounted) await _load();
+  }
+
   void _message(String text) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -118,9 +137,9 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
   }
 
   Map<int, Map<String, dynamic>> get _mineByCourse => {
-        for (final item in _mine)
-          if (item['courseId'] is num) (item['courseId'] as num).toInt(): item,
-      };
+    for (final item in _mine)
+      if (item['courseId'] is num) (item['courseId'] as num).toInt(): item,
+  };
 
   Map<String, dynamic>? _requirementOf(Map<String, dynamic> course) {
     final id = courseIdOf(course);
@@ -136,17 +155,18 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
     return switch (_filter) {
       _CourseFilter.all => true,
       _CourseFilter.mandatory => _requirementOf(course) != null,
-      _CourseFilter.inProgress => status == 'IN_PROGRESS' || status == 'NOT_STARTED',
+      _CourseFilter.inProgress =>
+        status == 'IN_PROGRESS' || status == 'NOT_STARTED',
       _CourseFilter.completed => status == 'PASSED',
     };
   }
 
   String _filterLabel(_CourseFilter filter) => switch (filter) {
-        _CourseFilter.all => 'Tất cả',
-        _CourseFilter.mandatory => 'Bắt buộc',
-        _CourseFilter.inProgress => 'Đang học',
-        _CourseFilter.completed => 'Đã hoàn thành',
-      };
+    _CourseFilter.all => 'Tất cả',
+    _CourseFilter.mandatory => 'Theo chức vụ',
+    _CourseFilter.inProgress => 'Đang học',
+    _CourseFilter.completed => 'Đã hoàn thành',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -174,23 +194,33 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _error != null
-                    ? _ErrorState(message: _error!, onRetry: _load)
-                    : ListView(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-                        children: [
-                          SegmentedButton<_TrainingTab>(
-                            segments: const [
-                              ButtonSegment(value: _TrainingTab.courses, label: Text('Khóa học')),
-                              ButtonSegment(value: _TrainingTab.skills, label: Text('Kỹ năng')),
-                              ButtonSegment(value: _TrainingTab.certificates, label: Text('Chứng chỉ')),
-                            ],
-                            selected: {_tab},
-                            onSelectionChanged: (value) => setState(() => _tab = value.first),
+                ? _ErrorState(message: _error!, onRetry: _load)
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                    children: [
+                      SegmentedButton<_TrainingTab>(
+                        segments: const [
+                          ButtonSegment(
+                            value: _TrainingTab.courses,
+                            label: Text('Khóa học'),
                           ),
-                          const SizedBox(height: 14),
-                          ..._contentFor(_tab),
+                          ButtonSegment(
+                            value: _TrainingTab.skills,
+                            label: Text('Kỹ năng'),
+                          ),
+                          ButtonSegment(
+                            value: _TrainingTab.certificates,
+                            label: Text('Chứng chỉ'),
+                          ),
                         ],
+                        selected: {_tab},
+                        onSelectionChanged: (value) =>
+                            setState(() => _tab = value.first),
                       ),
+                      const SizedBox(height: 14),
+                      ..._contentFor(_tab),
+                    ],
+                  ),
           ),
         ),
       ),
@@ -199,10 +229,10 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
   }
 
   List<Widget> _contentFor(_TrainingTab tab) => switch (tab) {
-        _TrainingTab.courses => _coursesContent(),
-        _TrainingTab.skills => _skillsContent(),
-        _TrainingTab.certificates => _certificatesContent(),
-      };
+    _TrainingTab.courses => _coursesContent(),
+    _TrainingTab.skills => _skillsContent(),
+    _TrainingTab.certificates => _certificatesContent(),
+  };
 
   List<Widget> _coursesContent() {
     final visible = _courses.where(_matchesFilter).toList();
@@ -239,14 +269,14 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
         ? 0.0
         : (requiredDone / requiredTotal).clamp(0.0, 1.0).toDouble();
     return _Panel(
-      title: 'Khóa bắt buộc của chức vụ',
+      title: 'Tiến độ khóa theo chức vụ',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             requiredTotal == 0
-                ? 'Chức vụ hiện tại chưa yêu cầu khóa bắt buộc.'
-                : 'Đã đạt $requiredDone/$requiredTotal khóa bắt buộc',
+                ? 'Chưa có khóa nào được phân theo chức vụ.'
+                : 'Đã đạt $requiredDone/$requiredTotal khóa được phân',
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
           if (requiredTotal > 0) ...[
@@ -254,24 +284,26 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
             LinearProgressIndicator(value: progress, minHeight: 6),
           ],
           const SizedBox(height: 8),
-          Text(
-            _restricted ? 'Điều kiện phân ca: đang bị hạn chế' : 'Điều kiện phân ca: đủ điều kiện',
-            style: TextStyle(
-              color: _restricted ? AppColors.error : AppColors.secondary,
-              fontWeight: FontWeight.w600,
-            ),
+          const Text(
+            'Kết quả trắc nghiệm ghi nhận tiến độ đào tạo và không chặn nhận ca.',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
           ),
-          for (final item in _restrictions)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                '• Cần hoàn thành: ${item['courseName'] ?? 'Khóa học'} (${item['reason'] ?? 'chưa đạt'})',
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-              ),
-            ),
         ],
       ),
     );
+  }
+
+  String _courseStatusLabel(
+    Map<String, dynamic> course,
+    Map<String, dynamic>? mine,
+  ) {
+    final status = mine?['status']?.toString();
+    if (mine != null &&
+        course['isMandatoryTest'] != true &&
+        status != 'PASSED') {
+      return 'Chờ xác nhận';
+    }
+    return trainingStatusLabel(status);
   }
 
   Widget _courseCard(Map<String, dynamic> course) {
@@ -279,9 +311,15 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
     final status = mine?['status']?.toString();
     final isActive = course['isActive'] != false;
     final requirement = _requirementOf(course);
-    final color = switch (status) {
+    final hasTest = course['isMandatoryTest'] == true;
+    final needsManagerReview =
+        mine != null && !hasTest && status != 'PASSED';
+    final color = needsManagerReview
+        ? const Color(0xFFB7791F)
+        : switch (status) {
       'PASSED' => AppColors.secondary,
       'EXPIRED' || 'FAILED' => AppColors.error,
+      'PENDING_REVIEW' => const Color(0xFFB7791F),
       'IN_PROGRESS' || 'NOT_STARTED' => AppColors.primary,
       _ => AppColors.textSecondary,
     };
@@ -303,26 +341,33 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
-                  _Tag(label: trainingStatusLabel(status), color: color),
+                  _Tag(label: _courseStatusLabel(course, mine), color: color),
                 ],
               ),
               const SizedBox(height: 4),
               Text(
                 '${course['courseCode'] ?? ''} · Điểm đạt ${formatScore(course['passScore'])} · '
                 'Hiệu lực ${course['validityMonths'] ?? '—'} tháng',
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                ),
               ),
               if (mine?['dueAt'] != null)
-                Text('Hạn hoàn thành: ${formatDate(mine!['dueAt'])}',
-                    style: const TextStyle(fontSize: 12)),
+                Text(
+                  'Hạn hoàn thành: ${formatDate(mine!['dueAt'])}',
+                  style: const TextStyle(fontSize: 12),
+                ),
               if (requirement != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
-                    requirement['blocksShiftAssignment'] == true
-                        ? 'Bắt buộc với chức vụ hiện tại · chặn nhận ca nếu chưa đạt'
-                        : 'Bắt buộc với chức vụ hiện tại',
-                    style: const TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w600),
+                    'Được phân theo chức vụ · không ảnh hưởng nhận ca',
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               if (mine == null && isActive) ...[
@@ -335,6 +380,51 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
                   ),
                 ),
               ],
+              if (mine != null && status != 'PASSED' && hasTest) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.tonalIcon(
+                    onPressed: _busy ? null : () => _launchQuiz(course),
+                    icon: const Icon(Icons.quiz_outlined),
+                    label: Text(
+                      status == 'FAILED' || status == 'EXPIRED'
+                          ? 'Làm lại trắc nghiệm'
+                          : 'Làm bài trắc nghiệm',
+                    ),
+                  ),
+                ),
+              ],
+              if (mine != null && !hasTest && status != 'PASSED')
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Đã ghi danh. Admin hoặc quản lý sẽ xác nhận khóa học đã hoàn thành hay chưa.',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              if (status == 'PENDING_REVIEW')
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Đăng ký cũ đang chờ quản lý xác nhận.',
+                    style: TextStyle(color: Color(0xFF8A5A12), fontSize: 12),
+                  ),
+                ),
+              if ((mine?['completionReviewNote'] ?? '').toString().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Quản lý ghi nhận: ${mine!['completionReviewNote']}',
+                    style: const TextStyle(
+                      color: AppColors.error,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -344,7 +434,11 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
 
   void _showCourseDetails(Map<String, dynamic> course) {
     final mine = _mineByCourse[courseIdOf(course)];
+    final status = mine?['status']?.toString();
     final canEnroll = mine == null && course['isActive'] != false;
+    final canTakeQuiz =
+        mine != null && status != 'PASSED' && course['isMandatoryTest'] == true;
+    final hasTest = course['isMandatoryTest'] == true;
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -355,11 +449,18 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text((course['courseName'] ?? 'Khóa học').toString(),
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              Text(
+                (course['courseName'] ?? 'Khóa học').toString(),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
               const SizedBox(height: 4),
-              Text('Mã khóa: ${course['courseCode'] ?? '—'}',
-                  style: const TextStyle(color: AppColors.textSecondary)),
+              Text(
+                'Mã khóa: ${course['courseCode'] ?? '—'}',
+                style: const TextStyle(color: AppColors.textSecondary),
+              ),
               const SizedBox(height: 10),
               if ((course['description'] ?? '').toString().isNotEmpty)
                 Padding(
@@ -367,15 +468,49 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
                   child: Text(course['description'].toString()),
                 ),
               _detailRow('Điểm đạt', formatScore(course['passScore'])),
-              _detailRow('Thời hạn hiệu lực', '${course['validityMonths'] ?? '—'} tháng'),
-              _detailRow('Bài kiểm tra', course['isMandatoryTest'] == true ? 'Có' : 'Không'),
-              _detailRow('Bắt buộc với chức vụ', _requirementOf(course) != null ? 'Có' : 'Không'),
-              _detailRow('Trạng thái của tôi', trainingStatusLabel(mine?['status']?.toString())),
+              _detailRow(
+                'Thời hạn hiệu lực',
+                '${course['validityMonths'] ?? '—'} tháng',
+              ),
+              _detailRow(
+                'Bài kiểm tra',
+                course['isMandatoryTest'] == true ? 'Có' : 'Không',
+              ),
+              _detailRow(
+                'Phân theo chức vụ',
+                _requirementOf(course) != null
+                    ? 'Có · không chặn nhận ca'
+                    : 'Không',
+              ),
+              _detailRow(
+                'Trạng thái của tôi',
+                _courseStatusLabel(course, mine),
+              ),
               if (mine != null) ...[
                 _detailRow('Điểm bài kiểm tra', formatScore(mine['testScore'])),
                 _detailRow('Hạn hoàn thành', formatDate(mine['dueAt'])),
                 _detailRow('Ngày hoàn thành', formatDate(mine['completedAt'])),
                 _detailRow('Hết hạn', formatDate(mine['expiresAt'])),
+                if (!hasTest && status != 'PASSED')
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: Text(
+                      'Admin hoặc quản lý sẽ xác nhận khóa học đã hoàn thành hay chưa.',
+                    ),
+                  ),
+                if (status == 'PENDING_REVIEW')
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: Text('Đăng ký cũ đang chờ quản lý xác nhận.'),
+                  ),
+                if ((mine['completionReviewNote'] ?? '').toString().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'Quản lý ghi nhận: ${mine['completionReviewNote']}',
+                      style: const TextStyle(color: AppColors.error),
+                    ),
+                  ),
               ],
               if (canEnroll) ...[
                 const SizedBox(height: 12),
@@ -392,6 +527,26 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
                   ),
                 ),
               ],
+              if (canTakeQuiz) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () {
+                            Navigator.pop(sheetContext);
+                            _launchQuiz(course);
+                          },
+                    icon: const Icon(Icons.quiz_outlined),
+                    label: Text(
+                      status == 'FAILED' || status == 'EXPIRED'
+                          ? 'Làm lại trắc nghiệm'
+                          : 'Bắt đầu trắc nghiệm',
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -400,18 +555,29 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
   }
 
   Widget _detailRow(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 150,
-              child: Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 150,
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
             ),
-            Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600))),
-          ],
+          ),
         ),
-      );
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    ),
+  );
 
   List<Widget> _skillsContent() {
     final latest = <int, Map<String, dynamic>>{};
@@ -420,7 +586,10 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
       if (skillId == null) continue;
       final current = latest[skillId];
       if (current == null ||
-          (item['assessedAt'] ?? '').toString().compareTo((current['assessedAt'] ?? '').toString()) > 0) {
+          (item['assessedAt'] ?? '').toString().compareTo(
+                (current['assessedAt'] ?? '').toString(),
+              ) >
+              0) {
         latest[skillId] = item;
       }
     }
@@ -440,7 +609,10 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
     ];
   }
 
-  Widget _skillCard(Map<String, dynamic> skill, Map<String, dynamic>? assessment) {
+  Widget _skillCard(
+    Map<String, dynamic> skill,
+    Map<String, dynamic>? assessment,
+  ) {
     final level = (assessment?['level'] as num?)?.toInt();
     return Card(
       color: AppColors.surface,
@@ -452,14 +624,20 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
             Row(
               children: [
                 Expanded(
-                  child: Text((skill['skillName'] ?? 'Kỹ năng').toString(),
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  child: Text(
+                    (skill['skillName'] ?? 'Kỹ năng').toString(),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                 ),
-                Text(level == null ? 'Chưa đánh giá' : 'Mức $level/5',
-                    style: TextStyle(
-                      color: level == null ? AppColors.textSecondary : AppColors.primary,
-                      fontWeight: FontWeight.w700,
-                    )),
+                Text(
+                  level == null ? 'Chưa đánh giá' : 'Mức $level/5',
+                  style: TextStyle(
+                    color: level == null
+                        ? AppColors.textSecondary
+                        : AppColors.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ],
             ),
             if (level != null) ...[
@@ -471,7 +649,10 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
               Text(
                 'Đánh giá ngày ${formatDate(assessment['assessedAt'])}'
                 '${(assessment['note'] ?? '').toString().isEmpty ? '' : ' · ${assessment['note']}'}',
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                ),
               ),
             ],
           ],
@@ -482,7 +663,9 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
 
   List<Widget> _certificatesContent() {
     final certificates = _mine
-        .where((item) => item['status'] == 'PASSED' || item['status'] == 'EXPIRED')
+        .where(
+          (item) => item['status'] == 'PASSED' || item['status'] == 'EXPIRED',
+        )
         .toList();
     return [
       const _SectionIntro(
@@ -506,11 +689,15 @@ class _EmployeeTrainingPageState extends ConsumerState<EmployeeTrainingPage> {
       color: AppColors.surface,
       child: ListTile(
         leading: Icon(
-          expired ? Icons.warning_amber_outlined : Icons.workspace_premium_outlined,
+          expired
+              ? Icons.warning_amber_outlined
+              : Icons.workspace_premium_outlined,
           color: expired ? AppColors.error : AppColors.secondary,
         ),
-        title: Text((item['courseName'] ?? 'Khóa học').toString(),
-            style: const TextStyle(fontWeight: FontWeight.w700)),
+        title: Text(
+          (item['courseName'] ?? 'Khóa học').toString(),
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
         subtitle: Text(
           'Hoàn thành: ${formatDate(item['completedAt'])} · '
           'Hiệu lực đến: ${formatDate(item['expiresAt'])}',
@@ -565,7 +752,14 @@ class _Tag extends StatelessWidget {
         color: color.withValues(alpha: .12),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }
@@ -581,9 +775,15 @@ class _SectionIntro extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+        Text(
+          title,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+        ),
         const SizedBox(height: 4),
-        Text(subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+        Text(
+          subtitle,
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        ),
       ],
     );
   }
@@ -598,7 +798,12 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24),
-      child: Center(child: Text(message, style: const TextStyle(color: AppColors.textSecondary))),
+      child: Center(
+        child: Text(
+          message,
+          style: const TextStyle(color: AppColors.textSecondary),
+        ),
+      ),
     );
   }
 }

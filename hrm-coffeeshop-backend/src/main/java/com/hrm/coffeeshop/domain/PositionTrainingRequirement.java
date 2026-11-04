@@ -21,7 +21,7 @@ public class PositionTrainingRequirement {
     @Column(name = "IsMandatory")
     private Boolean isMandatory = Boolean.TRUE;
     @Column(name = "BlocksShiftAssignment")
-    private Boolean blocksShiftAssignment = Boolean.TRUE;
+    private Boolean blocksShiftAssignment = Boolean.FALSE;
     @Column(name = "EffectiveFrom")
     private LocalDate effectiveFrom;
     @Column(name = "EffectiveTo")

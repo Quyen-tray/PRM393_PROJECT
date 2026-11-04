@@ -3,7 +3,7 @@
 Backend REST cho **SRS HRM Coffee Shop v2.1**, bám theo **DDL duy nhất** (`config.sql`). Một cửa hàng, base path `/api/v1`.
 
 ## Chạy
-1. Làm theo `docs/INSTALL.md`: trên database mới, chạy toàn bộ `config.sql` trong một query window, sau đó chạy `seeddata.sql`. Repository chỉ duy trì đúng hai file SQL: `config.sql` (schema) và `seeddata.sql` (seed/demo); không có migration hoặc script SQL phụ.
+1. Làm theo `docs/INSTALL.md`: trên database mới, chạy toàn bộ `config.sql` trong một query window, sau đó chạy `seeddata.sql`. Hai script nền là `config.sql` (schema) và `seeddata.sql` (seed/demo); migration có ngày trong `infra/sqlserver/migrations/` chỉ dùng một lần cho database demo đã có dữ liệu.
 2. Đặt biến môi trường (xem `.env.example`): `DB_URL, DB_USERNAME, DB_PASSWORD, JWT_SECRET (≥32 ký tự), GOOGLE_CLIENT_ID` (cách lấy và cấu hình đăng nhập Google: `docs/GOOGLE_LOGIN.md`).
 3. Muốn test API khi chưa làm Google login: xem **[docs/README.md](docs/README.md)** (bật `DEV_PASSWORD_LOGIN_ENABLED` + `BOOTSTRAP_ADMIN_PASSWORD`).
 4. `mvn spring-boot:run` (Swagger UI: `/swagger-ui.html`). Test: `mvn test`.
@@ -26,7 +26,7 @@ service/     nghiệp vụ     controller/ dto/ job/ (nhắc ca & checklist, đ�
 
 ## Phần đã làm (theo module SRS)
 Auth/RBAC · cấu hình cửa hàng & chính sách chấm công · nhân viên · hồ sơ giấy tờ · thiết bị (chuyển máy nguyên tử) ·
-đào tạo → điều kiện nhận ca · mẫu ca & phân ca · **chấm công** (GPS geofence, ảnh, face-hook, ân hạn/tháng, idempotency,
+đào tạo & trắc nghiệm tự chấm (không chặn nhận ca) · mẫu ca & phân ca · **chấm công** (GPS geofence, ảnh, face-hook, ân hạn/tháng, idempotency,
 OT chỉ tính khi được duyệt) · giải trình · điều chỉnh công (Quản lý → HR) · checklist · vi phạm · thưởng/phạt (phân quyền theo mức độ) ·
 chốt công (readiness, chặn khi còn đơn treo, mở lại có lý do) · dashboard/báo cáo · thông báo · audit (append-only, export CSV an toàn, correlation ID).
 
@@ -48,11 +48,20 @@ mọi duyệt/từ chối/chốt/mở lại ghi audit trước–sau; ảnh ch�
 
 ## Giả định cần chốt (đã đánh dấu trong code)
 - **Ân hạn**: trong ân hạn & còn lượt → không muộn, dùng 1 lượt; quá ân hạn → muộn tính từ phút đầu sau ân hạn; hết lượt → tính từ giờ vào ca.
-- Khóa bắt buộc theo chức vụ có `BlocksShiftAssignment = true` mới chặn nhận ca (mặc định true khi cấu hình).
+- Khóa theo chức vụ được dùng để theo dõi tiến độ; đào tạo không chặn nhận ca hoặc check-in.
+- Nhân viên làm trắc nghiệm tại `GET /api/v1/training/courses/{courseId}/quiz` và nộp đáp án tới `POST /api/v1/training/courses/{courseId}/quiz-attempts`; backend chấm theo `PassingScore`.
+- Quản trị câu hỏi qua `GET/PUT /api/v1/admin/training/courses/{courseId}/questions` với quyền `SYSTEM_ADMIN`.
 - Sai số GPS tối đa 50 m (cấu hình `ATTENDANCE_GPS_MAX_ACCURACY_METERS`); QR/WiFi fallback chưa làm (chỉ qua giải trình).
 - Nghỉ giữa ca luôn trừ khỏi công tính; OT chỉ tính sau giờ kết thúc ca.
 - Số tiền thưởng/phạt chỉ vào bảng lương khi `APPROVED`; vi phạm tự động chỉ **ghi nhận**, không tự khấu trừ.
 - Cấu hình thay đổi chỉ áp cho ca tạo mới.
+
+## API trắc nghiệm đào tạo
+
+- Nhân viên đã ghi danh khóa học lấy câu hỏi bằng `GET /api/v1/training/courses/{courseId}/quiz`. Response chỉ có `questionId`, `questionText` và các lựa chọn `options[{key,text}]`; đáp án đúng không lộ trước khi nộp bài.
+- Nộp `POST /api/v1/training/courses/{courseId}/quiz-attempts` với `{"answers":[{"questionId":1,"selectedOption":"A"}]}`. Backend đối chiếu đủ câu hỏi, tính điểm phần trăm, lưu lượt thi và đánh dấu `PASSED` khi `score >= passScore`.
+- Quản trị viên xem/sửa ngân hàng câu hỏi qua `GET/PUT /api/v1/admin/training/courses/{courseId}/questions`. Body PUT có `questions[]` với `questionText`, `optionA`–`optionD`, `correctOption` (`A`–`D`) và `sortOrder`.
+- Các API dùng envelope `ApiResponse`; tiến độ đào tạo được lưu để theo dõi nhưng không chặn phân ca hoặc check-in.
 
 ## Điểm cần thay khi lên production
 - `UploadScanner` (mặc định no-op, phải thay bằng malware scanner), `FaceVerificationClient` (mặc định NOT_RUN), `PushGateway` (mặc định chỉ log và không đánh dấu SENT), `StorageGateway` (local filesystem; production nhiều instance nên dùng private object storage).

@@ -57,7 +57,7 @@ void main() {
     await tester.tap(find.text('Đóng'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Duyệt'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Duyệt'));
     await tester.pumpAndSettle();
     expect(api.approveCalls, 1);
     expect(find.text('Không có hồ sơ nào đang chờ duyệt.'), findsOneWidget);
@@ -124,9 +124,7 @@ Widget _dashboardApp(Set<String> permissions) {
   );
   return ProviderScope(
     overrides: [
-      employeeRepositoryProvider.overrideWithValue(
-        EmployeeRepository(api),
-      ),
+      employeeRepositoryProvider.overrideWithValue(EmployeeRepository(api)),
       authRepositoryProvider.overrideWithValue(AuthRepository(api)),
     ],
     child: MaterialApp.router(routerConfig: router),

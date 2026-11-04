@@ -22,6 +22,7 @@ String formatScore(Object? value, {String fallback = '—'}) {
 /// Nhãn tiếng Việt cho trạng thái đào tạo (TrainingStatus trong backend).
 String trainingStatusLabel(String? status) => switch (status) {
   'PASSED' => 'Đã đạt',
+  'PENDING_REVIEW' => 'Chờ quản lý duyệt',
   'IN_PROGRESS' => 'Đang học',
   'NOT_STARTED' => 'Chưa bắt đầu',
   'FAILED' => 'Chưa đạt',

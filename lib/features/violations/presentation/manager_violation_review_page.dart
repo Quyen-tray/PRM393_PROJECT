@@ -7,6 +7,7 @@ import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../data/repositories/employee_providers.dart';
+import '../../home/presentation/widgets/manager_bottom_navigation.dart';
 import '../../../data/repositories/employee_repository.dart';
 
 /// Bộ lọc trạng thái vi phạm (ViolationView.status) và nhãn tiếng Việt.
@@ -239,6 +240,47 @@ class _ManagerViolationReviewPageState
     );
   }
 
+  Future<void> _showViolationDetail(int id) async {
+    try {
+      final detail = await ref
+          .read(employeeRepositoryProvider)
+          .getViolation(id);
+      if (!mounted) return;
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (context) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            children: [
+              Text(
+                'Chi tiết vi phạm #$id',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                ),
+              ),
+              for (final entry in detail.entries)
+                ListTile(
+                  dense: true,
+                  title: Text(entry.key),
+                  subtitle: SelectableText('${entry.value ?? '—'}'),
+                ),
+            ],
+          ),
+        ),
+      );
+    } catch (error) {
+      _snack(
+        error is ApiException
+            ? error.message
+            : 'Không tải được chi tiết vi phạm.',
+      );
+    }
+  }
+
   Future<void> _dismiss(Map<String, dynamic> row) async {
     final id = (row['violationId'] as num?)?.toInt();
     if (id == null) return;
@@ -322,6 +364,7 @@ class _ManagerViolationReviewPageState
                 Expanded(child: _body()),
               ],
             ),
+      bottomNavigationBar: const ManagerBottomNavigation(selectedIndex: 4),
     );
   }
 
@@ -447,6 +490,15 @@ class _ManagerViolationReviewPageState
               const SizedBox(height: 6),
               Text(details, style: const TextStyle(fontSize: 13)),
             ],
+            if (id != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => _showViolationDetail(id),
+                  icon: const Icon(Icons.info_outline, size: 18),
+                  label: const Text('Xem chi tiết'),
+                ),
+              ),
             if (id != null) _employeeExplanationSection(id),
             if (!open) ...[
               const SizedBox(height: 6),

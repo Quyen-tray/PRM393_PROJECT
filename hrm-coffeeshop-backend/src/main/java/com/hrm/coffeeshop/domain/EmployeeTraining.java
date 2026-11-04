@@ -30,6 +30,16 @@ public class EmployeeTraining {
     private BigDecimal testScore;
     @Column(name = "TrainingStatus")
     private String trainingStatus = "NOT_STARTED";
+    @Column(name = "CompletionSubmittedAt")
+    private Instant completionSubmittedAt;
+    @Column(name = "CompletionRequestNote")
+    private String completionRequestNote;
+    @Column(name = "CompletionReviewedAt")
+    private Instant completionReviewedAt;
+    @Column(name = "CompletionReviewedBy")
+    private Long completionReviewedBy;
+    @Column(name = "CompletionReviewNote")
+    private String completionReviewNote;
 
     public EmployeeTraining() {}
 
@@ -51,4 +61,14 @@ public class EmployeeTraining {
     public void setTestScore(BigDecimal testScore) { this.testScore = testScore; }
     public String getTrainingStatus() { return trainingStatus; }
     public void setTrainingStatus(String trainingStatus) { this.trainingStatus = trainingStatus; }
+    public Instant getCompletionSubmittedAt() { return completionSubmittedAt; }
+    public void setCompletionSubmittedAt(Instant completionSubmittedAt) { this.completionSubmittedAt = completionSubmittedAt; }
+    public String getCompletionRequestNote() { return completionRequestNote; }
+    public void setCompletionRequestNote(String completionRequestNote) { this.completionRequestNote = completionRequestNote; }
+    public Instant getCompletionReviewedAt() { return completionReviewedAt; }
+    public void setCompletionReviewedAt(Instant completionReviewedAt) { this.completionReviewedAt = completionReviewedAt; }
+    public Long getCompletionReviewedBy() { return completionReviewedBy; }
+    public void setCompletionReviewedBy(Long completionReviewedBy) { this.completionReviewedBy = completionReviewedBy; }
+    public String getCompletionReviewNote() { return completionReviewNote; }
+    public void setCompletionReviewNote(String completionReviewNote) { this.completionReviewNote = completionReviewNote; }
 }

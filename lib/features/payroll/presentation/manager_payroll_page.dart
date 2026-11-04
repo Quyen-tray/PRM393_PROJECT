@@ -6,6 +6,7 @@ import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../data/repositories/employee_providers.dart';
+import '../../home/presentation/widgets/manager_bottom_navigation.dart';
 import '../../../data/repositories/employee_repository.dart';
 
 /// Nhãn trạng thái kỳ công theo SRS 8.5 (PeriodView.status).
@@ -39,7 +40,8 @@ const _blockerLabels = <String, String>{
 
 String _s(Object? value) => value?.toString() ?? '';
 
-int _i(Object? value) => value is num ? value.toInt() : int.tryParse(_s(value)) ?? 0;
+int _i(Object? value) =>
+    value is num ? value.toInt() : int.tryParse(_s(value)) ?? 0;
 
 /// Chuyển yyyy-MM-dd (hoặc ISO) sang dd/MM/yyyy. Không đọc được thì giữ nguyên.
 String _fmtDate(Object? raw) {
@@ -67,7 +69,9 @@ void _showSnack(BuildContext context, String message) {
 /// Kỳ công (quản lý, HR, giám đốc vận hành, admin). Nút thao tác hiện theo quyền và bước của kỳ.
 /// Máy chủ vẫn là bên quyết định: app chỉ ẩn nút khi thiếu quyền hoặc sai bước rõ ràng.
 class ManagerPayrollPage extends ConsumerStatefulWidget {
-  const ManagerPayrollPage({super.key});
+  const ManagerPayrollPage({this.returnRoute = RouteNames.home, super.key});
+
+  final String returnRoute;
 
   @override
   ConsumerState<ManagerPayrollPage> createState() => _ManagerPayrollPageState();
@@ -108,7 +112,9 @@ class _ManagerPayrollPageState extends ConsumerState<ManagerPayrollPage> {
       _error = null;
     });
     try {
-      final rows = await ref.read(employeeRepositoryProvider).getPayrollPeriods();
+      final rows = await ref
+          .read(employeeRepositoryProvider)
+          .getPayrollPeriods();
       if (!mounted) return;
       setState(() {
         _periods = rows;
@@ -133,7 +139,7 @@ class _ManagerPayrollPageState extends ConsumerState<ManagerPayrollPage> {
     if (context.canPop()) {
       context.pop();
     } else {
-      context.go(RouteNames.home);
+      context.go(widget.returnRoute);
     }
   }
 
@@ -144,7 +150,9 @@ class _ManagerPayrollPageState extends ConsumerState<ManagerPayrollPage> {
     );
     if (result == null || !mounted) return;
     try {
-      await ref.read(employeeRepositoryProvider).createPayrollPeriod(
+      await ref
+          .read(employeeRepositoryProvider)
+          .createPayrollPeriod(
             periodCode: result['periodCode']!,
             startDate: result['startDate']!,
             endDate: result['endDate']!,
@@ -207,25 +215,26 @@ class _ManagerPayrollPageState extends ConsumerState<ManagerPayrollPage> {
       body: !_accessLoaded
           ? const Center(child: CircularProgressIndicator())
           : !canUse
-              ? const _CenteredMessage('Tài khoản này không có quyền xem kỳ công.')
-              : _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _error != null
-                      ? _ErrorView(message: _error!, onRetry: _load)
-                      : _periods.isEmpty
-                          ? const _CenteredMessage('Chưa có kỳ công nào.')
-                          : RefreshIndicator(
-                              onRefresh: _load,
-                              child: ListView.separated(
-                                padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-                                itemCount: _periods.length,
-                                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                                itemBuilder: (context, index) => _PeriodCard(
-                                  row: _periods[index],
-                                  onTap: () => _openPeriod(_periods[index]),
-                                ),
-                              ),
-                            ),
+          ? const _CenteredMessage('Tài khoản này không có quyền xem kỳ công.')
+          : _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? _ErrorView(message: _error!, onRetry: _load)
+          : _periods.isEmpty
+          ? const _CenteredMessage('Chưa có kỳ công nào.')
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+                itemCount: _periods.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, index) => _PeriodCard(
+                  row: _periods[index],
+                  onTap: () => _openPeriod(_periods[index]),
+                ),
+              ),
+            ),
+      bottomNavigationBar: const ManagerBottomNavigation(selectedIndex: 4),
     );
   }
 }
@@ -249,7 +258,10 @@ class _PeriodCard extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         title: Text(
           _s(row['periodCode']),
-          style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700),
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -262,7 +274,10 @@ class _PeriodCard extends StatelessWidget {
                 _statusLabels[status] ?? status,
                 if (managerConfirmed) 'Quản lý đã xác nhận',
               ].join(' · '),
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
             ),
           ],
         ),
@@ -339,14 +354,18 @@ class _PeriodSheetState extends ConsumerState<_PeriodSheet> {
     );
     if (!ok) return;
     await _run(() async {
-      await ref.read(employeeRepositoryProvider).managerConfirmPayroll(widget.periodId);
+      await ref
+          .read(employeeRepositoryProvider)
+          .managerConfirmPayroll(widget.periodId);
       return 'Đã xác nhận, chờ HR chốt.';
     });
   }
 
   Future<void> _generateAbsence() async {
     await _run(() async {
-      final data = await ref.read(employeeRepositoryProvider).generatePayrollAbsenceRequests(widget.periodId);
+      final data = await ref
+          .read(employeeRepositoryProvider)
+          .generatePayrollAbsenceRequests(widget.periodId);
       return 'Đã tạo ${_i(data['created'])} đơn ABSENCE chờ duyệt.';
     });
   }
@@ -354,12 +373,15 @@ class _PeriodSheetState extends ConsumerState<_PeriodSheet> {
   Future<void> _finalize() async {
     final ok = await _confirmDialog(
       title: 'Chốt kỳ công',
-      body: 'Chốt kỳ ${widget.periodCode}? Sau khi chốt, chấm công trong kỳ bị khóa.',
+      body:
+          'Chốt kỳ ${widget.periodCode}? Sau khi chốt, chấm công trong kỳ bị khóa.',
       action: 'Chốt',
     );
     if (!ok) return;
     await _run(() async {
-      await ref.read(employeeRepositoryProvider).hrFinalizePayroll(widget.periodId);
+      await ref
+          .read(employeeRepositoryProvider)
+          .hrFinalizePayroll(widget.periodId);
       return 'Đã chốt kỳ công.';
     });
   }
@@ -371,7 +393,9 @@ class _PeriodSheetState extends ConsumerState<_PeriodSheet> {
     );
     if (reason == null) return;
     await _run(() async {
-      await ref.read(employeeRepositoryProvider).reopenPayroll(widget.periodId, reason: reason);
+      await ref
+          .read(employeeRepositoryProvider)
+          .reopenPayroll(widget.periodId, reason: reason);
       return 'Đã mở lại kỳ công.';
     });
   }
@@ -405,8 +429,11 @@ class _PeriodSheetState extends ConsumerState<_PeriodSheet> {
     final end = DateTime.tryParse(widget.endDate);
     if (end == null) return false;
     final today = DateTime.now();
-    return DateTime(end.year, end.month, end.day)
-        .isBefore(DateTime(today.year, today.month, today.day));
+    return DateTime(
+      end.year,
+      end.month,
+      end.day,
+    ).isBefore(DateTime(today.year, today.month, today.day));
   }
 
   Widget _actions(Map<String, dynamic> data) {
@@ -415,11 +442,17 @@ class _PeriodSheetState extends ConsumerState<_PeriodSheet> {
     final canFinalize = data['canFinalize'] == true;
     final access = widget.access;
 
-    final showConfirm = access.isStoreManager && (stage == 'OPEN' || stage == 'MANAGER_REVIEW');
+    final showConfirm =
+        access.isStoreManager && (stage == 'OPEN' || stage == 'MANAGER_REVIEW');
     final showAbsence = access.isStoreManager && !locked;
-    final showFinalize = access.canFinalizePayroll && stage == 'HR_REVIEW' && canFinalize && _ended;
+    final showFinalize =
+        access.canFinalizePayroll &&
+        stage == 'HR_REVIEW' &&
+        canFinalize &&
+        _ended;
     final showReopen = access.canReopenPayroll && locked;
-    final waitingForEnd = access.canFinalizePayroll && stage == 'HR_REVIEW' && !_ended;
+    final waitingForEnd =
+        access.canFinalizePayroll && stage == 'HR_REVIEW' && !_ended;
 
     final buttons = <Widget>[
       if (showAbsence)
@@ -457,10 +490,7 @@ class _PeriodSheetState extends ConsumerState<_PeriodSheet> {
               style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
             ),
           ),
-        for (final button in buttons) ...[
-          button,
-          const SizedBox(height: 8),
-        ],
+        for (final button in buttons) ...[button, const SizedBox(height: 8)],
       ],
     );
   }
@@ -485,7 +515,9 @@ class _PeriodSheetState extends ConsumerState<_PeriodSheet> {
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 24),
                   child: Text(
-                    error is ApiException ? error.message : 'Không tải được điều kiện chốt.',
+                    error is ApiException
+                        ? error.message
+                        : 'Không tải được điều kiện chốt.',
                     style: const TextStyle(color: AppColors.error),
                   ),
                 );
@@ -560,7 +592,10 @@ class _ReadinessBody extends StatelessWidget {
         else ...[
           Text(
             'Còn ${blockers.length} điều kiện chặn chốt:',
-            style: const TextStyle(color: AppColors.error, fontWeight: FontWeight.w600),
+            style: const TextStyle(
+              color: AppColors.error,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           const SizedBox(height: 4),
           for (final blocker in blockers)
@@ -568,7 +603,9 @@ class _ReadinessBody extends StatelessWidget {
               dense: true,
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.error_outline, color: AppColors.error),
-              title: Text(_blockerLabels[_s(blocker['type'])] ?? _s(blocker['type'])),
+              title: Text(
+                _blockerLabels[_s(blocker['type'])] ?? _s(blocker['type']),
+              ),
               trailing: Text('${_i(blocker['count'])}'),
             ),
         ],
@@ -652,7 +689,10 @@ class _CreatePeriodDialogState extends State<_CreatePeriodDialog> {
             TextField(
               controller: _code,
               maxLength: 20,
-              decoration: const InputDecoration(labelText: 'Mã kỳ công', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Mã kỳ công',
+                border: OutlineInputBorder(),
+              ),
             ),
             const SizedBox(height: 8),
             OutlinedButton(
@@ -669,18 +709,27 @@ class _CreatePeriodDialogState extends State<_CreatePeriodDialog> {
               controller: _note,
               maxLines: 2,
               maxLength: 500,
-              decoration: const InputDecoration(labelText: 'Ghi chú (không bắt buộc)', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Ghi chú (không bắt buộc)',
+                border: OutlineInputBorder(),
+              ),
             ),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text(_error!, style: const TextStyle(color: AppColors.error, fontSize: 12)),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(color: AppColors.error, fontSize: 12),
+                ),
               ),
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Hủy'),
+        ),
         FilledButton(onPressed: _submit, child: const Text('Tạo')),
       ],
     );
@@ -729,7 +778,10 @@ class _ReasonDialogState extends State<_ReasonDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Hủy'),
+        ),
         FilledButton(onPressed: _submit, child: const Text('Mở lại')),
       ],
     );
@@ -781,7 +833,11 @@ class _ErrorView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.error)),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.error),
+            ),
             const SizedBox(height: 12),
             OutlinedButton(onPressed: onRetry, child: const Text('Thử lại')),
           ],

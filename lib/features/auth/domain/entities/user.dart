@@ -6,6 +6,7 @@ class User {
     required this.email,
     required this.fullName,
     required this.roles,
+    this.permissions = const [],
     this.avatarUrl,
     this.phoneNumber,
     this.employeeId,
@@ -16,6 +17,7 @@ class User {
   final String email;
   final String fullName;
   final List<String> roles;
+  final List<String> permissions;
   final String? avatarUrl;
   final String? phoneNumber;
   final int? employeeId;
@@ -23,6 +25,18 @@ class User {
 
   bool hasRole(String role) =>
       roles.any((value) => value.toUpperCase() == role.toUpperCase());
+
+  User withPermissions(Iterable<String> values) => User(
+    id: id,
+    email: email,
+    fullName: fullName,
+    roles: roles,
+    permissions: values.toList(growable: false),
+    avatarUrl: avatarUrl,
+    phoneNumber: phoneNumber,
+    employeeId: employeeId,
+    status: status,
+  );
 
   UserRole get primaryRole {
     if (hasRole('SYSTEM_ADMIN')) return UserRole.systemAdmin;
@@ -38,12 +52,19 @@ class User {
     final roles = rawRoles is List
         ? rawRoles.map((role) => role.toString()).toList(growable: false)
         : const <String>[];
+    final rawPermissions = json['permissions'];
+    final permissions = rawPermissions is List
+        ? rawPermissions
+              .map((permission) => permission.toString())
+              .toList(growable: false)
+        : const <String>[];
     final rawEmployeeId = json['employeeId'];
     return User(
       id: (json['userId'] ?? json['id'] ?? '').toString(),
       email: (json['email'] ?? '').toString(),
       fullName: (json['displayName'] ?? json['fullName'] ?? '').toString(),
       roles: roles,
+      permissions: permissions,
       avatarUrl: json['avatarUrl']?.toString(),
       phoneNumber: json['phoneNumber']?.toString(),
       employeeId: rawEmployeeId is num

@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hrm_coffee_shop_flutter/features/auth/presentation/sign_out_flow.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../data/repositories/employee_providers.dart';
-import '../../home/presentation/widgets/manager_more_menu.dart';
+import '../../home/presentation/widgets/manager_bottom_navigation.dart';
 
 const _borderColor = Color(0xFFEDE8E3);
 const _barColor = Color(0xFF39A1E8);
@@ -383,48 +382,7 @@ class _ManagerAttendanceReportPageState
                 ],
               ),
             ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 4,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Tổng quan',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            selectedIcon: Icon(Icons.people),
-            label: 'Nhân viên',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month),
-            label: 'Lịch',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.fact_check_outlined),
-            selectedIcon: Icon(Icons.fact_check),
-            label: 'Duyệt',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.more_horiz),
-            selectedIcon: Icon(Icons.more_horiz),
-            label: 'Khác',
-          ),
-        ],
-        onDestinationSelected: (index) {
-          if (index == 0) context.go(RouteNames.home);
-          if (index == 1) context.go(RouteNames.managerEmployees);
-          if (index == 2) context.go(RouteNames.managerSchedule);
-          if (index == 3) context.go(RouteNames.managerApprovals);
-          if (index == 4) {
-            showManagerMoreMenu(
-              context,
-              onSignOut: () => signOutAndReturnToLogin(context, ref),
-            );
-          }
-        },
-      ),
+      bottomNavigationBar: const ManagerBottomNavigation(selectedIndex: 4),
     );
   }
 }

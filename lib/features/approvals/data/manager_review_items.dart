@@ -43,9 +43,9 @@ class ManagerReviewBuckets {
   final List<ManagerReviewItem> rejected;
 
   List<ManagerReviewItem> whereKind(ManagerReviewKind kind) => [
-        for (final item in [...pending, ...approved, ...rejected])
-          if (item.kind == kind) item,
-      ];
+    for (final item in [...pending, ...approved, ...rejected])
+      if (item.kind == kind) item,
+  ];
 }
 
 /// Tải các mục duyệt của quản lý, theo ba nhóm trạng thái. Chỉ gọi API của các loại trong
@@ -57,37 +57,73 @@ Future<ManagerReviewBuckets> loadManagerReviewBuckets(
 }) async {
   final want = kinds ?? ManagerReviewKind.values.toSet();
   bool wants(ManagerReviewKind kind) => want.contains(kind);
-  Future<List<Map<String, dynamic>>> none() => Future.value(const <Map<String, dynamic>>[]);
+  Future<List<Map<String, dynamic>>> none() =>
+      Future.value(const <Map<String, dynamic>>[]);
 
   final results = await Future.wait<List<Map<String, dynamic>>>([
     wants(ManagerReviewKind.explanation)
-        ? repo.getManagerAttendanceRequests(adjustment: false, status: 'PENDING_MANAGER')
+        ? repo.getManagerAttendanceRequests(
+            adjustment: false,
+            status: 'PENDING_MANAGER',
+          )
         : none(), // 0
     wants(ManagerReviewKind.adjustment)
-        ? repo.getManagerAttendanceRequests(adjustment: true, status: 'PENDING_MANAGER')
+        ? repo.getManagerAttendanceRequests(
+            adjustment: true,
+            status: 'PENDING_MANAGER',
+          )
         : none(), // 1
-    wants(ManagerReviewKind.overtime) ? repo.getManagerOvertimeRequests(status: 'PENDING') : none(), // 2
-    wants(ManagerReviewKind.checklist) ? repo.getManagerChecklistRuns(status: 'SUBMITTED') : none(), // 3
-    wants(ManagerReviewKind.device) ? repo.getPendingAttendanceDevices() : none(), // 4
+    wants(ManagerReviewKind.overtime)
+        ? repo.getManagerOvertimeRequests(status: 'PENDING')
+        : none(), // 2
+    wants(ManagerReviewKind.checklist)
+        ? repo.getPendingChecklistReviews()
+        : none(), // 3
+    wants(ManagerReviewKind.device)
+        ? repo.getPendingAttendanceDevices()
+        : none(), // 4
     wants(ManagerReviewKind.explanation)
-        ? repo.getManagerAttendanceRequests(adjustment: false, status: 'APPROVED')
+        ? repo.getManagerAttendanceRequests(
+            adjustment: false,
+            status: 'APPROVED',
+          )
         : none(), // 5
     wants(ManagerReviewKind.adjustment)
-        ? repo.getManagerAttendanceRequests(adjustment: true, status: 'PENDING_HR')
+        ? repo.getManagerAttendanceRequests(
+            adjustment: true,
+            status: 'PENDING_HR',
+          )
         : none(), // 6
     wants(ManagerReviewKind.adjustment)
-        ? repo.getManagerAttendanceRequests(adjustment: true, status: 'APPROVED')
+        ? repo.getManagerAttendanceRequests(
+            adjustment: true,
+            status: 'APPROVED',
+          )
         : none(), // 7
-    wants(ManagerReviewKind.overtime) ? repo.getManagerOvertimeRequests(status: 'APPROVED') : none(), // 8
-    wants(ManagerReviewKind.checklist) ? repo.getManagerChecklistRuns(status: 'APPROVED') : none(), // 9
+    wants(ManagerReviewKind.overtime)
+        ? repo.getManagerOvertimeRequests(status: 'APPROVED')
+        : none(), // 8
+    wants(ManagerReviewKind.checklist)
+        ? repo.getManagerChecklistRuns(status: 'APPROVED')
+        : none(), // 9
     wants(ManagerReviewKind.explanation)
-        ? repo.getManagerAttendanceRequests(adjustment: false, status: 'REJECTED')
+        ? repo.getManagerAttendanceRequests(
+            adjustment: false,
+            status: 'REJECTED',
+          )
         : none(), // 10
     wants(ManagerReviewKind.adjustment)
-        ? repo.getManagerAttendanceRequests(adjustment: true, status: 'REJECTED')
+        ? repo.getManagerAttendanceRequests(
+            adjustment: true,
+            status: 'REJECTED',
+          )
         : none(), // 11
-    wants(ManagerReviewKind.overtime) ? repo.getManagerOvertimeRequests(status: 'REJECTED') : none(), // 12
-    wants(ManagerReviewKind.checklist) ? repo.getManagerChecklistRuns(status: 'REJECTED') : none(), // 13
+    wants(ManagerReviewKind.overtime)
+        ? repo.getManagerOvertimeRequests(status: 'REJECTED')
+        : none(), // 12
+    wants(ManagerReviewKind.checklist)
+        ? repo.getManagerChecklistRuns(status: 'REJECTED')
+        : none(), // 13
   ]);
 
   const pendingStatus = DemoManagerReviewStatus.pendingManager;
@@ -100,17 +136,26 @@ Future<ManagerReviewBuckets> loadManagerReviewBuckets(
       for (final row in results[4]) _device(row),
     ],
     approved: [
-      for (final row in results[5]) _explanation(row, DemoManagerReviewStatus.approved),
-      for (final row in results[6]) _adjustment(row, DemoManagerReviewStatus.pendingHr),
-      for (final row in results[7]) _adjustment(row, DemoManagerReviewStatus.approved),
-      for (final row in results[8]) _overtime(row, DemoManagerReviewStatus.approved),
-      for (final row in results[9]) _checklist(row, DemoManagerReviewStatus.approved),
+      for (final row in results[5])
+        _explanation(row, DemoManagerReviewStatus.approved),
+      for (final row in results[6])
+        _adjustment(row, DemoManagerReviewStatus.pendingHr),
+      for (final row in results[7])
+        _adjustment(row, DemoManagerReviewStatus.approved),
+      for (final row in results[8])
+        _overtime(row, DemoManagerReviewStatus.approved),
+      for (final row in results[9])
+        _checklist(row, DemoManagerReviewStatus.approved),
     ],
     rejected: [
-      for (final row in results[10]) _explanation(row, DemoManagerReviewStatus.rejected),
-      for (final row in results[11]) _adjustment(row, DemoManagerReviewStatus.rejected),
-      for (final row in results[12]) _overtime(row, DemoManagerReviewStatus.rejected),
-      for (final row in results[13]) _checklist(row, DemoManagerReviewStatus.rejected),
+      for (final row in results[10])
+        _explanation(row, DemoManagerReviewStatus.rejected),
+      for (final row in results[11])
+        _adjustment(row, DemoManagerReviewStatus.rejected),
+      for (final row in results[12])
+        _overtime(row, DemoManagerReviewStatus.rejected),
+      for (final row in results[13])
+        _checklist(row, DemoManagerReviewStatus.rejected),
     ],
   );
 }
@@ -124,10 +169,18 @@ Future<void> approveManagerReviewItem(
   switch (item.kind) {
     case ManagerReviewKind.explanation:
       await repo.reviewManagerAttendanceRequest(
-          requestId: item.id, adjustment: false, approve: true, note: note);
+        requestId: item.id,
+        adjustment: false,
+        approve: true,
+        note: note,
+      );
     case ManagerReviewKind.adjustment:
       await repo.reviewManagerAttendanceRequest(
-          requestId: item.id, adjustment: true, approve: true, note: note);
+        requestId: item.id,
+        adjustment: true,
+        approve: true,
+        note: note,
+      );
     case ManagerReviewKind.overtime:
       await repo.approveOvertimeRequest(item.id, note: note);
     case ManagerReviewKind.checklist:
@@ -146,10 +199,18 @@ Future<void> rejectManagerReviewItem(
   switch (item.kind) {
     case ManagerReviewKind.explanation:
       await repo.reviewManagerAttendanceRequest(
-          requestId: item.id, adjustment: false, approve: false, note: reason);
+        requestId: item.id,
+        adjustment: false,
+        approve: false,
+        note: reason,
+      );
     case ManagerReviewKind.adjustment:
       await repo.reviewManagerAttendanceRequest(
-          requestId: item.id, adjustment: true, approve: false, note: reason);
+        requestId: item.id,
+        adjustment: true,
+        approve: false,
+        note: reason,
+      );
     case ManagerReviewKind.overtime:
       await repo.rejectOvertimeRequest(item.id, reason: reason);
     case ManagerReviewKind.checklist:
@@ -164,14 +225,18 @@ Future<void> rejectManagerReviewItem(
 String _lines(List<String?> lines) =>
     lines.where((line) => line != null && line.isNotEmpty).join('\n');
 
-int _intOf(Object? value) => value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+int _intOf(Object? value) =>
+    value is num ? value.toInt() : int.tryParse('$value') ?? 0;
 
 String? _textOf(Object? value) {
   final text = value?.toString().trim() ?? '';
   return text.isEmpty ? null : text;
 }
 
-ManagerReviewItem _explanation(Map<String, dynamic> row, DemoManagerReviewStatus status) {
+ManagerReviewItem _explanation(
+  Map<String, dynamic> row,
+  DemoManagerReviewStatus status,
+) {
   final checkIn = formatTimeOfDay(row['requestedCheckInAt'], fallback: '');
   final checkOut = formatTimeOfDay(row['requestedCheckOutAt'], fallback: '');
   return ManagerReviewItem(
@@ -188,11 +253,16 @@ ManagerReviewItem _explanation(Map<String, dynamic> row, DemoManagerReviewStatus
       'Gửi lúc: ${formatDate(row['submittedAt'])}',
     ]),
     evidence: 'Chấm công #${row['attendanceId'] ?? '—'}',
-    rejectionReason: status == DemoManagerReviewStatus.rejected ? _textOf(row['reviewNote']) : null,
+    rejectionReason: status == DemoManagerReviewStatus.rejected
+        ? _textOf(row['reviewNote'])
+        : null,
   );
 }
 
-ManagerReviewItem _adjustment(Map<String, dynamic> row, DemoManagerReviewStatus status) {
+ManagerReviewItem _adjustment(
+  Map<String, dynamic> row,
+  DemoManagerReviewStatus status,
+) {
   return ManagerReviewItem(
     kind: ManagerReviewKind.adjustment,
     id: _intOf(row['requestId']),
@@ -208,7 +278,10 @@ ManagerReviewItem _adjustment(Map<String, dynamic> row, DemoManagerReviewStatus 
   );
 }
 
-ManagerReviewItem _overtime(Map<String, dynamic> row, DemoManagerReviewStatus status) {
+ManagerReviewItem _overtime(
+  Map<String, dynamic> row,
+  DemoManagerReviewStatus status,
+) {
   final start = formatTimeOfDay(row['requestedStartAt'], fallback: '');
   final end = formatTimeOfDay(row['requestedEndAt'], fallback: '');
   return ManagerReviewItem(
@@ -221,15 +294,20 @@ ManagerReviewItem _overtime(Map<String, dynamic> row, DemoManagerReviewStatus st
       formatDate(row['requestedStartAt']) == '—'
           ? null
           : 'Ngày ${formatDate(row['requestedStartAt'])}: '
-              '${start.isEmpty ? '—' : start} → ${end.isEmpty ? '—' : end}',
+                '${start.isEmpty ? '—' : start} → ${end.isEmpty ? '—' : end}',
       _textOf(row['reason']) == null ? null : 'Lý do: ${row['reason']}',
     ]),
     evidence: 'Yêu cầu #${row['requestId'] ?? '—'}',
-    rejectionReason: status == DemoManagerReviewStatus.rejected ? _textOf(row['reviewNote']) : null,
+    rejectionReason: status == DemoManagerReviewStatus.rejected
+        ? _textOf(row['reviewNote'])
+        : null,
   );
 }
 
-ManagerReviewItem _checklist(Map<String, dynamic> row, DemoManagerReviewStatus status) {
+ManagerReviewItem _checklist(
+  Map<String, dynamic> row,
+  DemoManagerReviewStatus status,
+) {
   final name = _textOf(row['employeeName']) ?? 'Mã ${row['employeeId'] ?? '—'}';
   return ManagerReviewItem(
     kind: ManagerReviewKind.checklist,
@@ -242,7 +320,9 @@ ManagerReviewItem _checklist(Map<String, dynamic> row, DemoManagerReviewStatus s
       'Gửi lúc: ${formatDate(row['submittedAt'])}',
     ]),
     evidence: 'Checklist #${row['taskId'] ?? '—'}',
-    rejectionReason: status == DemoManagerReviewStatus.rejected ? _textOf(row['reviewNote']) : null,
+    rejectionReason: status == DemoManagerReviewStatus.rejected
+        ? _textOf(row['reviewNote'])
+        : null,
   );
 }
 
@@ -252,7 +332,8 @@ ManagerReviewItem _device(Map<String, dynamic> row) {
     id: _intOf(row['deviceId']),
     status: DemoManagerReviewStatus.pendingManager,
     title: 'Đăng ký thiết bị: ${_textOf(row['deviceLabel']) ?? 'chưa đặt tên'}',
-    subtitle: 'Nhân viên: ${_textOf(row['employeeName']) ?? 'Mã ${row['employeeId'] ?? '—'}'}',
+    subtitle:
+        'Nhân viên: ${_textOf(row['employeeName']) ?? 'Mã ${row['employeeId'] ?? '—'}'}',
     detail: _lines([
       'Nền tảng: ${row['platform'] ?? '—'}',
       'Gửi lúc: ${formatDate(row['requestedAt'])}',

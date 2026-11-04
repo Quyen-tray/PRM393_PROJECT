@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../app/router/route_names.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../data/repositories/employee_providers.dart';
+import '../../home/presentation/widgets/manager_bottom_navigation.dart';
 
 class ManagerAttendanceRequestsPage extends ConsumerStatefulWidget {
   const ManagerAttendanceRequestsPage({super.key});
@@ -111,6 +114,11 @@ class _ManagerAttendanceRequestsPageState
     length: 2,
     child: Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Quay lại',
+          onPressed: () => context.go(RouteNames.managerApprovals),
+          icon: const Icon(Icons.arrow_back),
+        ),
         title: const Text('Duyệt chấm công'),
         bottom: const TabBar(
           tabs: [
@@ -128,6 +136,7 @@ class _ManagerAttendanceRequestsPageState
           ],
         ),
       ),
+      bottomNavigationBar: const ManagerBottomNavigation(selectedIndex: 3),
     ),
   );
 

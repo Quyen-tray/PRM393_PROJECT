@@ -327,11 +327,18 @@ public class AttendanceService {
         List<ShiftAssignment> cand = schedules.findByEmployeeIdAndWorkDateBetweenOrderByPlannedStartAtAsc(empId, today.minusDays(1), today.plusDays(1))
                 .stream().filter(s -> "PUBLISHED".equals(s.getScheduleStatus())).toList();
         ShiftAssignment pick = null;
+        int bestPriority = Integer.MAX_VALUE;
         for (ShiftAssignment s : cand) {
             Attendance ar = attendance.findByShiftAssignmentId(s.getShiftAssignmentId()).orElse(null);
             boolean open = ar != null && ar.getCheckInAt() != null && ar.getCheckOutAt() == null;
-            if (open) { pick = s; break; }
-            if (s.getPlannedEndAt().isAfter(now) && (ar == null || ar.getCheckInAt() == null) && pick == null) pick = s;
+            WorkShift candidateShift = shifts.findById(s.getWorkShiftId()).orElseThrow();
+            Instant candidateOpens = s.getPlannedStartAt().minus(Duration.ofMinutes(candidateShift.getEarlyCheckInMinutes()));
+            boolean inWindow = !now.isBefore(candidateOpens) && !now.isAfter(s.getPlannedEndAt());
+            boolean notStarted = ar == null || ar.getCheckInAt() == null;
+            // An overdue check-out must not hide today's available check-in.
+            int priority = open && inWindow ? 0 : notStarted && inWindow ? 1 : open ? 2
+                    : notStarted && now.isBefore(candidateOpens) ? 3 : Integer.MAX_VALUE;
+            if (priority < bestPriority) { pick = s; bestPriority = priority; }
         }
         if (pick == null) return null;
         WorkShift sh = shifts.findById(pick.getWorkShiftId()).orElseThrow();
@@ -343,6 +350,9 @@ public class AttendanceService {
         if (!deviceOk) blockers.add("DEVICE_NOT_ACTIVE");
         if (!el.eligible()) blockers.add("TRAINING_REQUIREMENT_NOT_MET");
         boolean checkedIn = ar != null && ar.getCheckInAt() != null;
+        if (!"ACTIVE".equals(emp.getEmploymentStatus())) blockers.add("EMPLOYEE_NOT_ACTIVE");
+        if (!checkedIn && now.isBefore(opens)) blockers.add("CHECK_IN_TOO_EARLY");
+        if (!checkedIn && now.isAfter(pick.getPlannedEndAt())) blockers.add("CHECK_IN_WINDOW_CLOSED");
         boolean canIn = !checkedIn && !now.isBefore(opens) && !now.isAfter(pick.getPlannedEndAt()) && blockers.isEmpty();
         boolean canOut = checkedIn && ar.getCheckOutAt() == null && deviceOk;
         return new CurrentShiftView(pick.getShiftAssignmentId(), sh.getShiftName(), TimeUtils.vn(pick.getPlannedStartAt()),

@@ -151,7 +151,7 @@ public class JobPositionService {
                 .map(r -> trainView(r, cm)).toList();
     }
 
-    /** Thay toàn bộ yêu cầu đào tạo của chức vụ (BlocksShiftAssignment quyết định khóa có chặn ca hay không). */
+    /** Thay toàn bộ khóa được theo dõi cho chức vụ; đào tạo không chặn phân ca. */
     @Transactional
     public List<TrainingRequirementView> replaceTrainingRequirements(Integer positionId, TrainingRequirementsRequest r) {
         requirePosition(positionId);
@@ -172,7 +172,7 @@ public class JobPositionService {
             n.setPositionId(positionId);
             n.setCourseId(it.courseId());
             n.setIsMandatory(it.isMandatory() == null || it.isMandatory());
-            n.setBlocksShiftAssignment(it.blocksShiftAssignment() == null || it.blocksShiftAssignment());
+            n.setBlocksShiftAssignment(false);
             n.setEffectiveFrom(it.effectiveFrom());
             n.setEffectiveTo(it.effectiveTo());
             trainReqs.save(n);
@@ -209,6 +209,6 @@ public class JobPositionService {
     private static TrainingRequirementView trainView(PositionTrainingRequirement r, Map<Integer, TrainingCourse> cm) {
         TrainingCourse c = cm.get(r.getCourseId());
         return new TrainingRequirementView(r.getRequirementId(), r.getCourseId(), c == null ? null : c.getCourseName(),
-                r.getIsMandatory(), r.getBlocksShiftAssignment(), r.getEffectiveFrom(), r.getEffectiveTo());
+                r.getIsMandatory(), false, r.getEffectiveFrom(), r.getEffectiveTo());
     }
 }

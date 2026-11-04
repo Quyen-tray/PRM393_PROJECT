@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../app/theme/app_colors.dart';
+
 class AdminBottomNavigation extends StatelessWidget {
   const AdminBottomNavigation({
     required this.selectedIndex,
@@ -14,7 +16,8 @@ class AdminBottomNavigation extends StatelessWidget {
   Widget build(BuildContext context) {
     return NavigationBar(
       selectedIndex: selectedIndex,
-      backgroundColor: const Color(0xFFFCECE6),
+      backgroundColor: AppColors.surface,
+      indicatorColor: const Color(0xFFF3E5DA),
       onDestinationSelected: onDestinationSelected,
       destinations: const [
         NavigationDestination(

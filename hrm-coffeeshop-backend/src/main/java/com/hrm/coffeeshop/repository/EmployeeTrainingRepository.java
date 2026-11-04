@@ -14,6 +14,7 @@ public interface EmployeeTrainingRepository extends JpaRepository<EmployeeTraini
 
     List<EmployeeTraining> findByEmployeeId(Long employeeId);
     Optional<EmployeeTraining> findByEmployeeIdAndCourseId(Long employeeId, Integer courseId);
+    List<EmployeeTraining> findByTrainingStatusOrderByCompletionSubmittedAtAsc(String trainingStatus);
 
     /** Khóa đã đạt nhưng hết hạn hiệu lực: chuyển sang EXPIRED (SRS 8.5). */
     @Query("select t from EmployeeTraining t where t.trainingStatus = 'PASSED' "

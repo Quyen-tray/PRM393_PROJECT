@@ -1,14 +1,14 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hrm_coffee_shop_flutter/features/auth/presentation/sign_out_flow.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/repositories/employee_providers.dart';
-import '../../home/presentation/widgets/manager_more_menu.dart';
+import '../../home/presentation/widgets/manager_bottom_navigation.dart';
 
 class ManagerDeviceApprovalPage extends ConsumerStatefulWidget {
   const ManagerDeviceApprovalPage({super.key});
@@ -19,23 +19,53 @@ class ManagerDeviceApprovalPage extends ConsumerStatefulWidget {
 }
 
 class _ManagerDeviceApprovalPageState
-    extends ConsumerState<ManagerDeviceApprovalPage> {
+    extends ConsumerState<ManagerDeviceApprovalPage>
+    with WidgetsBindingObserver {
   List<Map<String, dynamic>> _devices = [];
   bool _loading = true;
   final Set<int> _busy = {};
   String? _error;
+  Timer? _refreshTimer;
+  bool _refreshing = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (mounted &&
+          !_loading &&
+          _busy.isEmpty &&
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        unawaited(_load(silent: true));
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted && _busy.isEmpty) {
+      unawaited(_load(silent: true));
+    }
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    if (_refreshing) return;
+    _refreshing = true;
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final result = await ref
           .read(employeeRepositoryProvider)
@@ -50,6 +80,7 @@ class _ManagerDeviceApprovalPageState
         );
       }
     } finally {
+      _refreshing = false;
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -167,6 +198,11 @@ class _ManagerDeviceApprovalPageState
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Quay lại',
+          onPressed: () => context.go(RouteNames.managerApprovals),
+          icon: const Icon(Icons.arrow_back),
+        ),
         title: const Text('Duyệt thiết bị chấm công'),
         actions: [
           IconButton(
@@ -215,48 +251,7 @@ class _ManagerDeviceApprovalPageState
                 ],
               ),
             ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 3,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Tổng quan',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            selectedIcon: Icon(Icons.people),
-            label: 'Nhân viên',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month),
-            label: 'Lịch',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.fact_check_outlined),
-            selectedIcon: Icon(Icons.fact_check),
-            label: 'Duyệt',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.more_horiz),
-            selectedIcon: Icon(Icons.more_horiz),
-            label: 'Khác',
-          ),
-        ],
-        onDestinationSelected: (index) {
-          if (index == 0) context.go(RouteNames.home);
-          if (index == 1) context.go(RouteNames.managerEmployees);
-          if (index == 2) context.go(RouteNames.managerSchedule);
-          if (index == 3) context.go(RouteNames.managerApprovals);
-          if (index == 4) {
-            showManagerMoreMenu(
-              context,
-              onSignOut: () => signOutAndReturnToLogin(context, ref),
-            );
-          }
-        },
-      ),
+      bottomNavigationBar: const ManagerBottomNavigation(selectedIndex: 3),
     );
   }
 

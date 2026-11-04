@@ -84,6 +84,9 @@ void main() {
     }
 
     final checkIn = find.text('Check-in').first;
+    final checkInButton = find.widgetWithText(FilledButton, 'Check-in').first;
+    expect(checkInButton.hitTestable(), findsOneWidget);
+    expect(tester.widget<FilledButton>(checkInButton).onPressed, isNotNull);
     final scrollable = find.byType(ListView).first;
     for (
       var attempt = 0;
@@ -217,7 +220,10 @@ class _EmployeeApi extends ApiClient {
           'plannedEndAt': '2031-03-01T16:00:00+07:00',
           'shiftName': 'Ca sáng',
           'attendanceStatus': 'CHƯA CHECK-IN',
-          'canCheckIn': true,
+          'canCheckIn': false,
+          'canCheckOut': false,
+          'deviceActive': false,
+          'blockers': ['DEVICE_NOT_ACTIVE'],
         };
       case '/api/v1/users/me/permissions':
         permissionRequests++;

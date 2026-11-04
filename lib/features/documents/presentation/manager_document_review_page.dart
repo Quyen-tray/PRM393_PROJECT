@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../app/router/route_names.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../data/repositories/employee_providers.dart';
+import '../../home/presentation/widgets/manager_bottom_navigation.dart';
 
 class ManagerDocumentReviewPage extends ConsumerStatefulWidget {
-  const ManagerDocumentReviewPage({super.key});
+  const ManagerDocumentReviewPage({this.returnRoute = RouteNames.home, super.key});
+
+  final String returnRoute;
 
   @override
   ConsumerState<ManagerDocumentReviewPage> createState() =>
@@ -199,6 +204,11 @@ class _ManagerDocumentReviewPageState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Quay lại',
+          onPressed: () => context.go(widget.returnRoute),
+          icon: const Icon(Icons.arrow_back),
+        ),
         title: const Text('Duyệt hồ sơ'),
         actions: [
           IconButton(
@@ -237,6 +247,9 @@ class _ManagerDocumentReviewPageState
                 itemBuilder: (context, index) => _pendingCard(_pending[index]),
               ),
       ),
+      bottomNavigationBar: widget.returnRoute == RouteNames.home
+          ? const ManagerBottomNavigation(selectedIndex: 4)
+          : null,
     );
   }
 

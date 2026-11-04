@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hrm_coffee_shop_flutter/features/auth/presentation/sign_out_flow.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../data/repositories/employee_providers.dart';
-import '../../home/presentation/widgets/manager_more_menu.dart';
+import '../../home/presentation/widgets/manager_bottom_navigation.dart';
 import '../data/manager_review_items.dart';
 import 'widgets/manager_review_list.dart';
 
@@ -60,19 +59,239 @@ class _ManagerChecklistApprovalPageState
   }
 
   Future<void> _approve(ManagerReviewItem item) => _run(
-      () =>
-          approveManagerReviewItem(ref.read(employeeRepositoryProvider), item),
-      'Đã duyệt checklist.');
+    () => approveManagerReviewItem(ref.read(employeeRepositoryProvider), item),
+    'Đã duyệt checklist.',
+  );
 
   Future<void> _reject(ManagerReviewItem item, String reason) => _run(
-        () => rejectManagerReviewItem(
-            ref.read(employeeRepositoryProvider), item,
-            reason: reason),
-        'Đã từ chối checklist.',
+    () => rejectManagerReviewItem(
+      ref.read(employeeRepositoryProvider),
+      item,
+      reason: reason,
+    ),
+    'Đã từ chối checklist.',
+  );
+
+  Future<void> _openChecklist(ManagerReviewItem item) async {
+    try {
+      final detail = await ref
+          .read(employeeRepositoryProvider)
+          .getChecklistTask(item.id);
+      if (!mounted) return;
+      final reassign = await showModalBottomSheet<bool>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            children: [
+              Text(
+                'Checklist #${item.id}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                ),
+              ),
+              for (final entry in detail.entries)
+                ListTile(
+                  dense: true,
+                  title: Text(entry.key),
+                  subtitle: SelectableText('${entry.value ?? '—'}'),
+                ),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.pop(sheetContext, true),
+                icon: const Icon(Icons.person_add_alt_1),
+                label: const Text('Chuyển người thực hiện'),
+              ),
+            ],
+          ),
+        ),
       );
+      if (reassign == true && mounted) await _reassign(item);
+    } catch (error) {
+      _message(_messageOf(error));
+    }
+  }
+
+  Future<void> _reassign(ManagerReviewItem item) async {
+    try {
+      final employees = await ref
+          .read(employeeRepositoryProvider)
+          .getEmployees(status: 'ACTIVE');
+      if (!mounted) {
+        return _message(
+          'Không có nhân viên đang làm việc để chuyển checklist.',
+        );
+      }
+      int? selected = employees.isEmpty
+          ? null
+          : (employees.first['employeeId'] as num?)?.toInt();
+      if (selected == null) {
+        return _message(
+          'Không có nhân viên đang làm việc để chuyển checklist.',
+        );
+      }
+      final accepted = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Chuyển người thực hiện'),
+            content: DropdownButtonFormField<int>(
+              initialValue: selected,
+              decoration: const InputDecoration(
+                labelText: 'Nhân viên nhận việc',
+              ),
+              items: [
+                for (final employee in employees)
+                  if (employee['employeeId'] is num)
+                    DropdownMenuItem(
+                      value: (employee['employeeId'] as num).toInt(),
+                      child: Text(
+                        '${employee['fullName'] ?? employee['employeeCode'] ?? 'Nhân viên'}',
+                      ),
+                    ),
+              ],
+              onChanged: (value) => setDialogState(() => selected = value),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Hủy'),
+              ),
+              FilledButton(
+                onPressed: selected == null
+                    ? null
+                    : () => Navigator.pop(dialogContext, true),
+                child: const Text('Chuyển'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (accepted != true || selected == null) return;
+      await ref
+          .read(employeeRepositoryProvider)
+          .reassignChecklistTask(taskId: item.id, employeeId: selected!);
+      _message('Đã chuyển checklist.');
+      await _load();
+    } catch (error) {
+      _message(_messageOf(error));
+    }
+  }
+
+  Future<void> _generateChecklist() async {
+    try {
+      final repo = ref.read(employeeRepositoryProvider);
+      final today = DateTime.now();
+      String iso(DateTime value) =>
+          '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+      final results = await Future.wait<Object>([
+        repo.getAdminChecklistTemplates(),
+        repo.getShiftAssignments(
+          from: iso(today),
+          to: iso(today.add(const Duration(days: 7))),
+        ),
+      ]);
+      if (!mounted) return;
+      final templates = (results[0] as List<Map<String, dynamic>>)
+          .where((row) => row['isActive'] == true)
+          .toList();
+      final assignments = results[1] as List<Map<String, dynamic>>;
+      int? idOf(Object? value) => value is num ? value.toInt() : null;
+      int? templateIdOf(Map<String, dynamic> row) =>
+          idOf(row['templateId'] ?? row['checklistTemplateId']);
+      if (templates.isEmpty || assignments.isEmpty) {
+        return _message(
+          'Cần có mẫu checklist đang hoạt động và lịch ca trong 7 ngày tới.',
+        );
+      }
+      int? templateId = templateIdOf(templates.first);
+      int? assignmentId = idOf(assignments.first['assignmentId']);
+      final accepted = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Tạo checklist cho ca'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<int>(
+                  initialValue: templateId,
+                  decoration: const InputDecoration(labelText: 'Mẫu checklist'),
+                  items: [
+                    for (final row in templates)
+                      if (templateIdOf(row) != null)
+                        DropdownMenuItem(
+                          value: templateIdOf(row),
+                          child: Text(
+                            '${row['checklistName'] ?? row['checklistCode'] ?? 'Checklist'}',
+                          ),
+                        ),
+                  ],
+                  onChanged: (value) =>
+                      setDialogState(() => templateId = value),
+                ),
+                DropdownButtonFormField<int>(
+                  initialValue: assignmentId,
+                  decoration: const InputDecoration(
+                    labelText: 'Ca và nhân viên',
+                  ),
+                  items: [
+                    for (final row in assignments)
+                      if (idOf(row['assignmentId']) != null)
+                        DropdownMenuItem(
+                          value: idOf(row['assignmentId']),
+                          child: Text(
+                            '${row['employeeName'] ?? 'NV ${row['employeeId'] ?? ''}'} · ${row['workDate'] ?? ''}',
+                          ),
+                        ),
+                  ],
+                  onChanged: (value) =>
+                      setDialogState(() => assignmentId = value),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Hủy'),
+              ),
+              FilledButton(
+                onPressed: templateId == null || assignmentId == null
+                    ? null
+                    : () => Navigator.pop(dialogContext, true),
+                child: const Text('Tạo checklist'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (accepted != true || templateId == null || assignmentId == null) {
+        return;
+      }
+      final assignment = assignments.firstWhere(
+        (row) => idOf(row['assignmentId']) == assignmentId,
+      );
+      final employeeId = idOf(assignment['employeeId']);
+      if (employeeId == null) return _message('Lịch ca thiếu mã nhân viên.');
+      await repo.generateChecklist(
+        templateId: templateId!,
+        scheduleId: assignmentId!,
+        employeeId: employeeId,
+        workDate: '${assignment['workDate']}',
+      );
+      _message('Đã tạo checklist.');
+      await _load();
+    } catch (error) {
+      _message(_messageOf(error));
+    }
+  }
 
   Future<void> _run(
-      Future<void> Function() action, String successMessage) async {
+    Future<void> Function() action,
+    String successMessage,
+  ) async {
     setState(() => _acting = true);
     try {
       await action();
@@ -105,8 +324,18 @@ class _ManagerChecklistApprovalPageState
       child: Scaffold(
         backgroundColor: AppColors.background,
         appBar: AppBar(
+          leading: IconButton(
+            tooltip: 'Quay lại',
+            onPressed: () => context.go(RouteNames.managerApprovals),
+            icon: const Icon(Icons.arrow_back),
+          ),
           title: const Text('Duyệt checklist'),
           actions: [
+            IconButton(
+              tooltip: 'Tạo checklist cho ca',
+              onPressed: busy ? null : _generateChecklist,
+              icon: const Icon(Icons.add_task),
+            ),
             IconButton(
               tooltip: 'Tải lại',
               onPressed: busy ? null : _load,
@@ -127,85 +356,47 @@ class _ManagerChecklistApprovalPageState
         ),
         body:
             _loading && _pending.isEmpty && _processed.isEmpty && _error == null
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null && _pending.isEmpty && _processed.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(_error!, textAlign: TextAlign.center),
-                              const SizedBox(height: 12),
-                              FilledButton(
-                                  onPressed: _load,
-                                  child: const Text('Thử lại')),
-                            ],
-                          ),
-                        ),
-                      )
-                    : TabBarView(
-                        children: [
-                          ManagerReviewList(
-                            items: _pending,
-                            emptyMessage: 'Không có checklist đang chờ duyệt.',
-                            busy: busy,
-                            onApprove: _approve,
-                            onReject: _reject,
-                            onRefresh: _load,
-                          ),
-                          ManagerReviewList(
-                            items: _processed,
-                            emptyMessage: 'Chưa có checklist đã xử lý.',
-                            busy: busy,
-                            onApprove: _approve,
-                            onReject: _reject,
-                            onRefresh: _load,
-                          ),
-                        ],
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null && _pending.isEmpty && _processed.isEmpty
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_error!, textAlign: TextAlign.center),
+                      const SizedBox(height: 12),
+                      FilledButton(
+                        onPressed: _load,
+                        child: const Text('Thử lại'),
                       ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: 3,
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.dashboard_outlined),
-              selectedIcon: Icon(Icons.dashboard),
-              label: 'Tổng quan',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.people_outline),
-              selectedIcon: Icon(Icons.people),
-              label: 'Nhân viên',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.calendar_month_outlined),
-              selectedIcon: Icon(Icons.calendar_month),
-              label: 'Lịch',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.fact_check_outlined),
-              selectedIcon: Icon(Icons.fact_check),
-              label: 'Duyệt',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.more_horiz),
-              selectedIcon: Icon(Icons.more_horiz),
-              label: 'Khác',
-            ),
-          ],
-          onDestinationSelected: (index) {
-            if (index == 0) context.go(RouteNames.home);
-            if (index == 1) context.go(RouteNames.managerEmployees);
-            if (index == 2) context.go(RouteNames.managerSchedule);
-            if (index == 3) context.go(RouteNames.managerApprovals);
-            if (index == 4) {
-              showManagerMoreMenu(
-                context,
-                onSignOut: () => signOutAndReturnToLogin(context, ref),
-              );
-            }
-          },
-        ),
+                    ],
+                  ),
+                ),
+              )
+            : TabBarView(
+                children: [
+                  ManagerReviewList(
+                    items: _pending,
+                    emptyMessage: 'Không có checklist đang chờ duyệt.',
+                    busy: busy,
+                    onApprove: _approve,
+                    onReject: _reject,
+                    onRefresh: _load,
+                    onSelect: _openChecklist,
+                  ),
+                  ManagerReviewList(
+                    items: _processed,
+                    emptyMessage: 'Chưa có checklist đã xử lý.',
+                    busy: busy,
+                    onApprove: _approve,
+                    onReject: _reject,
+                    onRefresh: _load,
+                    onSelect: _openChecklist,
+                  ),
+                ],
+              ),
+        bottomNavigationBar: const ManagerBottomNavigation(selectedIndex: 3),
       ),
     );
   }

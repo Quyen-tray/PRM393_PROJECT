@@ -9,6 +9,7 @@ const _signOutDestination = '__sign_out__';
 Future<void> showAdminMoreMenu(
   BuildContext context, {
   required Future<void> Function() onSignOut,
+  String returnRoute = RouteNames.adminHome,
 }) async {
   final destination = await showModalBottomSheet<String>(
     context: context,
@@ -44,12 +45,15 @@ Future<void> showAdminMoreMenu(
               ),
             ),
             ListTile(
+              leading: const Icon(Icons.description_outlined),
+              title: const Text('Loại hồ sơ'),
+              onTap: () =>
+                  Navigator.pop(sheetContext, RouteNames.adminDocumentTypes),
+            ),
+            ListTile(
               leading: const Icon(Icons.psychology_outlined),
               title: const Text('Danh mục kỹ năng'),
-              onTap: () => Navigator.pop(
-                sheetContext,
-                RouteNames.adminSkills,
-              ),
+              onTap: () => Navigator.pop(sheetContext, RouteNames.adminSkills),
             ),
             ListTile(
               leading: const Icon(Icons.notifications_outlined),
@@ -62,18 +66,14 @@ Future<void> showAdminMoreMenu(
             ListTile(
               leading: const Icon(Icons.history_outlined),
               title: const Text('Nhật ký hệ thống'),
-              onTap: () => Navigator.pop(
-                sheetContext,
-                RouteNames.adminAuditLogs,
-              ),
+              onTap: () =>
+                  Navigator.pop(sheetContext, RouteNames.adminAuditLogs),
             ),
             ListTile(
               leading: const Icon(Icons.settings_outlined),
               title: const Text('Cấu hình hệ thống'),
-              onTap: () => Navigator.pop(
-                sheetContext,
-                RouteNames.adminSettings,
-              ),
+              onTap: () =>
+                  Navigator.pop(sheetContext, RouteNames.adminSettings),
             ),
             ListTile(
               leading: const Icon(Icons.logout),
@@ -91,5 +91,9 @@ Future<void> showAdminMoreMenu(
     await onSignOut();
     return;
   }
-  context.go(destination);
+  if (destination == RouteNames.profile) {
+    context.go(destination, extra: returnRoute);
+  } else {
+    context.go(destination);
+  }
 }

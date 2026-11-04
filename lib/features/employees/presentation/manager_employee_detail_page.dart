@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hrm_coffee_shop_flutter/features/auth/presentation/sign_out_flow.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
@@ -9,7 +8,8 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/repositories/employee_providers.dart';
 import '../../../data/repositories/employee_repository.dart';
-import '../../home/presentation/widgets/manager_more_menu.dart';
+import '../../home/presentation/widgets/manager_bottom_navigation.dart';
+import '../../documents/presentation/employee_documents_tab.dart';
 
 class ManagerEmployeeDetailPage extends ConsumerStatefulWidget {
   const ManagerEmployeeDetailPage({required this.employeeCode, super.key});
@@ -27,9 +27,12 @@ class _ManagerEmployeeDetailPageState
   Map<String, dynamic>? _employee;
   List<Map<String, dynamic>> _training = [];
   List<Map<String, dynamic>> _skills = [];
+  List<Map<String, dynamic>> _documents = [];
   Map<String, dynamic> _progress = {};
+  Map<String, dynamic> _attendanceSummary = {};
   bool _canManage = false;
   bool _canAssess = false;
+  bool _canReviewDocuments = false;
   bool _loading = true;
   String? _error;
 
@@ -54,11 +57,21 @@ class _ManagerEmployeeDetailPageState
     });
     try {
       final repo = ref.read(employeeRepositoryProvider);
+      final today = DateTime.now();
+      final monthStart = DateTime(today.year, today.month, 1);
+      String iso(DateTime d) =>
+          '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
       final results = await Future.wait<Object>([
         repo.getEmployeeById(id),
         repo.getEmployeeTrainings(id),
         repo.getEmployeeSkillHistory(id),
         repo.getEmployeeTrainingProgress(id),
+        repo.getEmployeeAttendanceSummary(
+          id,
+          from: iso(monthStart),
+          to: iso(today),
+        ),
+        repo.getEmployeeDocuments(id),
         repo.getCurrentAccess().catchError(
           (Object _) => const CurrentAccess(roles: {}, permissions: {}),
         ),
@@ -69,8 +82,11 @@ class _ManagerEmployeeDetailPageState
         _training = results[1] as List<Map<String, dynamic>>;
         _skills = results[2] as List<Map<String, dynamic>>;
         _progress = results[3] as Map<String, dynamic>;
-        _canManage = (results[4] as CurrentAccess).canManageEmployees;
-        _canAssess = (results[4] as CurrentAccess).canManageTraining;
+        _attendanceSummary = results[4] as Map<String, dynamic>;
+        _documents = results[5] as List<Map<String, dynamic>>;
+        _canManage = (results[6] as CurrentAccess).canManageEmployees;
+        _canAssess = (results[6] as CurrentAccess).canManageTraining;
+        _canReviewDocuments = (results[6] as CurrentAccess).canReviewDocuments;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -239,67 +255,34 @@ class _ManagerEmployeeDetailPageState
           : _error != null
           ? _ErrorView(message: _error!, onRetry: _load)
           : DefaultTabController(
-              length: 3,
+              length: 5,
               child: Column(
                 children: [
                   _header(),
                   const TabBar(
                     tabs: [
                       Tab(text: 'Thông tin'),
+                      Tab(text: 'Chấm công'),
                       Tab(text: 'Đào tạo'),
                       Tab(text: 'Kỹ năng'),
+                      Tab(text: 'Hồ sơ'),
                     ],
                   ),
                   Expanded(
                     child: TabBarView(
-                      children: [_infoTab(), _trainingTab(), _skillsTab()],
+                      children: [
+                        _infoTab(),
+                        _attendanceTab(),
+                        _trainingTab(),
+                        _skillsTab(),
+                        _documentsTab(),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 1,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Tổng quan',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            selectedIcon: Icon(Icons.people),
-            label: 'Nhân viên',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month),
-            label: 'Lịch',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.fact_check_outlined),
-            selectedIcon: Icon(Icons.fact_check),
-            label: 'Duyệt',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.more_horiz),
-            selectedIcon: Icon(Icons.more_horiz),
-            label: 'Khác',
-          ),
-        ],
-        onDestinationSelected: (index) {
-          if (index == 0) context.go(RouteNames.home);
-          if (index == 1) context.go(RouteNames.managerEmployees);
-          if (index == 2) context.go(RouteNames.managerSchedule);
-          if (index == 3) context.go(RouteNames.managerApprovals);
-          if (index == 4) {
-            showManagerMoreMenu(
-              context,
-              onSignOut: () => signOutAndReturnToLogin(context, ref),
-            );
-          }
-        },
-      ),
+      bottomNavigationBar: const ManagerBottomNavigation(selectedIndex: 1),
     );
   }
 
@@ -397,25 +380,203 @@ class _ManagerEmployeeDetailPageState
     ),
   );
 
+  Widget _attendanceTab() {
+    if (_attendanceSummary.isEmpty) {
+      return const Center(child: Text('Chưa có dữ liệu tổng hợp chấm công.'));
+    }
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        const Text(
+          'Tổng hợp từ đầu tháng đến hiện tại',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 8),
+        Card(
+          color: AppColors.surface,
+          child: Column(
+            children: [
+              for (final entry in _attendanceSummary.entries)
+                ListTile(
+                  dense: true,
+                  title: Text(entry.key),
+                  trailing: Text(
+                    '${entry.value ?? '—'}',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _documentsTab() {
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        if (_canReviewDocuments)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: FilledButton.icon(
+              onPressed: _submitDocumentForEmployee,
+              icon: const Icon(Icons.upload_file),
+              label: const Text('Nộp hồ sơ thay nhân viên'),
+            ),
+          ),
+        if (_documents.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: Text('Nhân viên chưa nộp hồ sơ.')),
+          ),
+        for (final item in _documents)
+          Card(
+            color: AppColors.surface,
+            child: ListTile(
+              leading: const Icon(Icons.description_outlined),
+              title: Text(
+                '${item['documentName'] ?? item['documentTypeName'] ?? 'Hồ sơ'}',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: Text(
+                '${item['status'] ?? ''} · ${formatDate(item['submittedAt'] ?? item['createdAt'])}',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showDocumentDetail(item),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _submitDocumentForEmployee() async {
+    final employeeId = int.tryParse(widget.employeeCode);
+    if (employeeId == null) return;
+    final controller = TextEditingController(
+      text: _documents.isEmpty
+          ? ''
+          : '${_documents.first['documentTypeId'] ?? ''}',
+    );
+    final formKey = GlobalKey<FormState>();
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Nộp hồ sơ thay nhân viên'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Mã loại hồ sơ',
+              helperText: 'Chọn mã loại hồ sơ từ danh mục do Admin thiết lập.',
+            ),
+            validator: (value) => int.tryParse(value?.trim() ?? '') == null
+                ? 'Nhập mã loại hồ sơ hợp lệ.'
+                : null,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(dialogContext, true);
+              }
+            },
+            child: const Text('Chọn tệp'),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true || !mounted) {
+      controller.dispose();
+      return;
+    }
+    try {
+      final file = await const PlatformDocumentPicker().pickDocument();
+      if (file == null || !mounted) return;
+      final repo = ref.read(employeeRepositoryProvider);
+      final storageKey = await repo.uploadDocument(
+        bytes: file.bytes,
+        contentType: file.contentType,
+        targetEmployeeId: employeeId,
+      );
+      await repo.submitDocumentForEmployee(
+        employeeId: employeeId,
+        documentTypeId: int.parse(controller.text.trim()),
+        storageKey: storageKey,
+      );
+      await _load();
+      _snack('Đã nộp hồ sơ thay nhân viên.');
+    } catch (error) {
+      _snack(error is ApiException ? error.message : 'Không nộp được hồ sơ.');
+    } finally {
+      controller.dispose();
+    }
+  }
+
+  Future<void> _showDocumentDetail(Map<String, dynamic> item) async {
+    final id = (item['documentId'] ?? item['employeeDocumentId']) as num?;
+    if (id == null) return;
+    try {
+      final document = await ref
+          .read(employeeRepositoryProvider)
+          .getDocument(id.toInt());
+      if (!mounted) return;
+      showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (context) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            children: [
+              Text(
+                'Hồ sơ #${id.toInt()}',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              for (final entry in document.entries)
+                ListTile(
+                  dense: true,
+                  title: Text(entry.key),
+                  subtitle: SelectableText('${entry.value ?? '—'}'),
+                ),
+            ],
+          ),
+        ),
+      );
+    } catch (error) {
+      _snack(
+        error is ApiException
+            ? error.message
+            : 'Không tải được chi tiết hồ sơ.',
+      );
+    }
+  }
+
   Widget _trainingTab() {
     final requiredCount = (_progress['requiredCourses'] as num?)?.toInt() ?? 0;
     final completed = (_progress['completedCourses'] as num?)?.toInt() ?? 0;
-    final restricted = _progress['shiftEligibility'] == 'RESTRICTED';
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
         Card(
           color: AppColors.surface,
           child: ListTile(
-            leading: Icon(
-              restricted ? Icons.block_outlined : Icons.verified_outlined,
-              color: restricted ? AppColors.error : AppColors.secondary,
+            leading: Icon(Icons.school_outlined, color: AppColors.primary),
+            title: Text(
+              'Tiến độ khóa theo chức vụ: $completed/$requiredCount đạt',
             ),
-            title: Text('Khóa bắt buộc: $completed/$requiredCount hoàn thành'),
-            subtitle: Text(
-              restricted
-                  ? 'Đang bị hạn chế phân ca do thiếu khóa bắt buộc.'
-                  : 'Đủ điều kiện phân ca theo khóa bắt buộc.',
+            subtitle: const Text(
+              'Đào tạo được theo dõi riêng và không ảnh hưởng nhận ca.',
             ),
           ),
         ),
@@ -438,7 +599,7 @@ class _ManagerEmployeeDetailPageState
                 subtitle: Text(
                   'Trạng thái: ${trainingStatusLabel(item['status']?.toString())}'
                   ' · Điểm: ${formatScore(item['testScore'])}'
-                  '${item['isMandatory'] == true ? ' · Bắt buộc' : ''}',
+                  '${item['isMandatory'] == true ? ' · Theo dõi theo chức vụ' : ''}',
                 ),
               ),
             ),

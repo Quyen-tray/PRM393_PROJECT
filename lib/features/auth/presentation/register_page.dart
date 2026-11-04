@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../app/router/route_names.dart';
 
 class RegisterPage extends StatelessWidget {
   const RegisterPage({super.key});
@@ -6,7 +9,14 @@ class RegisterPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Cấp tài khoản')),
+      appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Quay lại đăng nhập',
+          onPressed: () => context.go(RouteNames.login),
+          icon: const Icon(Icons.arrow_back),
+        ),
+        title: const Text('Cấp tài khoản'),
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),

@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hrm_coffee_shop_flutter/features/auth/presentation/sign_out_flow.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../data/repositories/employee_providers.dart';
 import '../../../data/repositories/employee_repository.dart';
-import '../../home/presentation/widgets/manager_more_menu.dart';
+import '../../home/presentation/widgets/manager_bottom_navigation.dart';
 
 const _borderColor = Color(0xFFEDE8E3);
 const _morningColor = Color(0xFFE4F4D7);
@@ -66,8 +65,8 @@ class _Assignment {
     return _Assignment(
       id: (row['assignmentId'] as num).toInt(),
       employeeId: (row['employeeId'] as num).toInt(),
-      employeeName:
-          (row['employeeName'] ?? 'Mã ${row['employeeId']}').toString(),
+      employeeName: (row['employeeName'] ?? 'Mã ${row['employeeId']}')
+          .toString(),
       workDate: _dateOnly(workDate),
       shiftId: (shift['shiftId'] as num?)?.toInt(),
       shiftName: (shift['shiftName'] ?? 'Ca làm').toString(),
@@ -132,7 +131,7 @@ class _ManagerShiftSchedulePageState
     if (_view == _ScheduleView.week) {
       return (
         start: _anchorDate,
-        end: _anchorDate.add(const Duration(days: 6))
+        end: _anchorDate.add(const Duration(days: 6)),
       );
     }
     return (
@@ -145,7 +144,8 @@ class _ManagerShiftSchedulePageState
       List.generate(7, (index) => _anchorDate.add(Duration(days: index)));
 
   Future<List<Map<String, dynamic>>> _allActiveEmployees(
-      EmployeeRepository repo) async {
+    EmployeeRepository repo,
+  ) async {
     final all = <Map<String, dynamic>>[];
     for (var page = 0; page < 20; page++) {
       final items = await repo.getEmployees(status: 'ACTIVE', page: page);
@@ -168,7 +168,9 @@ class _ManagerShiftSchedulePageState
         _allActiveEmployees(repo),
         repo.getWorkShifts(),
         repo.getShiftAssignments(
-            from: _isoDate(range.start), to: _isoDate(range.end)),
+          from: _isoDate(range.start),
+          to: _isoDate(range.end),
+        ),
       ]);
       if (!mounted) return;
       setState(() {
@@ -182,9 +184,11 @@ class _ManagerShiftSchedulePageState
       });
     } catch (error) {
       if (mounted) {
-        setState(() => _error = error is ApiException
-            ? error.message
-            : 'Không tải được lịch phân ca. Vui lòng thử lại.');
+        setState(
+          () => _error = error is ApiException
+              ? error.message
+              : 'Không tải được lịch phân ca. Vui lòng thử lại.',
+        );
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -209,8 +213,11 @@ class _ManagerShiftSchedulePageState
         _anchorDate = _anchorDate.add(Duration(days: 7 * direction));
         _selectedDate = _anchorDate;
       } else {
-        _anchorDate =
-            DateTime(_anchorDate.year, _anchorDate.month + direction, 13);
+        _anchorDate = DateTime(
+          _anchorDate.year,
+          _anchorDate.month + direction,
+          13,
+        );
         _selectedDate = DateTime(_anchorDate.year, _anchorDate.month, 1);
       }
     });
@@ -218,16 +225,19 @@ class _ManagerShiftSchedulePageState
   }
 
   Map<String, _Assignment> get _cellIndex => {
-        for (final item in _assignments)
-          '${item.employeeId}|${_isoDate(item.workDate)}': item,
-      };
+    for (final item in _assignments)
+      '${item.employeeId}|${_isoDate(item.workDate)}': item,
+  };
 
   List<_Assignment> _assignmentsOn(DateTime date) =>
       _assignments.where((item) => _sameDay(item.workDate, date)).toList()
         ..sort((a, b) => a.startLabel.compareTo(b.startLabel));
 
-  Future<void> _openSheet(
-      {_Assignment? existing, int? employeeId, DateTime? date}) async {
+  Future<void> _openSheet({
+    _Assignment? existing,
+    int? employeeId,
+    DateTime? date,
+  }) async {
     final message = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -249,6 +259,67 @@ class _ManagerShiftSchedulePageState
     }
   }
 
+  Future<void> _showAssignmentDetails(_Assignment assignment) async {
+    try {
+      final repo = ref.read(employeeRepositoryProvider);
+      final values = await Future.wait<Object>([
+        repo.getShiftAssignment(assignment.id),
+        repo.getShiftAssignmentEligibility(assignment.id),
+      ]);
+      if (!mounted) return;
+      final detail = values[0] as Map<String, dynamic>;
+      final eligibility = values[1] as Map<String, dynamic>;
+      showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (context) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            children: [
+              Text(
+                'Phân ca #${assignment.id}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                ),
+              ),
+              const SizedBox(height: 8),
+              for (final entry in detail.entries)
+                ListTile(
+                  dense: true,
+                  title: Text(entry.key),
+                  subtitle: SelectableText('${entry.value ?? '—'}'),
+                ),
+              const Divider(),
+              const Text(
+                'Điều kiện nhận ca',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              for (final entry in eligibility.entries)
+                ListTile(
+                  dense: true,
+                  title: Text(entry.key),
+                  subtitle: SelectableText('${entry.value ?? '—'}'),
+                ),
+            ],
+          ),
+        ),
+      );
+    } catch (error) {
+      _message(
+        error is ApiException
+            ? error.message
+            : 'Không tải được chi tiết hoặc điều kiện phân ca.',
+      );
+    }
+  }
+
+  void _message(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -262,6 +333,11 @@ class _ManagerShiftSchedulePageState
         ),
         actions: [
           IconButton(
+            tooltip: 'Quản lý mẫu ca làm',
+            onPressed: () => context.go(RouteNames.managerWorkShifts),
+            icon: const Icon(Icons.edit_calendar_outlined),
+          ),
+          IconButton(
             tooltip: 'Tải lại',
             onPressed: _loading ? null : _load,
             icon: const Icon(Icons.refresh),
@@ -272,128 +348,93 @@ class _ManagerShiftSchedulePageState
         child: _loading && _employees.isEmpty && _assignments.isEmpty
             ? const Center(child: CircularProgressIndicator())
             : _error != null && _employees.isEmpty
-                ? _ErrorState(message: _error!, onRetry: _load)
-                : RefreshIndicator(
-                    onRefresh: _load,
-                    child: ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-                      children: [
-                        _WeekSelector(
-                          view: _view,
-                          anchorDate: _anchorDate,
-                          onViewChanged: _changeView,
-                          onPeriodChanged: _changePeriod,
-                        ),
-                        const SizedBox(height: 14),
-                        if (_error != null) ...[
-                          Text(_error!,
-                              style: const TextStyle(
-                                  color: AppColors.error, fontSize: 12)),
-                          const SizedBox(height: 8),
-                        ],
-                        if (_view == _ScheduleView.week) ...[
-                          Text(
-                            'Nhân viên theo ca · ${_employees.length} nhân viên',
-                            style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          if (_employees.isEmpty)
-                            const _EmptyNote(
-                                message: 'Chưa có nhân viên đang làm việc.')
-                          else
-                            _RosterTable(
-                              days: _weekDays,
-                              employees: _employees,
-                              cellFor: (employeeId, date) =>
-                                  _cellIndex['$employeeId|${_isoDate(date)}'],
-                              onCellTap: (employeeId, date, existing) =>
-                                  _openSheet(
-                                existing: existing,
-                                employeeId: employeeId,
-                                date: date,
-                              ),
-                            ),
-                          const SizedBox(height: 12),
-                          const _RosterLegend(),
-                        ] else ...[
-                          _MonthCalendar(
-                            anchorDate: _anchorDate,
-                            selectedDate: _selectedDate,
-                            countOn: (date) => _assignmentsOn(date).length,
-                            onDateSelected: (date) =>
-                                setState(() => _selectedDate = date),
-                          ),
-                          const SizedBox(height: 16),
-                          _SelectedDayRoster(
-                            date: _selectedDate,
-                            items: _assignmentsOn(_selectedDate),
-                            onTap: (item) => _openSheet(existing: item),
-                          ),
-                        ],
-                        const SizedBox(height: 16),
-                        OutlinedButton.icon(
-                          onPressed: () => _openSheet(),
-                          icon: const Icon(Icons.add),
-                          label: const Text('Tạo lịch mới'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.primary,
-                            side: const BorderSide(color: AppColors.primary),
-                            minimumSize: const Size.fromHeight(48),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ],
+            ? _ErrorState(message: _error!, onRetry: _load)
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                  children: [
+                    _WeekSelector(
+                      view: _view,
+                      anchorDate: _anchorDate,
+                      onViewChanged: _changeView,
+                      onPeriodChanged: _changePeriod,
                     ),
-                  ),
+                    const SizedBox(height: 14),
+                    if (_error != null) ...[
+                      Text(
+                        _error!,
+                        style: const TextStyle(
+                          color: AppColors.error,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    if (_view == _ScheduleView.week) ...[
+                      Text(
+                        'Nhân viên theo ca · ${_employees.length} nhân viên',
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      if (_employees.isEmpty)
+                        const _EmptyNote(
+                          message: 'Chưa có nhân viên đang làm việc.',
+                        )
+                      else
+                        _RosterTable(
+                          days: _weekDays,
+                          employees: _employees,
+                          cellFor: (employeeId, date) =>
+                              _cellIndex['$employeeId|${_isoDate(date)}'],
+                          onCellTap: (employeeId, date, existing) => _openSheet(
+                            existing: existing,
+                            employeeId: employeeId,
+                            date: date,
+                          ),
+                        ),
+                      const SizedBox(height: 12),
+                      const _RosterLegend(),
+                    ] else ...[
+                      _MonthCalendar(
+                        anchorDate: _anchorDate,
+                        selectedDate: _selectedDate,
+                        countOn: (date) => _assignmentsOn(date).length,
+                        onDateSelected: (date) =>
+                            setState(() => _selectedDate = date),
+                      ),
+                      const SizedBox(height: 16),
+                      _SelectedDayRoster(
+                        date: _selectedDate,
+                        items: _assignmentsOn(_selectedDate),
+                        onTap: (item) => _openSheet(existing: item),
+                        onDetails: _showAssignmentDetails,
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: () => _openSheet(),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Tạo lịch mới'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        side: const BorderSide(color: AppColors.primary),
+                        minimumSize: const Size.fromHeight(48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 2,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Tổng quan',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            selectedIcon: Icon(Icons.people),
-            label: 'Nhân viên',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month),
-            label: 'Lịch',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.fact_check_outlined),
-            selectedIcon: Icon(Icons.fact_check),
-            label: 'Duyệt',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.more_horiz),
-            selectedIcon: Icon(Icons.more_horiz),
-            label: 'Khác',
-          ),
-        ],
-        onDestinationSelected: (index) {
-          if (index == 0) context.go(RouteNames.home);
-          if (index == 1) context.go(RouteNames.managerEmployees);
-          if (index == 3) context.go(RouteNames.managerApprovals);
-          if (index == 4) {
-            showManagerMoreMenu(
-              context,
-              onSignOut: () => signOutAndReturnToLogin(context, ref),
-            );
-          }
-        },
-      ),
+      bottomNavigationBar: const ManagerBottomNavigation(selectedIndex: 2),
     );
   }
 }
@@ -422,8 +463,9 @@ class _AssignmentSheetState extends ConsumerState<_AssignmentSheet> {
   late int? _employeeId = widget.initialEmployeeId;
   late DateTime _date = _dateOnly(widget.initialDate);
   late int? _shiftId = widget.existing?.shiftId;
-  late final TextEditingController _note =
-      TextEditingController(text: widget.existing?.note ?? '');
+  late final TextEditingController _note = TextEditingController(
+    text: widget.existing?.note ?? '',
+  );
   bool _saving = false;
   String? _error;
 
@@ -441,18 +483,23 @@ class _AssignmentSheetState extends ConsumerState<_AssignmentSheet> {
     final current = widget.existing;
     if (current != null &&
         options.every(
-            (e) => (e['employeeId'] as num?)?.toInt() != current.employeeId)) {
-      options.add(
-          {'employeeId': current.employeeId, 'fullName': current.employeeName});
+          (e) => (e['employeeId'] as num?)?.toInt() != current.employeeId,
+        )) {
+      options.add({
+        'employeeId': current.employeeId,
+        'fullName': current.employeeName,
+      });
     }
     return options;
   }
 
   /// Ca đang dùng luôn có trong danh sách, kể cả khi đã ngừng; ca ngừng khác thì ẩn.
   List<Map<String, dynamic>> get _shiftOptions => widget.shifts
-      .where((shift) =>
-          shift['isActive'] != false ||
-          (shift['shiftId'] as num?)?.toInt() == _shiftId)
+      .where(
+        (shift) =>
+            shift['isActive'] != false ||
+            (shift['shiftId'] as num?)?.toInt() == _shiftId,
+      )
       .toList();
 
   Future<void> _pickDate() async {
@@ -498,8 +545,11 @@ class _AssignmentSheetState extends ConsumerState<_AssignmentSheet> {
       }
     } catch (error) {
       if (mounted) {
-        setState(() => _error =
-            error is ApiException ? error.message : 'Không lưu được ca làm.');
+        setState(
+          () => _error = error is ApiException
+              ? error.message
+              : 'Không lưu được ca làm.',
+        );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -514,14 +564,17 @@ class _AssignmentSheetState extends ConsumerState<_AssignmentSheet> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Hủy ca làm?'),
         content: Text(
-            'Hủy ca ${existing.shiftName} của ${existing.employeeName} ngày ${_isoDate(existing.workDate)}.'),
+          'Hủy ca ${existing.shiftName} của ${existing.employeeName} ngày ${_isoDate(existing.workDate)}.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Không')),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Không'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Hủy ca')),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Hủy ca'),
+          ),
         ],
       ),
     );
@@ -537,8 +590,11 @@ class _AssignmentSheetState extends ConsumerState<_AssignmentSheet> {
       if (mounted) Navigator.pop(context, 'Đã hủy ca làm.');
     } catch (error) {
       if (mounted) {
-        setState(() => _error =
-            error is ApiException ? error.message : 'Không hủy được ca làm.');
+        setState(
+          () => _error = error is ApiException
+              ? error.message
+              : 'Không hủy được ca làm.',
+        );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -553,7 +609,11 @@ class _AssignmentSheetState extends ConsumerState<_AssignmentSheet> {
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
-          20, 8, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
+        20,
+        8,
+        20,
+        20 + MediaQuery.viewInsetsOf(context).bottom,
+      ),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -562,17 +622,20 @@ class _AssignmentSheetState extends ConsumerState<_AssignmentSheet> {
             Text(
               _isEditing ? 'Sửa ca làm' : 'Tạo lịch phân ca',
               style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800),
+                color: AppColors.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
             ),
             if (existing != null && existing.hasAttendance)
               const Padding(
                 padding: EdgeInsets.only(top: 6),
                 child: Text(
                   'Ca đã có bản ghi chấm công nên không thể hủy.',
-                  style:
-                      TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
                 ),
               ),
             const SizedBox(height: 16),
@@ -580,13 +643,16 @@ class _AssignmentSheetState extends ConsumerState<_AssignmentSheet> {
               initialValue: _employeeId,
               isExpanded: true,
               decoration: const InputDecoration(
-                  labelText: 'Nhân viên', border: OutlineInputBorder()),
+                labelText: 'Nhân viên',
+                border: OutlineInputBorder(),
+              ),
               items: [
                 for (final employee in _employeeOptions)
                   DropdownMenuItem(
                     value: (employee['employeeId'] as num).toInt(),
                     child: Text(
-                        '${employee['fullName'] ?? 'Nhân viên'} · ${employee['employeeCode'] ?? ''}'),
+                      '${employee['fullName'] ?? 'Nhân viên'} · ${employee['employeeCode'] ?? ''}',
+                    ),
                   ),
               ],
               // Đổi nhân viên không được hỗ trợ khi sửa ca; muốn đổi thì hủy và tạo lại.
@@ -601,7 +667,8 @@ class _AssignmentSheetState extends ConsumerState<_AssignmentSheet> {
               label: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                    'Ngày làm việc: ${_date.day}/${_date.month}/${_date.year}'),
+                  'Ngày làm việc: ${_date.day}/${_date.month}/${_date.year}',
+                ),
               ),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
@@ -613,7 +680,9 @@ class _AssignmentSheetState extends ConsumerState<_AssignmentSheet> {
               initialValue: _shiftId,
               isExpanded: true,
               decoration: const InputDecoration(
-                  labelText: 'Ca làm việc', border: OutlineInputBorder()),
+                labelText: 'Ca làm việc',
+                border: OutlineInputBorder(),
+              ),
               items: [
                 for (final shift in _shiftOptions)
                   DropdownMenuItem(
@@ -632,32 +701,40 @@ class _AssignmentSheetState extends ConsumerState<_AssignmentSheet> {
               maxLength: 500,
               maxLines: 2,
               decoration: const InputDecoration(
-                  labelText: 'Ghi chú (không bắt buộc)',
-                  border: OutlineInputBorder()),
+                labelText: 'Ghi chú (không bắt buộc)',
+                border: OutlineInputBorder(),
+              ),
             ),
             if (noShifts)
               const Padding(
                 padding: EdgeInsets.only(top: 6),
-                child: Text('Cửa hàng chưa có ca làm nào.',
-                    style: TextStyle(color: AppColors.error, fontSize: 12)),
+                child: Text(
+                  'Cửa hàng chưa có ca làm nào.',
+                  style: TextStyle(color: AppColors.error, fontSize: 12),
+                ),
               ),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: Text(_error!,
-                    style:
-                        const TextStyle(color: AppColors.error, fontSize: 12)),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(color: AppColors.error, fontSize: 12),
+                ),
               ),
             const SizedBox(height: 16),
             FilledButton(
               onPressed: _saving || noShifts ? null : _save,
               style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48)),
+                minimumSize: const Size.fromHeight(48),
+              ),
               child: _saving
                   ? const SizedBox.square(
                       dimension: 18,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : Text(_isEditing ? 'Lưu thay đổi' : 'Tạo ca làm'),
             ),
             if (_isEditing && canCancel) ...[
@@ -720,17 +797,19 @@ class _WeekSelector extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             IconButton(
-              tooltip:
-                  view == _ScheduleView.week ? 'Tuần trước' : 'Tháng trước',
+              tooltip: view == _ScheduleView.week
+                  ? 'Tuần trước'
+                  : 'Tháng trước',
               onPressed: () => onPeriodChanged(-1),
               icon: const Icon(Icons.chevron_left),
             ),
             Text(
               _periodLabel,
               style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700),
+                color: AppColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             IconButton(
               tooltip: view == _ScheduleView.week ? 'Tuần sau' : 'Tháng sau',
@@ -751,12 +830,14 @@ class _EmptyNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Center(
-          child: Text(message,
-              style: const TextStyle(color: AppColors.textSecondary)),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(vertical: 16),
+    child: Center(
+      child: Text(
+        message,
+        style: const TextStyle(color: AppColors.textSecondary),
+      ),
+    ),
+  );
 }
 
 class _MonthCalendar extends StatelessWidget {
@@ -813,8 +894,11 @@ class _MonthCalendar extends StatelessWidget {
               if (dayNumber < 1 || dayNumber > daysInMonth) {
                 return const SizedBox.shrink();
               }
-              final date =
-                  DateTime(anchorDate.year, anchorDate.month, dayNumber);
+              final date = DateTime(
+                anchorDate.year,
+                anchorDate.month,
+                dayNumber,
+              );
               final count = countOn(date);
               final isSelected = _sameDay(date, selectedDate);
 
@@ -830,7 +914,8 @@ class _MonthCalendar extends StatelessWidget {
                           : const Color(0xFFFAF8F5),
                       borderRadius: BorderRadius.circular(9),
                       border: Border.all(
-                          color: isSelected ? AppColors.primary : _borderColor),
+                        color: isSelected ? AppColors.primary : _borderColor,
+                      ),
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -854,8 +939,8 @@ class _MonthCalendar extends StatelessWidget {
                             color: isSelected
                                 ? Colors.white
                                 : count == 0
-                                    ? AppColors.textSecondary
-                                    : AppColors.primary,
+                                ? AppColors.textSecondary
+                                : AppColors.primary,
                             fontSize: 9,
                             fontWeight: FontWeight.w600,
                           ),
@@ -874,12 +959,17 @@ class _MonthCalendar extends StatelessWidget {
 }
 
 class _SelectedDayRoster extends StatelessWidget {
-  const _SelectedDayRoster(
-      {required this.date, required this.items, required this.onTap});
+  const _SelectedDayRoster({
+    required this.date,
+    required this.items,
+    required this.onTap,
+    required this.onDetails,
+  });
 
   final DateTime date;
   final List<_Assignment> items;
   final ValueChanged<_Assignment> onTap;
+  final ValueChanged<_Assignment> onDetails;
 
   @override
   Widget build(BuildContext context) {
@@ -889,9 +979,10 @@ class _SelectedDayRoster extends StatelessWidget {
         Text(
           'Phân ca ngày ${date.day}/${date.month}/${date.year}',
           style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.w800),
+            color: AppColors.textPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+          ),
         ),
         const SizedBox(height: 10),
         if (items.isEmpty)
@@ -903,7 +994,10 @@ class _SelectedDayRoster extends StatelessWidget {
               child: InkWell(
                 borderRadius: BorderRadius.circular(12),
                 onTap: () => onTap(item),
-                child: _DayAssignmentCard(item: item),
+                child: _DayAssignmentCard(
+                  item: item,
+                  onDetails: () => onDetails(item),
+                ),
               ),
             ),
       ],
@@ -912,9 +1006,10 @@ class _SelectedDayRoster extends StatelessWidget {
 }
 
 class _DayAssignmentCard extends StatelessWidget {
-  const _DayAssignmentCard({required this.item});
+  const _DayAssignmentCard({required this.item, required this.onDetails});
 
   final _Assignment item;
+  final VoidCallback onDetails;
 
   @override
   Widget build(BuildContext context) {
@@ -939,9 +1034,10 @@ class _DayAssignmentCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700),
+                    color: AppColors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -949,7 +1045,9 @@ class _DayAssignmentCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      color: AppColors.textSecondary, fontSize: 11),
+                    color: AppColors.textSecondary,
+                    fontSize: 11,
+                  ),
                 ),
               ],
             ),
@@ -958,12 +1056,23 @@ class _DayAssignmentCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
             decoration: BoxDecoration(
-                color: chipColor, borderRadius: BorderRadius.circular(20)),
+              color: chipColor,
+              borderRadius: BorderRadius.circular(20),
+            ),
             child: Text(
               item.isMorning ? 'Ca sáng' : 'Ca chiều',
               style: TextStyle(
-                  color: chipText, fontSize: 10, fontWeight: FontWeight.w700),
+                color: chipText,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
             ),
+          ),
+          IconButton(
+            tooltip: 'Chi tiết và điều kiện',
+            visualDensity: VisualDensity.compact,
+            onPressed: onDetails,
+            icon: const Icon(Icons.info_outline, size: 19),
           ),
         ],
       ),
@@ -983,9 +1092,10 @@ class _MonthWeekday extends StatelessWidget {
         child: Text(
           label,
           style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 10,
-              fontWeight: FontWeight.w600),
+            color: AppColors.textSecondary,
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );
@@ -1004,7 +1114,7 @@ class _RosterTable extends StatelessWidget {
   final List<Map<String, dynamic>> employees;
   final _Assignment? Function(int employeeId, DateTime date) cellFor;
   final void Function(int employeeId, DateTime date, _Assignment? existing)
-      onCellTap;
+  onCellTap;
 
   static const _employeeColumnWidth = 172.0;
   static const _dayColumnWidth = 58.0;
@@ -1013,10 +1123,12 @@ class _RosterTable extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final tableWidth =
-            constraints.maxWidth > 1400 ? 1400.0 : constraints.maxWidth;
-        final employeeColumnWidth =
-            tableWidth >= 720 ? 220.0 : _employeeColumnWidth;
+        final tableWidth = constraints.maxWidth > 1400
+            ? 1400.0
+            : constraints.maxWidth;
+        final employeeColumnWidth = tableWidth >= 720
+            ? 220.0
+            : _employeeColumnWidth;
         final dayColumnWidth = tableWidth >= 720
             ? (tableWidth - employeeColumnWidth - 16) / days.length
             : _dayColumnWidth;
@@ -1039,7 +1151,10 @@ class _RosterTable extends StatelessWidget {
                     for (final employee in employees) ...[
                       const Divider(height: 1, color: _borderColor),
                       _buildEmployeeRow(
-                          employee, employeeColumnWidth, dayColumnWidth),
+                        employee,
+                        employeeColumnWidth,
+                        dayColumnWidth,
+                      ),
                     ],
                   ],
                 ),
@@ -1064,9 +1179,10 @@ class _RosterTable extends StatelessWidget {
               child: Text(
                 'Nhân viên',
                 style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700),
+                  color: AppColors.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
@@ -1078,15 +1194,18 @@ class _RosterTable extends StatelessWidget {
                   Text(
                     labels[day.weekday - 1],
                     style: const TextStyle(
-                        color: AppColors.textSecondary, fontSize: 10),
+                      color: AppColors.textSecondary,
+                      fontSize: 10,
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     '${day.day}',
                     style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800),
+                      color: AppColors.textPrimary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ],
               ),
@@ -1096,20 +1215,23 @@ class _RosterTable extends StatelessWidget {
     );
   }
 
-  Widget _buildEmployeeRow(Map<String, dynamic> employee,
-      double employeeColumnWidth, double dayColumnWidth) {
+  Widget _buildEmployeeRow(
+    Map<String, dynamic> employee,
+    double employeeColumnWidth,
+    double dayColumnWidth,
+  ) {
     final employeeId = (employee['employeeId'] as num).toInt();
     final name = (employee['fullName'] ?? 'Nhân viên').toString();
     final code = (employee['employeeCode'] ?? '').toString();
     final initials = name.trim().isEmpty
         ? '?'
         : name
-            .trim()
-            .split(RegExp(r'\s+'))
-            .map((part) => part[0])
-            .take(2)
-            .join()
-            .toUpperCase();
+              .trim()
+              .split(RegExp(r'\s+'))
+              .map((part) => part[0])
+              .take(2)
+              .join()
+              .toUpperCase();
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
@@ -1125,9 +1247,10 @@ class _RosterTable extends StatelessWidget {
                   child: Text(
                     initials,
                     style: const TextStyle(
-                        color: AppColors.primary,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800),
+                      color: AppColors.primary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1140,9 +1263,10 @@ class _RosterTable extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700),
+                          color: AppColors.textPrimary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -1150,7 +1274,9 @@ class _RosterTable extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                            color: AppColors.textSecondary, fontSize: 9),
+                          color: AppColors.textSecondary,
+                          fontSize: 9,
+                        ),
                       ),
                     ],
                   ),
@@ -1187,8 +1313,8 @@ class _RosterShiftCell extends StatelessWidget {
     final color = current == null
         ? const Color(0xFFF7F5F2)
         : current.isMorning
-            ? _morningColor
-            : _afternoonColor;
+        ? _morningColor
+        : _afternoonColor;
     final label = current == null ? '+' : current.startLabel;
 
     return Container(
@@ -1203,8 +1329,9 @@ class _RosterShiftCell extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(
-          color:
-              current == null ? AppColors.textSecondary : AppColors.textPrimary,
+          color: current == null
+              ? AppColors.textSecondary
+              : AppColors.textPrimary,
           fontSize: 10,
           fontWeight: FontWeight.w700,
         ),
@@ -1223,11 +1350,17 @@ class _RosterLegend extends StatelessWidget {
       runSpacing: 8,
       children: [
         _LegendItem(
-            label: 'Ca sáng (bắt đầu trước 12:00)', color: _morningColor),
+          label: 'Ca sáng (bắt đầu trước 12:00)',
+          color: _morningColor,
+        ),
         _LegendItem(
-            label: 'Ca chiều (bắt đầu từ 12:00)', color: _afternoonColor),
+          label: 'Ca chiều (bắt đầu từ 12:00)',
+          color: _afternoonColor,
+        ),
         _LegendItem(
-            label: '+ chưa có ca, chạm để phân', color: Color(0xFFF7F5F2)),
+          label: '+ chưa có ca, chạm để phân',
+          color: Color(0xFFF7F5F2),
+        ),
       ],
     );
   }
@@ -1250,9 +1383,10 @@ class _LegendItem extends StatelessWidget {
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 5),
-        Text(label,
-            style:
-                const TextStyle(color: AppColors.textSecondary, fontSize: 10)),
+        Text(
+          label,
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 10),
+        ),
       ],
     );
   }

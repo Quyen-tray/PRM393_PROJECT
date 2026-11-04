@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../data/repositories/employee_providers.dart';
@@ -181,6 +183,17 @@ class _AdminChecklistTemplateEditorPageState extends ConsumerState<AdminChecklis
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Quay lại',
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go(RouteNames.adminChecklistTemplates);
+            }
+          },
+          icon: const Icon(Icons.arrow_back),
+        ),
         title: Text(_isEditing ? 'Sửa mẫu checklist' : 'Tạo mẫu checklist'),
       ),
       body: Form(

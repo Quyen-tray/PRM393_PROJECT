@@ -858,13 +858,41 @@ GO
 IF OBJECT_ID('tempdb..#HrmInstallGuard') IS NULL
     THROW 51001, N'Cài đặt đã bị dừng: không tạo mới được database. Không tiếp tục chạy các batch schema.', 1;
 
+-- 25a. Ngân hàng câu hỏi trắc nghiệm theo khóa học
+IF OBJECT_ID('dbo.TrainingQuestion', 'U') IS NULL
+CREATE TABLE dbo.TrainingQuestion (
+    QuestionId BIGINT IDENTITY(1,1) PRIMARY KEY,
+    CourseId INT NOT NULL,
+    QuestionText NVARCHAR(1000) NOT NULL,
+    OptionA NVARCHAR(300) NOT NULL,
+    OptionB NVARCHAR(300) NOT NULL,
+    OptionC NVARCHAR(300) NOT NULL,
+    OptionD NVARCHAR(300) NOT NULL,
+    CorrectOption CHAR(1) NOT NULL,
+    SortOrder INT NOT NULL,
+    IsActive BIT NOT NULL DEFAULT 1,
+    CONSTRAINT FK_TrainingQuestion_Course FOREIGN KEY (CourseId)
+        REFERENCES dbo.TrainingCourse(CourseId),
+    CONSTRAINT UQ_TrainingQuestion_Course_SortOrder UNIQUE (CourseId, SortOrder),
+    CONSTRAINT CK_TrainingQuestion_CorrectOption CHECK (CorrectOption IN ('A', 'B', 'C', 'D')),
+    CONSTRAINT CK_TrainingQuestion_SortOrder CHECK (SortOrder > 0)
+);
+GO
+
+CREATE INDEX IX_TrainingQuestion_Course_Active_Order
+    ON dbo.TrainingQuestion(CourseId, IsActive, SortOrder, QuestionId);
+GO
+
+IF OBJECT_ID('tempdb..#HrmInstallGuard') IS NULL
+    THROW 51001, N'Cài đặt đã bị dừng: không tạo mới được database. Không tiếp tục chạy các batch schema.', 1;
+
 -- 25b. Yêu cầu đào tạo theo chức vụ (SRS 7.4, 9.7)
 CREATE TABLE dbo.PositionTrainingRequirement (
     RequirementId INT IDENTITY(1,1) PRIMARY KEY,
     PositionId INT NOT NULL,
     CourseId INT NOT NULL,
     IsMandatory BIT NOT NULL DEFAULT 1,
-    BlocksShiftAssignment BIT NOT NULL DEFAULT 1,
+    BlocksShiftAssignment BIT NOT NULL DEFAULT 0,
     EffectiveFrom DATE NOT NULL DEFAULT CAST(SYSUTCDATETIME() AS DATE),
     EffectiveTo DATE NULL,
     CONSTRAINT FK_PTR_Position FOREIGN KEY (PositionId) REFERENCES dbo.JobPosition(PositionId),
@@ -892,7 +920,7 @@ CREATE TABLE dbo.TrainingAttempt (
     CONSTRAINT FK_Attempt_Course FOREIGN KEY (CourseId) REFERENCES dbo.TrainingCourse(CourseId),
     CONSTRAINT FK_Attempt_Recorder FOREIGN KEY (RecordedBy) REFERENCES dbo.AppUser(UserId),
     CONSTRAINT UQ_Attempt_No UNIQUE (EmployeeId, CourseId, AttemptNo),
-    CONSTRAINT CK_Attempt_Source CHECK (Source IN ('MANUAL','LMS')),
+    CONSTRAINT CK_Attempt_Source CHECK (Source IN ('MANUAL','LMS','QUIZ')),
     CONSTRAINT CK_Attempt_Score CHECK (Score IS NULL OR Score BETWEEN 0 AND 100)
 );
 GO
@@ -912,19 +940,27 @@ CREATE TABLE dbo.EmployeeTraining (
     ExpiresAt DATETIME2,
     TestScore DECIMAL(5,2),
     TrainingStatus VARCHAR(20) NOT NULL DEFAULT 'NOT_STARTED',
+    CompletionSubmittedAt DATETIME2,
+    CompletionRequestNote NVARCHAR(500),
+    CompletionReviewedAt DATETIME2,
+    CompletionReviewedBy BIGINT,
+    CompletionReviewNote NVARCHAR(500),
 
     CONSTRAINT FK_EmployeeTraining_Employee
         FOREIGN KEY (EmployeeId) REFERENCES dbo.Employee(EmployeeId),
     CONSTRAINT FK_EmployeeTraining_Course
         FOREIGN KEY (CourseId) REFERENCES dbo.TrainingCourse(CourseId),
+    CONSTRAINT FK_EmployeeTraining_CompletionReviewedBy
+        FOREIGN KEY (CompletionReviewedBy) REFERENCES dbo.AppUser(UserId),
     CONSTRAINT UQ_EmployeeTraining UNIQUE (EmployeeId, CourseId),
     CONSTRAINT CK_EmployeeTraining_Status
         CHECK (TrainingStatus IN
-            ('NOT_STARTED','IN_PROGRESS','PASSED','FAILED','EXPIRED')),
+            ('NOT_STARTED','IN_PROGRESS','PENDING_REVIEW','PASSED','FAILED','EXPIRED')),
     CONSTRAINT CK_EmployeeTraining_Score
         CHECK (TestScore IS NULL OR TestScore BETWEEN 0 AND 100)
 );
 GO
+
 
 IF OBJECT_ID('tempdb..#HrmInstallGuard') IS NULL
     THROW 51001, N'Cài đặt đã bị dừng: không tạo mới được database. Không tiếp tục chạy các batch schema.', 1;

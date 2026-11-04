@@ -616,7 +616,7 @@ BEGIN
             (@run6, (SELECT ChecklistTaskItemId FROM dbo.ChecklistTaskItem WHERE ChecklistTaskId = @run6 AND ChecklistTemplateItemId = (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 1)), 'checklist-evidence/seed/tOpen-1.jpg', @uAn, DATEADD(MINUTE, -8180, @T0)),
             (@run6, (SELECT ChecklistTaskItemId FROM dbo.ChecklistTaskItem WHERE ChecklistTaskId = @run6 AND ChecklistTemplateItemId = (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 4)), 'checklist-evidence/seed/tOpen-4.jpg', @uAn, DATEADD(MINUTE, -8180, @T0));
 
-        -- 14. Đào tạo: khóa bắt buộc chặn nhận ca nếu chưa đạt (xem Chi và Dũng)
+        -- 14. Đào tạo: trạng thái học được theo dõi nhưng không chặn nhận ca
         INSERT INTO dbo.TrainingCourse (CourseCode, CourseName, Description, PassingScore)
         VALUES
             ('FOOD_SAFETY_101', N'An toàn vệ sinh thực phẩm cơ bản', N'Bắt buộc với mọi nhân viên', 80),
@@ -624,9 +624,39 @@ BEGIN
             ('BARISTA_BASIC', N'Kỹ thuật pha chế cơ bản', N'Dành cho nhân viên pha chế', 70),
             ('COFFEE_TASTING', N'Thử nếm và phân biệt hương vị cà phê', N'Khóa tự chọn', 60);
 
-        -- Khóa bắt buộc cho mọi chức vụ, chặn nhận ca khi chưa đạt (SRS 3.5)
+        INSERT INTO dbo.TrainingQuestion
+            (CourseId, QuestionText, OptionA, OptionB, OptionC, OptionD, CorrectOption, SortOrder)
+        SELECT c.CourseId, q.QuestionText, q.OptionA, q.OptionB, q.OptionC, q.OptionD, q.CorrectOption, q.SortOrder
+        FROM (VALUES
+            ('FOOD_SAFETY_101', N'Nhân viên cần làm gì trước khi chế biến thực phẩm?', N'Rửa tay đúng quy trình', N'Đeo găng thay cho rửa tay', N'Chỉ lau tay bằng khăn', N'Không cần vệ sinh nếu tay sạch', 'A', 1),
+            ('FOOD_SAFETY_101', N'Thực phẩm sống nên được bảo quản thế nào?', N'Đặt cạnh thực phẩm chín', N'Đậy kín và tách riêng thực phẩm chín', N'Để ở nhiệt độ phòng cả ngày', N'Đặt trực tiếp trên sàn', 'B', 2),
+            ('FOOD_SAFETY_101', N'Khi phát hiện nguyên liệu hết hạn, cần làm gì?', N'Dùng trước để tránh lãng phí', N'Bỏ ngày hết hạn', N'Cách ly và báo người phụ trách', N'Pha trộn với nguyên liệu mới', 'C', 3),
+            ('FOOD_SAFETY_101', N'Dụng cụ chế biến cần được vệ sinh khi nào?', N'Cuối tháng', N'Chỉ khi nhìn thấy vết bẩn', N'Sau mỗi lần sử dụng và theo quy trình', N'Mỗi tuần một lần', 'C', 4),
+            ('FOOD_SAFETY_101', N'Khi có dấu hiệu nhiễm chéo, nhân viên nên làm gì?', N'Tiếp tục chế biến nhanh hơn', N'Dừng thao tác, vệ sinh và thay dụng cụ', N'Chỉ lau mặt bàn', N'Chuyển nguyên liệu sang khay khác', 'B', 5),
+            ('HOUSE_RULES', N'Khi bắt đầu ca làm, nhân viên cần làm gì trước?', N'Kiểm tra lịch ca và nhận bàn giao', N'Tự đổi vị trí làm việc', N'Rời cửa hàng mua đồ', N'Bắt đầu trước khi chấm công', 'A', 1),
+            ('HOUSE_RULES', N'Khi cần đổi ca, nhân viên nên làm gì?', N'Tự thỏa thuận rồi nghỉ', N'Báo và chờ quản lý xác nhận', N'Nhắn đồng nghiệp sau ca', N'Chỉ cập nhật lịch cá nhân', 'B', 2),
+            ('HOUSE_RULES', N'Thông tin khách hàng cần được xử lý thế nào?', N'Chia sẻ lên mạng xã hội', N'Chỉ chia sẻ trong nhóm bạn', N'Giữ bí mật và dùng đúng mục đích công việc', N'Lưu vào điện thoại cá nhân', 'C', 3),
+            ('HOUSE_RULES', N'Khi phát hiện sự cố tại cửa hàng, cần làm gì?', N'Bỏ qua nếu chưa ảnh hưởng khách', N'Báo quản lý và làm theo quy trình', N'Chờ hết ca mới báo', N'Tự ý đăng thông tin công khai', 'B', 4),
+            ('HOUSE_RULES', N'Nhân viên cần làm gì khi kết thúc ca?', N'Bàn giao công việc và tài sản theo quy trình', N'Rời đi ngay khi hết giờ', N'Để người ca sau tự kiểm tra', N'Tắt thiết bị mà không ghi nhận', 'A', 5),
+            ('BARISTA_BASIC', N'Tác dụng chính của việc cân cà phê là gì?', N'Kiểm soát tỷ lệ pha ổn định', N'Làm hạt cà phê ngọt hơn', N'Tăng nhiệt độ nước', N'Thay thế việc xay cà phê', 'A', 1),
+            ('BARISTA_BASIC', N'Khi espresso chảy quá nhanh, nên kiểm tra gì trước?', N'Độ mịn và lượng cà phê xay', N'Màu của ly', N'Vị trí bàn khách', N'Kích thước khăn lau', 'A', 2),
+            ('BARISTA_BASIC', N'Sữa dùng để đánh nóng nên được xử lý thế nào?', N'Tái sử dụng nhiều lần', N'Làm nóng theo nhiệt độ và quy trình quy định', N'Đun sôi hoàn toàn', N'Để ngoài quầy cả ngày', 'B', 3),
+            ('BARISTA_BASIC', N'Sau khi chiết xuất espresso, cần làm gì với tay pha?', N'Để nguyên đến cuối ngày', N'Rửa sạch bã và lau khô', N'Ngâm trong sữa', N'Đặt lên khăn ướt', 'B', 4),
+            ('BARISTA_BASIC', N'Để công thức đồ uống nhất quán, cần làm gì?', N'Ước lượng nguyên liệu bằng mắt', N'Tuân thủ định lượng và thứ tự pha', N'Thay đổi công thức mỗi lần', N'Bỏ qua thời gian chiết xuất', 'B', 5),
+            ('COFFEE_TASTING', N'Hương vị chua sáng trong cà phê thường được mô tả là gì?', N'Độ acid cảm nhận được', N'Độ mặn', N'Độ cay', N'Độ lạnh', 'A', 1),
+            ('COFFEE_TASTING', N'Body của cà phê mô tả điều gì?', N'Cảm giác độ dày khi uống', N'Màu của bao bì', N'Kích cỡ hạt', N'Nhiệt độ phòng', 'A', 2),
+            ('COFFEE_TASTING', N'Khi thử nếm nhiều mẫu, cách so sánh phù hợp là gì?', N'Ghi nhận từng mẫu theo cùng tiêu chí', N'Chỉ chọn mẫu đậm nhất', N'Thêm đường vào mọi mẫu', N'Đổi tiêu chí sau mỗi mẫu', 'A', 3),
+            ('COFFEE_TASTING', N'Mùi hương cà phê nên được đánh giá vào lúc nào?', N'Trước và trong khi nếm', N'Chỉ sau khi uống hết', N'Sau khi thêm nhiều đá', N'Không cần ngửi', 'A', 4),
+            ('COFFEE_TASTING', N'Hậu vị là cảm nhận nào?', N'Cảm giác còn lại sau khi nuốt', N'Mùi của hạt chưa rang', N'Tiếng máy xay', N'Màu nước trong ly', 'A', 5)
+        ) q(CourseCode, QuestionText, OptionA, OptionB, OptionC, OptionD, CorrectOption, SortOrder)
+        JOIN dbo.TrainingCourse c ON c.CourseCode = q.CourseCode
+        WHERE NOT EXISTS (
+            SELECT 1 FROM dbo.TrainingQuestion existing WHERE existing.CourseId = c.CourseId
+        );
+
+        -- Khóa được theo dõi cho mọi chức vụ; tiến độ không chặn nhận ca
         INSERT INTO dbo.PositionTrainingRequirement (PositionId, CourseId, IsMandatory, BlocksShiftAssignment, EffectiveFrom)
-        SELECT p.PositionId, c.CourseId, 1, 1, '2000-01-01'
+        SELECT p.PositionId, c.CourseId, 1, 0, '2000-01-01'
         FROM dbo.JobPosition p CROSS JOIN dbo.TrainingCourse c
         WHERE c.CourseCode IN ('FOOD_SAFETY_101', 'HOUSE_RULES')
           AND NOT EXISTS (SELECT 1 FROM dbo.PositionTrainingRequirement r

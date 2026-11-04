@@ -6,6 +6,7 @@ import '../../../app/router/route_names.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/repositories/employee_providers.dart';
+import '../../../shared/widgets/employee_bottom_navigation.dart';
 
 class EmployeeAttendanceHistoryPage extends ConsumerStatefulWidget {
   const EmployeeAttendanceHistoryPage({super.key});
@@ -601,6 +602,7 @@ class _EmployeeAttendanceHistoryPageState
           ],
         ),
       ),
+      bottomNavigationBar: const EmployeeBottomNavigation(selectedIndex: 0),
     );
   }
 

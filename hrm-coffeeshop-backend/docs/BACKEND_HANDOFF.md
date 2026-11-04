@@ -15,10 +15,10 @@
 
 ## Database
 
-- Chỉ có `config.sql` và `seeddata.sql`; không sử dụng migration.
+- DDL và dữ liệu nền vẫn lấy từ `config.sql` và `seeddata.sql`.
 - Cài mới: thay Gmail admin trong `seeddata.sql` nếu cần, chạy `config.sql` rồi `seeddata.sql`.
-- Repository chỉ có đúng hai file `.sql`; không có migration hoặc script SQL phụ.
-- Không chạy lại trên database đang có dữ liệu; dự án không có quy trình nâng cấp schema tự động.
+- Với database demo cô lập đã có dữ liệu, dùng migration one-off `infra/sqlserver/migrations/2026-11-03-training-quiz-and-nonblocking.sql` để thêm ngân hàng câu hỏi và bỏ đào tạo khỏi điều kiện nhận ca.
+- Đây không phải hệ thống migration tổng quát hay quy trình nâng cấp production; không chạy lại `config.sql` hoặc `seeddata.sql` trên database đang có dữ liệu.
 - Đổi Gmail admin trên DB hiện hữu được hướng dẫn bằng thao tác DBA one-off trong `docs/GOOGLE_LOGIN.md`, không tạo file SQL mới.
 
 ## Chưa thể xác nhận

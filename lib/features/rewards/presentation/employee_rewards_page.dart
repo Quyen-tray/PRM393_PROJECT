@@ -6,6 +6,7 @@ import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../data/repositories/employee_providers.dart';
+import '../../../shared/widgets/employee_bottom_navigation.dart';
 
 /// Nhãn trạng thái quyết định (DecisionView.status) cho nhân viên.
 const _statusLabels = <String, String>{
@@ -114,6 +115,7 @@ class _EmployeeRewardsPageState extends ConsumerState<EmployeeRewardsPage> {
         ],
       ),
       body: SafeArea(child: _body()),
+      bottomNavigationBar: const EmployeeBottomNavigation(selectedIndex: 3),
     );
   }
 

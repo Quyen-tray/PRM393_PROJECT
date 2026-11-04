@@ -7,7 +7,7 @@ Backend chỉ có hai file SQL:
 1. `config.sql`: tạo database `HRM_CoffeeShop`, bảng, khóa, constraints và index.
 2. `seeddata.sql`: nạp role, permission, danh mục, tài khoản quản trị ban đầu và dữ liệu demo/test.
 
-Chạy theo đúng thứ tự trên một database mới. Trước khi chạy `seeddata.sql`, thay email quản trị mẫu bằng Gmail thật nếu cần đăng nhập Google. `config.sql` sẽ dừng nếu database đã tồn tại, không tự xóa dữ liệu. Dự án chỉ duy trì hai file SQL, không có migration hay script SQL phụ; không chạy hai file này để nâng cấp database đang có dữ liệu. Xem [INSTALL.md](INSTALL.md) và [GOOGLE_LOGIN.md](GOOGLE_LOGIN.md).
+Chạy theo đúng thứ tự trên một database mới. Trước khi chạy `seeddata.sql`, thay email quản trị mẫu bằng Gmail thật nếu cần đăng nhập Google. `config.sql` sẽ dừng nếu database đã tồn tại, không tự xóa dữ liệu. `config.sql` và `seeddata.sql` là hai script nền; không chạy lại chúng để nâng cấp database đang có dữ liệu. Bản demo hiện có một migration one-off cho ngân hàng câu hỏi đào tạo và điều kiện nhận ca tại `infra/sqlserver/migrations/2026-11-03-training-quiz-and-nonblocking.sql`; đây không phải hệ thống migration tổng quát. Xem [INSTALL.md](INSTALL.md) và [GOOGLE_LOGIN.md](GOOGLE_LOGIN.md).
 
 ## 2. Đăng nhập thử khi chưa dùng Google
 

@@ -336,6 +336,11 @@ EXTRAS = {
 
     List<TrainingAttempt> findByEmployeeIdAndCourseIdOrderByAttemptNoAsc(Long employeeId, Integer courseId);
 ''',
+"TrainingQuestion": '''
+    List<TrainingQuestion> findByCourseIdOrderBySortOrderAscQuestionIdAsc(Integer courseId);
+    List<TrainingQuestion> findByCourseIdAndIsActiveTrueOrderBySortOrderAscQuestionIdAsc(Integer courseId);
+    void deleteByCourseId(Integer courseId);
+''',
 "Skill": '''
     boolean existsBySkillCode(String skillCode);
 

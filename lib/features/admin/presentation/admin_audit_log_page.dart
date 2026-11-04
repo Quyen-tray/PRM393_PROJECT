@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -86,7 +87,9 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       }
     });
     try {
-      final data = await ref.read(employeeRepositoryProvider).getAuditLogs(
+      final data = await ref
+          .read(employeeRepositoryProvider)
+          .getAuditLogs(
             entityType: _entityFilter,
             actionCode: _actionFilter,
             from: _fromFilter == null ? null : _isoDate(_fromFilter!),
@@ -162,6 +165,11 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Xuất CSV theo bộ lọc ngày',
+            onPressed: _loading ? null : _exportCsv,
+            icon: const Icon(Icons.download_outlined),
+          ),
+          IconButton(
             tooltip: 'Tải lại',
             onPressed: _loading ? null : _applyFilters,
             icon: const Icon(Icons.refresh),
@@ -208,22 +216,40 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
             const SizedBox(height: 10),
             Row(
               children: [
-                Expanded(child: _dateChip(label: 'Từ ngày', value: _from, onTap: () => _pickDate(from: true),
-                    onClear: () => setState(() => _from = null))),
+                Expanded(
+                  child: _dateChip(
+                    label: 'Từ ngày',
+                    value: _from,
+                    onTap: () => _pickDate(from: true),
+                    onClear: () => setState(() => _from = null),
+                  ),
+                ),
                 const SizedBox(width: 8),
-                Expanded(child: _dateChip(label: 'Đến ngày', value: _to, onTap: () => _pickDate(from: false),
-                    onClear: () => setState(() => _to = null))),
+                Expanded(
+                  child: _dateChip(
+                    label: 'Đến ngày',
+                    value: _to,
+                    onTap: () => _pickDate(from: false),
+                    onClear: () => setState(() => _to = null),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton(onPressed: _loading ? null : _clearFilters, child: const Text('Xóa lọc')),
+                  child: OutlinedButton(
+                    onPressed: _loading ? null : _clearFilters,
+                    child: const Text('Xóa lọc'),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: FilledButton(onPressed: _loading ? null : _applyFilters, child: const Text('Lọc')),
+                  child: FilledButton(
+                    onPressed: _loading ? null : _applyFilters,
+                    child: const Text('Lọc'),
+                  ),
                 ),
               ],
             ),
@@ -269,7 +295,10 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
             children: [
               Text(_error!, textAlign: TextAlign.center),
               const SizedBox(height: 12),
-              FilledButton(onPressed: _applyFilters, child: const Text('Thử lại')),
+              FilledButton(
+                onPressed: _applyFilters,
+                child: const Text('Thử lại'),
+              ),
             ],
           ),
         ),
@@ -288,14 +317,20 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
             alignment: Alignment.centerLeft,
             child: Text(
               'Hiển thị ${_rows.length} / $_totalElements bản ghi',
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
             ),
           ),
         ),
         if (_error != null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(_error!, style: const TextStyle(color: AppColors.error, fontSize: 12)),
+            child: Text(
+              _error!,
+              style: const TextStyle(color: AppColors.error, fontSize: 12),
+            ),
           ),
         Expanded(
           child: ListView.separated(
@@ -351,7 +386,29 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     );
   }
 
-  void _showDetail(Map<String, dynamic> row) {
+  Future<void> _showDetail(Map<String, dynamic> row) async {
+    final id = (row['auditLogId'] ?? row['logId']) as num?;
+    if (id != null) {
+      try {
+        row = await ref
+            .read(employeeRepositoryProvider)
+            .getAuditLog(id.toInt());
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                error is ApiException
+                    ? error.message
+                    : 'Không tải được chi tiết nhật ký.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+    }
+    if (!mounted) return;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -364,12 +421,20 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
             children: [
               Text(
                 _s(row['actionCode']).isEmpty ? '—' : _s(row['actionCode']),
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
               ),
               const SizedBox(height: 12),
               _detailLine('Thời gian', _formatWhen(row['createdAt'])),
               _detailLine('Đối tượng', _entityLabel(row)),
-              _detailLine('Người thực hiện', row['actorUserId'] == null ? 'Hệ thống' : 'Tài khoản #${row['actorUserId']}'),
+              _detailLine(
+                'Người thực hiện',
+                row['actorUserId'] == null
+                    ? 'Hệ thống'
+                    : 'Tài khoản #${row['actorUserId']}',
+              ),
               _detailLine('Địa chỉ IP', _orDash(row['ipAddress'])),
               _detailLine('Mã tương quan', _orDash(row['correlationId'])),
               const SizedBox(height: 12),
@@ -383,15 +448,85 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     );
   }
 
+  Future<void> _exportCsv() async {
+    try {
+      final csv = await ref
+          .read(employeeRepositoryProvider)
+          .exportAuditLogs(
+            from: _fromFilter == null ? null : _isoDate(_fromFilter!),
+            to: _toFilter == null ? null : _isoDate(_toFilter!),
+          );
+      if (!mounted) return;
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'CSV nhật ký hệ thống',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+                const SizedBox(height: 10),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 360),
+                  child: SingleChildScrollView(child: SelectableText(csv)),
+                ),
+                const SizedBox(height: 10),
+                FilledButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: csv));
+                    if (sheetContext.mounted) Navigator.pop(sheetContext);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Đã sao chép CSV.')),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.copy),
+                  label: const Text('Sao chép CSV'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error is ApiException ? error.message : 'Không xuất được CSV.',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   Widget _detailLine(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+            ),
+          ),
           const SizedBox(height: 2),
-          SelectableText(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+          SelectableText(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
         ],
       ),
     );
@@ -402,7 +537,10 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+        Text(
+          label,
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        ),
         const SizedBox(height: 4),
         Container(
           width: double.infinity,

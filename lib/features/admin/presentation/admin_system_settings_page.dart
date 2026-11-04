@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hrm_coffee_shop_flutter/features/auth/presentation/sign_out_flow.dart';
 
@@ -30,6 +33,8 @@ class _Section {
     required this.fields,
     required this.summary,
     this.note,
+    this.captureCurrentLocation = false,
+    this.attendancePolicyEndpoint = false,
   });
 
   final String title;
@@ -37,6 +42,8 @@ class _Section {
   final List<_Field> fields;
   final String Function(Map<String, dynamic> settings) summary;
   final String? note;
+  final bool captureCurrentLocation;
+  final bool attendancePolicyEndpoint;
 }
 
 String _text(Object? value, [String fallback = '—']) {
@@ -82,10 +89,18 @@ final _sections = <_Section>[
         _FieldKind.integer,
       ),
     ],
-    summary: (s) =>
-        'Bán kính ${_text(s['attendanceRadiusMeters'])} m · sai số tối đa ${_text(s['gpsMaxAccuracyMeters'])} m',
+    summary: (s) {
+      final store = _mapOf(s['store']);
+      final latitude = store['latitude'];
+      final longitude = store['longitude'];
+      final location = latitude is num && longitude is num
+          ? 'Tọa độ ${latitude.toStringAsFixed(6)}, ${longitude.toStringAsFixed(6)}'
+          : 'Chưa đặt tọa độ cửa hàng';
+      return '$location · bán kính ${_text(s['attendanceRadiusMeters'])} m · sai số tối đa ${_text(s['gpsMaxAccuracyMeters'])} m';
+    },
+    captureCurrentLocation: true,
     note:
-        'Máy chủ kiểm tra giới hạn của từng trường. Thông báo lỗi sẽ hiện nếu giá trị không hợp lệ.',
+        'Đứng tại cửa hàng, chọn “Lấy GPS hiện tại”, kiểm tra sai số rồi lưu. Nhân viên phải ở trong bán kính này khi check-in.',
   ),
   _Section(
     title: 'Chính sách chấm công',
@@ -113,6 +128,7 @@ final _sections = <_Section>[
         'lưu ảnh ${_text(s['photoRetentionMonths'])} tháng',
     note:
         'Số lần ân hạn tối đa mỗi tháng áp dụng cho quy định đi muộn. Hệ thống không tự phạt tiền hay trừ lương từ sự kiện chưa xác minh.',
+    attendancePolicyEndpoint: true,
   ),
   _Section(
     title: 'Thông báo nhắc việc',
@@ -175,12 +191,16 @@ class _AdminSystemSettingsPageState
       final repo = ref.read(employeeRepositoryProvider);
       final results = await Future.wait<Object>([
         repo.getStoreSettings(),
+        repo.getAttendancePolicies(),
         repo.getReminderRules(),
       ]);
       if (!mounted) return;
       setState(() {
-        _settings = results[0] as Map<String, dynamic>;
-        _rules = results[1] as List<Map<String, dynamic>>;
+        _settings = {
+          ...(results[0] as Map<String, dynamic>),
+          ...(results[1] as Map<String, dynamic>),
+        };
+        _rules = results[2] as List<Map<String, dynamic>>;
       });
     } catch (error) {
       if (mounted) {
@@ -221,9 +241,13 @@ class _AdminSystemSettingsPageState
     if (changes.isEmpty) return;
 
     try {
-      final saved = await ref
-          .read(employeeRepositoryProvider)
-          .updateStoreSettings(changes);
+      final saved = section.attendancePolicyEndpoint
+          ? await ref
+                .read(employeeRepositoryProvider)
+                .updateAttendancePolicies(changes)
+          : await ref
+                .read(employeeRepositoryProvider)
+                .updateStoreSettings(changes);
       if (!mounted) return;
       setState(() => _settings = saved);
       _showMessage('Đã lưu cấu hình.');
@@ -379,6 +403,9 @@ class _SectionDialog extends StatefulWidget {
 
 class _SectionDialogState extends State<_SectionDialog> {
   final _formKey = GlobalKey<FormState>();
+  bool _loadingLocation = false;
+  String? _locationError;
+  double? _locationAccuracyMeters;
   late final Map<String, TextEditingController> _controllers = {
     for (final field in widget.section.fields)
       field.key: TextEditingController(text: widget.valueOf(field)),
@@ -404,10 +431,84 @@ class _SectionDialogState extends State<_SectionDialog> {
         if (parsed < 0) return 'Không được âm.';
         return null;
       case _FieldKind.decimal:
-        if (double.tryParse(text.replaceAll(',', '.')) == null) {
+        final parsed = double.tryParse(text.replaceAll(',', '.'));
+        if (parsed == null) {
           return 'Nhập một số hợp lệ.';
         }
+        if (field.key == 'latitude' && (parsed < -90 || parsed > 90)) {
+          return 'Vĩ độ phải nằm trong khoảng -90 đến 90.';
+        }
+        if (field.key == 'longitude' && (parsed < -180 || parsed > 180)) {
+          return 'Kinh độ phải nằm trong khoảng -180 đến 180.';
+        }
         return null;
+    }
+  }
+
+  Future<void> _captureCurrentLocation() async {
+    if (_loadingLocation) return;
+    setState(() {
+      _loadingLocation = true;
+      _locationError = null;
+      _locationAccuracyMeters = null;
+    });
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled().timeout(
+        const Duration(seconds: 4),
+      );
+      if (!enabled) {
+        throw const FormatException(
+          'Hãy bật dịch vụ định vị/GPS trên thiết bị.',
+        );
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.deniedForever) {
+        throw const FormatException(
+          'Quyền vị trí đã bị từ chối vĩnh viễn. Hãy cấp quyền cho ứng dụng trong Cài đặt.',
+        );
+      }
+      if (permission == LocationPermission.denied) {
+        throw const FormatException(
+          'Cần cấp quyền vị trí để lấy GPS cửa hàng.',
+        );
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 15),
+        ),
+      ).timeout(const Duration(seconds: 18));
+      if (!mounted) return;
+      _controllers['latitude']!.text = position.latitude.toStringAsFixed(7);
+      _controllers['longitude']!.text = position.longitude.toStringAsFixed(7);
+      setState(() => _locationAccuracyMeters = position.accuracy);
+    } on TimeoutException {
+      if (mounted) {
+        setState(
+          () => _locationError =
+              'Chưa lấy được GPS. Hãy bật định vị, đứng nơi thoáng rồi thử lại.',
+        );
+      }
+    } on FormatException catch (error) {
+      if (mounted) setState(() => _locationError = error.message);
+    } on PermissionDeniedException {
+      if (mounted) {
+        setState(() => _locationError = 'Ứng dụng chưa được cấp quyền vị trí.');
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _locationError =
+              'Không lấy được vị trí hiện tại. Hãy kiểm tra GPS và quyền vị trí.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loadingLocation = false);
     }
   }
 
@@ -421,6 +522,41 @@ class _SectionDialogState extends State<_SectionDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (widget.section.captureCurrentLocation) ...[
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _loadingLocation ? null : _captureCurrentLocation,
+                  icon: _loadingLocation
+                      ? const SizedBox.square(
+                          dimension: 17,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.my_location),
+                  label: Text(
+                    _loadingLocation ? 'Đang lấy GPS...' : 'Lấy GPS hiện tại',
+                  ),
+                ),
+              ),
+              if (_locationAccuracyMeters != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Độ chính xác GPS: ±${_locationAccuracyMeters!.toStringAsFixed(0)} m',
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+              if (_locationError != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _locationError!,
+                  style: const TextStyle(color: AppColors.error, fontSize: 12),
+                ),
+              ],
+              const SizedBox(height: 14),
+            ],
             for (final field in widget.section.fields) ...[
               TextFormField(
                 controller: _controllers[field.key],
@@ -584,25 +720,35 @@ class _RuleTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFEDE8E3)),
       ),
-      child: ListTile(
-        onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        title: Text(
-          _text(rule['description'], 'Quy tắc'),
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: ListTile(
+          onTap: onTap,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 4,
           ),
-        ),
-        subtitle: Text(
-          'Nhắc trước ${_intOf(rule['leadMinutes'])} phút · mỗi ${_intOf(rule['intervalMinutes'])} phút · '
-          'tối đa ${_intOf(rule['maxAttempts'])} lần',
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
-        ),
-        trailing: const Icon(
-          Icons.chevron_right,
-          color: AppColors.textSecondary,
+          title: Text(
+            _text(rule['description'], 'Quy tắc'),
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+          subtitle: Text(
+            'Nhắc trước ${_intOf(rule['leadMinutes'])} phút · mỗi ${_intOf(rule['intervalMinutes'])} phút · '
+            'tối đa ${_intOf(rule['maxAttempts'])} lần',
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+            ),
+          ),
+          trailing: const Icon(
+            Icons.chevron_right,
+            color: AppColors.textSecondary,
+          ),
         ),
       ),
     );
@@ -632,24 +778,34 @@ class _SettingsCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFEDE8E3)),
       ),
-      child: ListTile(
-        onTap: expandable ? null : onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-        leading: Icon(icon, color: AppColors.primary),
-        title: Text(
-          title,
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.w600,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: ListTile(
+          onTap: expandable ? null : onTap,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 5,
           ),
+          leading: Icon(icon, color: AppColors.primary),
+          title: Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          subtitle: Text(
+            subtitle,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+            ),
+          ),
+          trailing: expandable
+              ? const Icon(Icons.expand_more, color: AppColors.textSecondary)
+              : const Icon(Icons.chevron_right, color: AppColors.textSecondary),
         ),
-        subtitle: Text(
-          subtitle,
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
-        ),
-        trailing: expandable
-            ? const Icon(Icons.expand_more, color: AppColors.textSecondary)
-            : const Icon(Icons.chevron_right, color: AppColors.textSecondary),
       ),
     );
   }

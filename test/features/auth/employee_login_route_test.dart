@@ -2,10 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:dio/dio.dart';
+import 'package:hrm_coffee_shop_flutter/app/router/route_names.dart';
+import 'package:hrm_coffee_shop_flutter/core/network/api_client.dart';
+import 'package:hrm_coffee_shop_flutter/core/network/api_providers.dart';
 import 'package:hrm_coffee_shop_flutter/features/auth/data/auth_providers.dart';
 import 'package:hrm_coffee_shop_flutter/features/auth/data/auth_repository.dart';
 import 'package:hrm_coffee_shop_flutter/features/auth/domain/entities/user.dart';
 import 'package:hrm_coffee_shop_flutter/features/auth/presentation/login_page.dart';
+import 'package:hrm_coffee_shop_flutter/features/auth/presentation/role_selection_page.dart';
+import 'package:hrm_coffee_shop_flutter/data/repositories/employee_providers.dart';
+import 'package:hrm_coffee_shop_flutter/data/repositories/employee_repository.dart';
 
 void main() {
   testWidgets(
@@ -35,20 +42,25 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [authRepositoryProvider.overrideWith((ref) => repository)],
+          overrides: [
+            authRepositoryProvider.overrideWith((ref) => repository),
+            employeeRepositoryProvider.overrideWithValue(_AccessRepository()),
+            apiClientProvider.overrideWithValue(_NoSessionApiClient()),
+          ],
           child: MaterialApp.router(routerConfig: router),
         ),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.text('Ti\u1ebfp t\u1ee5c v\u1edbi Google'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
 
       expect(repository.signInCalls, 1);
       expect(find.text('employee-dashboard'), findsOneWidget);
     },
   );
 
-  testWidgets('unlinked employee account still opens employee navigation', (
+  testWidgets('unlinked employee account sees profile-link guidance', (
     tester,
   ) async {
     final repository = _EmployeeAuthRepository(linkedEmployee: false);
@@ -56,6 +68,11 @@ void main() {
       initialLocation: '/login',
       routes: [
         GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
+        GoRoute(
+          path: RouteNames.roleSelection,
+          builder: (context, state) =>
+              RoleSelectionPage(user: state.extra! as User),
+        ),
         GoRoute(
           path: '/employee',
           builder: (context, state) =>
@@ -67,16 +84,21 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [authRepositoryProvider.overrideWith((ref) => repository)],
+        overrides: [
+          authRepositoryProvider.overrideWith((ref) => repository),
+          employeeRepositoryProvider.overrideWithValue(_AccessRepository()),
+          apiClientProvider.overrideWithValue(_NoSessionApiClient()),
+        ],
         child: MaterialApp.router(routerConfig: router),
       ),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tiếp tục với Google'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
 
-    expect(find.text('employee-dashboard'), findsOneWidget);
-    expect(find.text('account-profile'), findsNothing);
+    expect(find.text('employee-dashboard'), findsNothing);
+    expect(find.byType(RoleSelectionPage), findsOneWidget);
   });
 }
 
@@ -112,4 +134,20 @@ class _EmployeeAuthRepository implements AuthRepository {
     signInCalls++;
     return await getCurrentUser();
   }
+}
+
+class _AccessRepository implements EmployeeRepository {
+  @override
+  Future<CurrentAccess> getCurrentAccess() async =>
+      const CurrentAccess(roles: {'EMPLOYEE'}, permissions: {});
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoSessionApiClient extends ApiClient {
+  _NoSessionApiClient() : super(dio: Dio());
+
+  @override
+  Future<String?> readAccessToken() async => null;
 }

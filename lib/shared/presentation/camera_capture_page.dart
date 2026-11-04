@@ -26,6 +26,7 @@ class CameraCapturePage extends StatefulWidget {
 class _CameraCapturePageState extends State<CameraCapturePage>
     with WidgetsBindingObserver {
   CameraController? _controller;
+  late CameraLensDirection _preferredDirection;
   bool _isInitializing = true;
   bool _isTakingPicture = false;
   String? _errorMessage;
@@ -35,6 +36,7 @@ class _CameraCapturePageState extends State<CameraCapturePage>
   @override
   void initState() {
     super.initState();
+    _preferredDirection = widget.preferredDirection;
     WidgetsBinding.instance.addObserver(this);
     unawaited(_initializeCamera());
   }
@@ -72,41 +74,52 @@ class _CameraCapturePageState extends State<CameraCapturePage>
 
       final orderedCameras = [
         ...cameras.where(
-          (camera) => camera.lensDirection == widget.preferredDirection,
+          (camera) => camera.lensDirection == _preferredDirection,
         ),
         ...cameras.where(
-          (camera) => camera.lensDirection != widget.preferredDirection,
+          (camera) => camera.lensDirection != _preferredDirection,
         ),
       ];
       CameraException? lastCameraError;
+      var permissionDenied = false;
 
       for (final camera in orderedCameras) {
-        final candidate = CameraController(
-          camera,
+        for (final preset in [
+          ResolutionPreset.high,
           ResolutionPreset.medium,
-          enableAudio: false,
-        );
-        newController = candidate;
-        try {
-          await candidate.initialize();
+          ResolutionPreset.low,
+        ]) {
+          final candidate = CameraController(
+            camera,
+            preset,
+            enableAudio: false,
+          );
+          newController = candidate;
+          try {
+            await candidate.initialize();
 
-          if (!mounted || generation != _generation) {
-            await candidate.dispose();
+            if (!mounted || generation != _generation) {
+              await candidate.dispose();
+              return;
+            }
+
+            setState(() => _controller = candidate);
             return;
+          } on CameraException catch (error) {
+            lastCameraError = error;
+            await candidate.dispose();
+            newController = null;
+
+            // A permission failure applies to the camera API, so trying another
+            // resolution or lens cannot help.
+            if (_isPermissionError(error)) {
+              permissionDenied = true;
+              break;
+            }
+            if (!mounted || generation != _generation) return;
           }
-
-          setState(() => _controller = candidate);
-          return;
-        } on CameraException catch (error) {
-          lastCameraError = error;
-          await candidate.dispose();
-          newController = null;
-
-          // A permission failure applies to the camera API, so trying another
-          // lens cannot help. Other failures may be specific to one device.
-          if (_isPermissionError(error)) break;
-          if (!mounted || generation != _generation) return;
         }
+        if (permissionDenied) break;
       }
 
       throw lastCameraError ??
@@ -179,6 +192,23 @@ class _CameraCapturePageState extends State<CameraCapturePage>
     }
   }
 
+  Future<void> _switchCamera() async {
+    if (_isTakingPicture) return;
+    final previous = _controller;
+    _generation++;
+    _controller = null;
+    setState(() {
+      _preferredDirection = _preferredDirection == CameraLensDirection.front
+          ? CameraLensDirection.back
+          : CameraLensDirection.front;
+      _isInitializing = true;
+      _errorMessage = null;
+    });
+    if (previous != null) await previous.dispose();
+    await _initializeCamera();
+    if (mounted && _controller == null) await _initializeCamera();
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // On web, Chrome can report `inactive` while the permission prompt is
@@ -225,6 +255,13 @@ class _CameraCapturePageState extends State<CameraCapturePage>
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         title: Text(widget.title),
+        actions: [
+          IconButton(
+            tooltip: 'Đổi camera trước/sau',
+            onPressed: _isInitializing || _isTakingPicture ? null : _switchCamera,
+            icon: const Icon(Icons.cameraswitch_outlined),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(

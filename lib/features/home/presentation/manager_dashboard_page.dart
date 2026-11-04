@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hrm_coffee_shop_flutter/features/auth/presentation/sign_out_flow.dart';
 
 import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
@@ -10,7 +9,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../data/repositories/employee_providers.dart';
 import '../../auth/data/auth_providers.dart';
 import '../../../data/repositories/employee_repository.dart';
-import 'widgets/manager_more_menu.dart';
+import 'widgets/manager_bottom_navigation.dart';
 import '../../auth/domain/entities/user.dart';
 
 const _borderColor = Color(0xFFEDE8E3);
@@ -246,7 +245,14 @@ class _ManagerDashboardPageState extends ConsumerState<ManagerDashboardPage> {
   void _openAction(String queue) {
     if (queue == 'documents' && _data?.canReviewDocuments != true) return;
     final route = _actionInfo[queue]?.route;
-    if (route != null) context.go(route);
+    if (route != null) {
+      context.go(
+        route,
+        extra: route == RouteNames.managerDocumentReview
+            ? RouteNames.home
+            : null,
+      );
+    }
   }
 
   @override
@@ -263,10 +269,7 @@ class _ManagerDashboardPageState extends ConsumerState<ManagerDashboardPage> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
                   children: [
-                    _ManagerHeader(
-                      onRefresh: _loading ? null : _load,
-                      onSignOut: () => signOutAndReturnToLogin(context, ref),
-                    ),
+                    _ManagerHeader(onRefresh: _loading ? null : _load),
                     const SizedBox(height: 40),
                     if (_loading)
                       const Center(child: CircularProgressIndicator())
@@ -281,10 +284,7 @@ class _ManagerDashboardPageState extends ConsumerState<ManagerDashboardPage> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
                   children: [
-                    _ManagerHeader(
-                      onRefresh: _loading ? null : _load,
-                      onSignOut: () => signOutAndReturnToLogin(context, ref),
-                    ),
+                    _ManagerHeader(onRefresh: _loading ? null : _load),
                     const SizedBox(height: 18),
                     Text(
                       'Xin chào, $_managerName',
@@ -406,47 +406,7 @@ class _ManagerDashboardPageState extends ConsumerState<ManagerDashboardPage> {
                 ),
         ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 0,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Tổng quan',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            selectedIcon: Icon(Icons.people),
-            label: 'Nhân viên',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month),
-            label: 'Lịch',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.fact_check_outlined),
-            selectedIcon: Icon(Icons.fact_check),
-            label: 'Duyệt',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.more_horiz),
-            selectedIcon: Icon(Icons.more_horiz),
-            label: 'Khác',
-          ),
-        ],
-        onDestinationSelected: (index) {
-          if (index == 1) context.go(RouteNames.managerEmployees);
-          if (index == 2) context.go(RouteNames.managerSchedule);
-          if (index == 3) context.go(RouteNames.managerApprovals);
-          if (index == 4) {
-            showManagerMoreMenu(
-              context,
-              onSignOut: () => signOutAndReturnToLogin(context, ref),
-            );
-          }
-        },
-      ),
+      bottomNavigationBar: const ManagerBottomNavigation(selectedIndex: 0),
     );
   }
 
@@ -459,10 +419,9 @@ class _ManagerDashboardPageState extends ConsumerState<ManagerDashboardPage> {
 }
 
 class _ManagerHeader extends StatelessWidget {
-  const _ManagerHeader({required this.onRefresh, required this.onSignOut});
+  const _ManagerHeader({required this.onRefresh});
 
   final VoidCallback? onRefresh;
-  final Future<void> Function() onSignOut;
 
   @override
   Widget build(BuildContext context) {
@@ -474,16 +433,6 @@ class _ManagerHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          IconButton(
-            tooltip: 'Mở chức năng khác',
-            onPressed: () => showManagerMoreMenu(context, onSignOut: onSignOut),
-            color: Colors.white,
-            iconSize: 18,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: 24, height: 24),
-            icon: const Icon(Icons.menu),
-          ),
-          const SizedBox(width: 12),
           const Icon(Icons.coffee, color: Color(0xFFF1D2A6), size: 22),
           const SizedBox(width: 8),
           const Expanded(

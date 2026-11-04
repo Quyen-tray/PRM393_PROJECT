@@ -14,6 +14,7 @@ class ManagerReviewList extends StatelessWidget {
     required this.onApprove,
     required this.onReject,
     required this.onRefresh,
+    this.onSelect,
     super.key,
   });
 
@@ -25,6 +26,7 @@ class ManagerReviewList extends StatelessWidget {
   final Future<void> Function(ManagerReviewItem item) onApprove;
   final Future<void> Function(ManagerReviewItem item, String reason) onReject;
   final Future<void> Function() onRefresh;
+  final ValueChanged<ManagerReviewItem>? onSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +38,10 @@ class ManagerReviewList extends StatelessWidget {
           children: [
             const SizedBox(height: 160),
             Center(
-              child: Text(emptyMessage, style: const TextStyle(color: AppColors.textSecondary)),
+              child: Text(
+                emptyMessage,
+                style: const TextStyle(color: AppColors.textSecondary),
+              ),
             ),
           ],
         ),
@@ -57,6 +62,7 @@ class ManagerReviewList extends StatelessWidget {
               evidence: item.evidence,
               status: item.status,
               rejectionReason: item.rejectionReason,
+              onTap: onSelect == null ? null : () => onSelect!(item),
               onApprove: item.isPending && !busy ? () => onApprove(item) : null,
               onReject: item.isPending && !busy
                   ? () async {

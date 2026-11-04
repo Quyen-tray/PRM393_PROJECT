@@ -9,6 +9,7 @@ const _signOutDestination = '__sign_out__';
 Future<void> showManagerMoreMenu(
   BuildContext context, {
   required Future<void> Function() onSignOut,
+  String returnRoute = RouteNames.home,
 }) async {
   final destination = await showModalBottomSheet<String>(
     context: context,
@@ -44,28 +45,35 @@ Future<void> showManagerMoreMenu(
               ),
             ),
             ListTile(
+              leading: const Icon(Icons.phone_android_outlined),
+              title: const Text('Quản lý thiết bị chấm công'),
+              subtitle: const Text('Duyệt đăng ký, xem và thu hồi thiết bị'),
+              onTap: () =>
+                  Navigator.pop(sheetContext, RouteNames.managerDevices),
+            ),
+            ListTile(
+              leading: const Icon(Icons.insights_outlined),
+              title: const Text('Báo cáo vận hành'),
+              onTap: () =>
+                  Navigator.pop(sheetContext, RouteNames.managerOperations),
+            ),
+            ListTile(
               leading: const Icon(Icons.payments_outlined),
               title: const Text('Thưởng/phạt'),
-              onTap: () => Navigator.pop(
-                sheetContext,
-                RouteNames.managerRewards,
-              ),
+              onTap: () =>
+                  Navigator.pop(sheetContext, RouteNames.managerRewards),
             ),
             ListTile(
               leading: const Icon(Icons.calendar_month_outlined),
               title: const Text('Kỳ công'),
-              onTap: () => Navigator.pop(
-                sheetContext,
-                RouteNames.managerPayroll,
-              ),
+              onTap: () =>
+                  Navigator.pop(sheetContext, RouteNames.managerPayroll),
             ),
             ListTile(
               leading: const Icon(Icons.report_outlined),
               title: const Text('Xét duyệt vi phạm'),
-              onTap: () => Navigator.pop(
-                sheetContext,
-                RouteNames.managerViolations,
-              ),
+              onTap: () =>
+                  Navigator.pop(sheetContext, RouteNames.managerViolations),
             ),
             ListTile(
               leading: const Icon(Icons.fact_check_outlined),
@@ -73,6 +81,14 @@ Future<void> showManagerMoreMenu(
               onTap: () => Navigator.pop(
                 sheetContext,
                 RouteNames.managerChecklistApprovals,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.school_outlined),
+              title: const Text('Duyệt hoàn thành đào tạo'),
+              onTap: () => Navigator.pop(
+                sheetContext,
+                RouteNames.managerTrainingCompletions,
               ),
             ),
             ListTile(
@@ -91,5 +107,11 @@ Future<void> showManagerMoreMenu(
     await onSignOut();
     return;
   }
-  context.go(destination);
+  if (destination == RouteNames.managerTrainingCompletions) {
+    context.go(destination, extra: RouteNames.home);
+  } else if (destination == RouteNames.profile) {
+    context.go(destination, extra: returnRoute);
+  } else {
+    context.go(destination);
+  }
 }

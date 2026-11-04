@@ -94,6 +94,7 @@ class _EmployeeDashboardPageState extends ConsumerState<EmployeeDashboardPage> {
                             _quickAccessGrid(
                               context,
                               canReviewDocuments: false,
+                              canManageTraining: false,
                               showCheckIn: true,
                             ),
                           ],
@@ -157,6 +158,7 @@ class _EmployeeDashboardPageState extends ConsumerState<EmployeeDashboardPage> {
                               context,
                               canReviewDocuments:
                                   data.access.canReviewDocuments,
+                              canManageTraining: data.access.canManageTraining,
                             ),
                           ],
                         ),
@@ -176,9 +178,11 @@ class _EmployeeDashboardPageState extends ConsumerState<EmployeeDashboardPage> {
   Widget _quickAccessGrid(
     BuildContext context, {
     required bool canReviewDocuments,
+    required bool canManageTraining,
     bool showCheckIn = false,
   }) => _QuickAccessGrid(
     canReviewDocuments: canReviewDocuments,
+    canManageTraining: canManageTraining,
     showCheckIn: showCheckIn,
     onCheckInTap: () => context.go(RouteNames.checkIn),
     onScheduleTap: () => context.go(RouteNames.employeeSchedule),
@@ -189,9 +193,16 @@ class _EmployeeDashboardPageState extends ConsumerState<EmployeeDashboardPage> {
     onAttendanceHistoryTap: () =>
         context.go(RouteNames.employeeAttendanceHistory),
     onDocumentsTap: () => context.go(RouteNames.employeeDocuments),
-    onDocumentReviewTap: () => context.go(RouteNames.managerDocumentReview),
+    onDocumentReviewTap: () => context.go(
+      RouteNames.managerDocumentReview,
+      extra: RouteNames.employeeHome,
+    ),
     onViolationsTap: () => context.go(RouteNames.employeeViolations),
     onRewardsTap: () => context.go(RouteNames.employeeRewards),
+    onTrainingReviewTap: () => context.go(
+      RouteNames.managerTrainingCompletions,
+      extra: RouteNames.employeeHome,
+    ),
   );
 }
 
@@ -305,7 +316,7 @@ class _StoreHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'BeanHub',
+                  'HRM Coffee Shop',
                   style: const TextStyle(
                     color: AppColors.textPrimary,
                     fontSize: 13,
@@ -417,6 +428,7 @@ class _ShiftCard extends StatelessWidget {
     final start = _time(shift?['plannedStartAt']);
     final end = _time(shift?['plannedEndAt']);
     final canCheckIn = shift != null && shift?['canCheckIn'] == true;
+    final canCheckOut = shift != null && shift?['canCheckOut'] == true;
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -462,18 +474,47 @@ class _ShiftCard extends StatelessWidget {
                 fontSize: 12,
               ),
             ),
+            if (!canCheckIn && !canCheckOut) ...[
+              const SizedBox(height: 5),
+              Text(
+                _checkInHint(shift!),
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 11,
+                ),
+              ),
+            ],
           ],
           const SizedBox(height: 10),
           Align(
             alignment: Alignment.centerRight,
             child: FilledButton(
-              onPressed: canCheckIn ? onCheckInTap : null,
-              child: const Text('Check-in'),
+              // This button opens the verification screen. Let the employee
+              // inspect blockers such as device approval and GPS there; the
+              // attendance API remains responsible for accepting check-in.
+              onPressed: shift == null ? null : onCheckInTap,
+              child: Text(canCheckOut ? 'Check-out' : 'Check-in'),
             ),
           ),
         ],
       ),
     );
+  }
+
+  String _checkInHint(Map<String, dynamic> shift) {
+    final blockers = shift['blockers'];
+    if (blockers is List) {
+      if (blockers.contains('DEVICE_NOT_ACTIVE')) {
+        return 'Mở Check-in để đăng ký thiết bị hoặc xem trạng thái duyệt.';
+      }
+      if (blockers.contains('CHECK_IN_TOO_EARLY')) {
+        return 'Mở Check-in để xem thời gian bắt đầu chấm công.';
+      }
+      if (blockers.contains('CHECK_IN_WINDOW_CLOSED')) {
+        return 'Ca đã kết thúc. Mở Check-in để xem hướng xử lý.';
+      }
+    }
+    return 'Mở Check-in để xem điều kiện chấm công.';
   }
 }
 
@@ -489,9 +530,11 @@ class _QuickAccessGrid extends StatelessWidget {
     required this.onAttendanceHistoryTap,
     required this.onDocumentsTap,
     required this.canReviewDocuments,
+    required this.canManageTraining,
     required this.onDocumentReviewTap,
     required this.onViolationsTap,
     required this.onRewardsTap,
+    required this.onTrainingReviewTap,
   });
 
   final VoidCallback onCheckInTap;
@@ -504,9 +547,11 @@ class _QuickAccessGrid extends StatelessWidget {
   final VoidCallback onAttendanceHistoryTap;
   final VoidCallback onDocumentsTap;
   final bool canReviewDocuments;
+  final bool canManageTraining;
   final VoidCallback onDocumentReviewTap;
   final VoidCallback onViolationsTap;
   final VoidCallback onRewardsTap;
+  final VoidCallback onTrainingReviewTap;
 
   @override
   Widget build(BuildContext context) {
@@ -585,6 +630,13 @@ class _QuickAccessGrid extends StatelessWidget {
             title: 'Duyệt hồ sơ',
             color: const Color(0xFF8A5032),
             onTap: onDocumentReviewTap,
+          ),
+        if (canManageTraining)
+          _QuickAccessTile(
+            icon: Icons.school_outlined,
+            title: 'Duyệt đào tạo',
+            color: const Color(0xFF8A5032),
+            onTap: onTrainingReviewTap,
           ),
       ],
     );

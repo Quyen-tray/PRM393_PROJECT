@@ -7,6 +7,7 @@ import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../data/repositories/employee_providers.dart';
+import '../../../shared/widgets/employee_bottom_navigation.dart';
 import '../../documents/presentation/employee_documents_tab.dart';
 
 class EmployeeViolationsPage extends ConsumerStatefulWidget {
@@ -264,6 +265,7 @@ class _EmployeeViolationsPageState
                     _violationCard(_violations[index]),
               ),
             ),
+      bottomNavigationBar: const EmployeeBottomNavigation(selectedIndex: 0),
     );
   }
 

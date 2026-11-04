@@ -6,6 +6,7 @@ import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../data/repositories/employee_providers.dart';
+import '../../home/presentation/widgets/manager_bottom_navigation.dart';
 import '../../../data/repositories/employee_repository.dart';
 
 /// Bộ lọc trạng thái quyết định (DecisionView.status) và nhãn tiếng Việt.
@@ -333,6 +334,7 @@ class _ManagerRewardPenaltyPageState
               label: const Text('Đề xuất'),
             )
           : null,
+      bottomNavigationBar: const ManagerBottomNavigation(selectedIndex: 4),
     );
   }
 

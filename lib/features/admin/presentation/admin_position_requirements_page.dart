@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../data/repositories/employee_providers.dart';
@@ -83,13 +85,13 @@ class _ReqDraft {
   Map<String, dynamic> toTrainingRequest() => {
     'courseId': id,
     'isMandatory': isMandatory,
-    'blocksShiftAssignment': blocksShift,
+    'blocksShiftAssignment': false,
     'effectiveFrom': _isoDate(from),
     if (to != null) 'effectiveTo': _isoDate(to!),
   };
 }
 
-/// Màn cấu hình yêu cầu giấy tờ và khóa bắt buộc của một chức vụ.
+/// Màn cấu hình giấy tờ và khóa đào tạo được theo dõi theo chức vụ.
 /// Máy chủ thay toàn bộ danh sách mỗi lần lưu, nên app luôn gửi danh sách đầy đủ.
 class AdminPositionRequirementsPage extends ConsumerStatefulWidget {
   const AdminPositionRequirementsPage({super.key, required this.position});
@@ -190,7 +192,7 @@ class _AdminPositionRequirementsPageState
         .replacePositionTrainingRequirements(_positionId, [
           for (final draft in drafts) draft.toTrainingRequest(),
         ]);
-    _showMessage('Đã lưu khóa bắt buộc của chức vụ.');
+    _showMessage('Đã lưu các khóa được theo dõi theo chức vụ.');
     await _load();
   }
 
@@ -209,6 +211,17 @@ class _AdminPositionRequirementsPageState
       child: Scaffold(
         backgroundColor: AppColors.background,
         appBar: AppBar(
+          leading: IconButton(
+            tooltip: 'Quay lại',
+            onPressed: () {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go(RouteNames.adminPositions);
+              }
+            },
+            icon: const Icon(Icons.arrow_back),
+          ),
           title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
           actions: [
             IconButton(
@@ -220,7 +233,7 @@ class _AdminPositionRequirementsPageState
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Giấy tờ'),
-              Tab(text: 'Khóa bắt buộc'),
+              Tab(text: 'Đào tạo'),
             ],
           ),
         ),
@@ -258,9 +271,11 @@ class _AdminPositionRequirementsPageState
                     key: ValueKey('trainings-$_version'),
                     initial: _trainings,
                     catalog: _courses,
-                    withBlocking: true,
-                    emptyMessage: 'Chức vụ chưa yêu cầu khóa bắt buộc nào.',
-                    addLabel: 'Thêm khóa bắt buộc',
+                    withBlocking: false,
+                    emptyMessage: 'Chức vụ chưa có khóa đào tạo nào.',
+                    addLabel: 'Thêm khóa đào tạo',
+                    notice:
+                        'Tiến độ đào tạo được theo dõi riêng, không chặn phân ca hoặc chấm công.',
                     onSave: _saveTrainings,
                   ),
                 ],
@@ -279,6 +294,7 @@ class _RequirementEditor extends StatefulWidget {
     required this.withBlocking,
     required this.emptyMessage,
     required this.addLabel,
+    this.notice,
     required this.onSave,
   });
 
@@ -287,6 +303,7 @@ class _RequirementEditor extends StatefulWidget {
   final bool withBlocking;
   final String emptyMessage;
   final String addLabel;
+  final String? notice;
   final Future<void> Function(List<_ReqDraft> drafts) onSave;
 
   @override
@@ -344,6 +361,20 @@ class _RequirementEditorState extends State<_RequirementEditor> {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        if (widget.notice != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Card(
+              color: AppColors.surface,
+              child: ListTile(
+                leading: const Icon(
+                  Icons.info_outline,
+                  color: AppColors.primary,
+                ),
+                title: Text(widget.notice!),
+              ),
+            ),
+          ),
         Expanded(
           child: _drafts.isEmpty
               ? Center(
@@ -605,7 +636,7 @@ class _DraftDialogState extends State<_DraftDialog> {
             ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Bắt buộc'),
+            title: const Text('Bắt buộc theo chức vụ'),
             value: _mandatory,
             onChanged: (value) => setState(() => _mandatory = value),
           ),

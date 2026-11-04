@@ -10,11 +10,14 @@ import '../../features/admin/presentation/admin_dashboard_page.dart';
 import '../../features/admin/presentation/admin_account_management_page.dart';
 import '../../features/admin/presentation/admin_position_management_page.dart';
 import '../../features/admin/presentation/admin_training_management_page.dart';
+import '../../features/admin/presentation/admin_training_questions_page.dart';
 import '../../features/admin/presentation/admin_checklist_management_page.dart';
 import '../../features/admin/presentation/admin_system_settings_page.dart';
 import '../../features/checklist/presentation/employee_checklist_page.dart';
 import '../../features/auth/presentation/login_page.dart';
 import '../../features/auth/presentation/register_page.dart';
+import '../../features/auth/presentation/role_selection_page.dart';
+import '../../features/auth/domain/entities/user.dart';
 import '../../features/employees/presentation/manager_employee_list_page.dart';
 import '../../features/employees/presentation/manager_employee_detail_page.dart';
 import '../../features/employees/presentation/employee_profile_form_page.dart';
@@ -22,6 +25,7 @@ import '../../features/admin/presentation/admin_account_permissions_page.dart';
 import '../../features/admin/presentation/admin_audit_log_page.dart';
 import '../../features/admin/presentation/admin_notification_delivery_page.dart';
 import '../../features/admin/presentation/admin_skill_management_page.dart';
+import '../../features/admin/presentation/admin_document_types_page.dart';
 import '../../features/violations/presentation/manager_violation_review_page.dart';
 import '../../features/violations/presentation/employee_violations_page.dart';
 import '../../features/rewards/presentation/manager_reward_penalty_page.dart';
@@ -29,13 +33,18 @@ import '../../features/payroll/presentation/manager_payroll_page.dart';
 import '../../features/rewards/presentation/employee_rewards_page.dart';
 import '../../features/home/presentation/employee_dashboard_page.dart';
 import '../../features/home/presentation/manager_dashboard_page.dart';
+import '../../features/home/presentation/hr_workspace_page.dart';
+import '../../features/approvals/presentation/hr_attendance_adjustments_page.dart';
 import '../../features/notifications/presentation/employee_notifications_page.dart';
 import '../../features/profile/presentation/account_profile_page.dart';
 import '../../features/documents/presentation/manager_document_review_page.dart';
 import '../../features/reports/presentation/manager_attendance_report_page.dart';
+import '../../features/reports/presentation/manager_operations_reports_page.dart';
 import '../../features/schedule/presentation/employee_schedule_page.dart';
 import '../../features/training/presentation/employee_training_page.dart';
+import '../../features/training/presentation/manager_training_completion_review_page.dart';
 import '../../features/schedule/presentation/manager_shift_schedule_page.dart';
+import '../../features/schedule/presentation/manager_work_shift_catalog_page.dart';
 import 'route_names.dart';
 
 final appRouter = GoRouter(
@@ -44,6 +53,14 @@ final appRouter = GoRouter(
     GoRoute(
       path: RouteNames.home,
       builder: (context, state) => const ManagerDashboardPage(),
+    ),
+    GoRoute(
+      path: RouteNames.hrHome,
+      builder: (context, state) => const HrWorkspacePage(),
+    ),
+    GoRoute(
+      path: RouteNames.hrAttendanceAdjustments,
+      builder: (context, state) => const HrAttendanceAdjustmentsPage(),
     ),
     GoRoute(
       path: RouteNames.adminHome,
@@ -58,8 +75,26 @@ final appRouter = GoRouter(
       builder: (context, state) => const AdminPositionManagementPage(),
     ),
     GoRoute(
+      path: RouteNames.adminDocumentTypes,
+      builder: (context, state) => const AdminDocumentTypesPage(),
+    ),
+    GoRoute(
       path: RouteNames.adminTraining,
       builder: (context, state) => const AdminTrainingManagementPage(),
+    ),
+    GoRoute(
+      path: RouteNames.adminTrainingCompletions,
+      builder: (context, state) => const ManagerTrainingCompletionReviewPage(
+        isAdmin: true,
+        returnRoute: RouteNames.adminTraining,
+      ),
+    ),
+    GoRoute(
+      path: RouteNames.adminTrainingQuestions,
+      builder: (context, state) => AdminTrainingQuestionsPage(
+        courseId: int.tryParse(state.pathParameters['courseId'] ?? '') ?? -1,
+        courseName: state.extra is String ? state.extra! as String : 'Khóa học',
+      ),
     ),
     GoRoute(
       path: RouteNames.adminChecklistTemplates,
@@ -87,11 +122,15 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: RouteNames.employeeProfile,
-      builder: (context, state) => const AccountProfilePage(),
+      builder: (context, state) =>
+          const AccountProfilePage(returnRoute: RouteNames.employeeHome),
     ),
     GoRoute(
       path: RouteNames.employeeDocuments,
-      builder: (context, state) => const AccountProfilePage(initialTab: 2),
+      builder: (context, state) => const AccountProfilePage(
+        initialTab: 2,
+        returnRoute: RouteNames.employeeHome,
+      ),
     ),
     GoRoute(
       path: RouteNames.employeeViolations,
@@ -99,7 +138,11 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: RouteNames.managerDocumentReview,
-      builder: (context, state) => const ManagerDocumentReviewPage(),
+      builder: (context, state) => ManagerDocumentReviewPage(
+        returnRoute: state.extra is String
+            ? state.extra! as String
+            : RouteNames.home,
+      ),
     ),
     GoRoute(
       path: RouteNames.employeeNotifications,
@@ -180,6 +223,10 @@ final appRouter = GoRouter(
       builder: (context, state) => const ManagerShiftSchedulePage(),
     ),
     GoRoute(
+      path: RouteNames.managerWorkShifts,
+      builder: (context, state) => const ManagerWorkShiftCatalogPage(),
+    ),
+    GoRoute(
       path: RouteNames.managerApprovals,
       builder: (context, state) => const ManagerApprovalPage(),
     ),
@@ -196,12 +243,30 @@ final appRouter = GoRouter(
       builder: (context, state) => const ManagerChecklistApprovalPage(),
     ),
     GoRoute(
+      path: RouteNames.managerTrainingCompletions,
+      builder: (context, state) => ManagerTrainingCompletionReviewPage(
+        returnRoute: state.extra is String
+            ? state.extra! as String
+            : RouteNames.home,
+      ),
+    ),
+    GoRoute(
       path: RouteNames.managerAttendanceReport,
       builder: (context, state) => const ManagerAttendanceReportPage(),
     ),
     GoRoute(
+      path: RouteNames.managerOperations,
+      builder: (context, state) => const ManagerOperationsReportsPage(),
+    ),
+    GoRoute(
       path: RouteNames.login,
       builder: (context, state) => const LoginPage(),
+    ),
+    GoRoute(
+      path: RouteNames.roleSelection,
+      builder: (context, state) => state.extra is User
+          ? RoleSelectionPage(user: state.extra! as User)
+          : const LoginPage(),
     ),
     GoRoute(
       path: RouteNames.register,
@@ -217,7 +282,9 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: RouteNames.profile,
-      builder: (context, state) => const AccountProfilePage(),
+      builder: (context, state) => AccountProfilePage(
+        returnRoute: state.extra is String ? state.extra! as String : null,
+      ),
     ),
   ],
 );

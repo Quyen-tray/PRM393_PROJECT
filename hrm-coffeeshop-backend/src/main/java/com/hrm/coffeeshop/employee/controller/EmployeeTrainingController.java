@@ -33,4 +33,5 @@ public class EmployeeTrainingController {
     public ApiResponse<MyTrainingView> enroll(@PathVariable Integer courseId, @RequestBody(required = false) EnrollRequest r) {
         return ApiResponse.ok("Enrolled", svc.enroll(courseId, r));
     }
+
 }

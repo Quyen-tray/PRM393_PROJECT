@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../app/router/route_names.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/utils/formatters.dart';
@@ -328,6 +329,23 @@ class _EmployeeProfileFormPageState
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Quay lại',
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else if (widget.isEdit && widget.employeeId != null) {
+              context.go(
+                RouteNames.managerEmployeeDetailFor(
+                  widget.employeeId.toString(),
+                ),
+              );
+            } else {
+              context.go(RouteNames.adminAccounts);
+            }
+          },
+          icon: const Icon(Icons.arrow_back),
+        ),
         title: Text(
           widget.isEdit ? 'Sửa hồ sơ nhân viên' : 'Tạo hồ sơ nhân viên',
         ),

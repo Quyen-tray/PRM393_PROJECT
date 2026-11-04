@@ -9,19 +9,25 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/repositories/employee_providers.dart';
 import '../../../shared/widgets/employee_bottom_navigation.dart';
+import '../../admin/presentation/widgets/admin_bottom_navigation.dart';
+import '../../admin/presentation/widgets/admin_more_menu.dart';
 import '../../auth/data/auth_providers.dart';
 import '../../auth/domain/entities/user.dart';
+import '../../auth/presentation/role_selection_page.dart';
 import '../../documents/presentation/employee_documents_tab.dart';
+import '../../home/presentation/widgets/manager_bottom_navigation.dart';
 
 /// Shared account profile. Employment information is an optional linked record.
 class AccountProfilePage extends ConsumerStatefulWidget {
   const AccountProfilePage({
     super.key,
     this.initialTab = 0,
+    this.returnRoute,
     this.documentPicker,
   });
 
   final int initialTab;
+  final String? returnRoute;
   final DocumentPicker? documentPicker;
 
   @override
@@ -63,9 +69,20 @@ class _AccountProfilePageState extends ConsumerState<AccountProfilePage> {
   }
 
   Future<void> _goBack() async {
+    if (widget.returnRoute != null) {
+      context.go(widget.returnRoute!);
+      return;
+    }
+    if (context.canPop()) {
+      context.pop();
+      return;
+    }
     final data = await _profileFuture;
-    if (!mounted) return;
-    context.go(_homeFor(data.account));
+    if (mounted) context.go(_homeFor(data.account));
+  }
+
+  void _switchWorkspace(User account) {
+    context.push(RouteNames.roleSelection, extra: account);
   }
 
   Future<void> _editProfile(User account) async {
@@ -182,6 +199,20 @@ class _AccountProfilePageState extends ConsumerState<AccountProfilePage> {
                       avatarUrl: account.avatarUrl,
                     ),
                     const SizedBox(height: 14),
+                    if (workspaceOptionsFor(account)
+                            .where((workspace) => workspace.enabled)
+                            .length >
+                        1) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _switchWorkspace(account),
+                          icon: const Icon(Icons.swap_horiz_rounded),
+                          label: const Text('Chuyển vai trò sử dụng'),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
                     if (hasEmployee)
                       SegmentedButton<int>(
                         segments: const [
@@ -271,10 +302,37 @@ class _AccountProfilePageState extends ConsumerState<AccountProfilePage> {
         future: _profileFuture,
         builder: (context, snapshot) {
           final account = snapshot.data?.account;
-          if (account == null || account.primaryRole != UserRole.employee) {
-            return const SizedBox.shrink();
+          if (account == null) return const SizedBox.shrink();
+          final route = widget.returnRoute ?? '';
+          if (route.startsWith('/admin') ||
+              (route.isEmpty && account.primaryRole == UserRole.systemAdmin)) {
+            return AdminBottomNavigation(
+              selectedIndex: 4,
+              onDestinationSelected: (index) {
+                if (index == 0) context.go(RouteNames.adminHome);
+                if (index == 1) context.go(RouteNames.adminAccounts);
+                if (index == 2) context.go(RouteNames.adminPositions);
+                if (index == 3) context.go(RouteNames.adminTraining);
+                if (index == 4) {
+                  showAdminMoreMenu(
+                    context,
+                    returnRoute: RouteNames.adminHome,
+                    onSignOut: () => signOutAndReturnToLogin(context, ref),
+                  );
+                }
+              },
+            );
           }
-          return const EmployeeBottomNavigation(selectedIndex: 3);
+          if (route == RouteNames.home ||
+              route.startsWith('/manager') ||
+              (route.isEmpty && account.primaryRole == UserRole.storeManager)) {
+            return const ManagerBottomNavigation(selectedIndex: 4);
+          }
+          if (route.startsWith('/employee') ||
+              account.primaryRole == UserRole.employee) {
+            return const EmployeeBottomNavigation(selectedIndex: 3);
+          }
+          return const SizedBox.shrink();
         },
       ),
     );

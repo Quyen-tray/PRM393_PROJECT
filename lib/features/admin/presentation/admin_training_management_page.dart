@@ -249,6 +249,11 @@ class _AdminTrainingManagementPageState
         ),
         actions: [
           IconButton(
+            tooltip: 'Duyệt hoàn thành khóa học',
+            onPressed: () => context.push(RouteNames.adminTrainingCompletions),
+            icon: const Icon(Icons.fact_check_outlined),
+          ),
+          IconButton(
             onPressed: _loading ? null : _load,
             icon: const Icon(Icons.refresh),
           ),
@@ -381,10 +386,31 @@ class _AdminTrainingManagementPageState
           '${course['validityMonths'] ?? '—'} tháng hiệu lực\n'
           '${hasTest ? 'Có bài kiểm tra' : 'Không có bài kiểm tra'} · ${active ? 'Đang mở' : 'Ngừng'}',
         ),
-        trailing: IconButton(
-          tooltip: 'Sửa khóa học',
-          onPressed: _saving ? null : () => _editCourse(course),
-          icon: const Icon(Icons.edit_outlined),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (hasTest)
+              IconButton(
+                tooltip: 'Quản lý câu hỏi trắc nghiệm',
+                onPressed: _saving
+                    ? null
+                    : () {
+                        final id = (course['courseId'] as num?)?.toInt();
+                        if (id == null) return;
+                        context.push(
+                          RouteNames.adminTrainingQuestionsFor(id),
+                          extra: (course['courseName'] ?? 'Khóa học')
+                              .toString(),
+                        );
+                      },
+                icon: const Icon(Icons.quiz_outlined),
+              ),
+            IconButton(
+              tooltip: 'Sửa khóa học',
+              onPressed: _saving ? null : () => _editCourse(course),
+              icon: const Icon(Icons.edit_outlined),
+            ),
+          ],
         ),
       ),
     );

@@ -140,6 +140,13 @@ class EmployeeRepository {
         .toList();
   }
 
+  Future<List<Map<String, dynamic>>> getEmployeeDocuments(
+    int employeeId,
+  ) async => _unwrapList(
+    await _api.get('/api/v1/employees/$employeeId/documents'),
+    'Không tải được hồ sơ của nhân viên.',
+  );
+
   Future<List<Map<String, dynamic>>> getAdminJobPositions({
     bool includeInactive = false,
   }) async {
@@ -162,6 +169,37 @@ class EmployeeRepository {
     final response = await _api.get('/api/v1/admin/document-types');
     return _unwrapList(response, 'Danh sách loại hồ sơ không hợp lệ.');
   }
+
+  Future<Map<String, dynamic>> createAdminDocumentType({
+    required String documentCode,
+    required String documentName,
+    required bool isActive,
+  }) async => _unwrapMap(
+    await _api.post(
+      '/api/v1/admin/document-types',
+      data: {
+        'documentCode': documentCode,
+        'documentName': documentName,
+        'isActive': isActive,
+      },
+    ),
+  );
+
+  Future<Map<String, dynamic>> updateAdminDocumentType({
+    required int typeId,
+    required String documentCode,
+    required String documentName,
+    required bool isActive,
+  }) async => _unwrapMap(
+    await _api.put(
+      '/api/v1/admin/document-types/$typeId',
+      data: {
+        'documentCode': documentCode,
+        'documentName': documentName,
+        'isActive': isActive,
+      },
+    ),
+  );
 
   /// Yêu cầu giấy tờ của một chức vụ (GET /api/v1/admin/job-positions/{id}/document-requirements).
   Future<List<Map<String, dynamic>>> getPositionDocumentRequirements(
@@ -356,6 +394,9 @@ class EmployeeRepository {
     );
     return _unwrapMap(response);
   }
+
+  Future<Map<String, dynamic>> getViolation(int violationId) async =>
+      _unwrapMap(await _api.get('/api/v1/violations/$violationId'));
 
   /// Employee self-service violations; the backend derives ownership from the signed-in user.
   Future<Map<String, dynamic>> getMyViolations({int page = 0}) async =>
@@ -626,6 +667,23 @@ class EmployeeRepository {
     return _unwrapMap(response);
   }
 
+  Future<Map<String, dynamic>> getAuditLog(int logId) async =>
+      _unwrapMap(await _api.get('/api/v1/admin/audit-logs/$logId'));
+
+  Future<String> exportAuditLogs({String? from, String? to}) async {
+    final response = await _api.get(
+      '/api/v1/admin/audit-logs/export',
+      queryParameters: {
+        if (from != null) 'from': from,
+        if (to != null) 'to': to,
+      },
+    );
+    if (response.data is! String) {
+      throw const ApiException(message: 'Tệp CSV nhật ký không hợp lệ.');
+    }
+    return response.data as String;
+  }
+
   /// Danh mục quyền (permissions: code, name) và tập quyền dựng sẵn (permissionSets: HR -> danh sách mã quyền).
   /// GET /api/v1/admin/users/permission-catalog (SYSTEM_ADMIN).
   Future<Map<String, dynamic>> getPermissionCatalog() async =>
@@ -663,9 +721,10 @@ class EmployeeRepository {
   Future<String> uploadDocument({
     required Uint8List bytes,
     required String contentType,
+    int? targetEmployeeId,
   }) async {
     final response = await _api.uploadBytes(
-      '/api/v1/storage/uploads?purpose=DOCUMENT',
+      '/api/v1/storage/uploads?purpose=DOCUMENT${targetEmployeeId == null ? '' : '&targetEmployeeId=$targetEmployeeId'}',
       bytes: bytes,
       contentType: contentType,
     );
@@ -690,6 +749,24 @@ class EmployeeRepository {
   }) async => _unwrapMap(
     await _api.post(
       '/api/v1/employees/me/documents',
+      data: {
+        'documentTypeId': documentTypeId,
+        'storageKey': storageKey,
+        if (issuedAt != null) 'issuedAt': _dateOnly(issuedAt),
+        if (expiresAt != null) 'expiresAt': _dateOnly(expiresAt),
+      },
+    ),
+  );
+
+  Future<Map<String, dynamic>> submitDocumentForEmployee({
+    required int employeeId,
+    required int documentTypeId,
+    required String storageKey,
+    DateTime? issuedAt,
+    DateTime? expiresAt,
+  }) async => _unwrapMap(
+    await _api.post(
+      '/api/v1/employees/$employeeId/documents',
       data: {
         'documentTypeId': documentTypeId,
         'storageKey': storageKey,
@@ -835,6 +912,49 @@ class EmployeeRepository {
     return _unwrapPageItems(response, 'Dữ liệu checklist không hợp lệ.');
   }
 
+  Future<List<Map<String, dynamic>>> getPendingChecklistReviews({
+    int page = 0,
+  }) async {
+    final response = await _api.get(
+      '/api/v1/checklists/reviews/pending',
+      queryParameters: {'page': page, 'size': 50},
+    );
+    return _unwrapPageItems(
+      response,
+      'Danh sách checklist chờ duyệt không hợp lệ.',
+    );
+  }
+
+  Future<Map<String, dynamic>> getChecklistTask(int taskId) async =>
+      _unwrapMap(await _api.get('/api/v1/checklists/tasks/$taskId'));
+
+  Future<Map<String, dynamic>> generateChecklist({
+    required int templateId,
+    required int scheduleId,
+    required int employeeId,
+    required String workDate,
+  }) async => _unwrapMap(
+    await _api.post(
+      '/api/v1/checklists/instances/generate',
+      data: {
+        'templateId': templateId,
+        'scheduleId': scheduleId,
+        'employeeId': employeeId,
+        'workDate': workDate,
+      },
+    ),
+  );
+
+  Future<Map<String, dynamic>> reassignChecklistTask({
+    required int taskId,
+    required int employeeId,
+  }) async => _unwrapMap(
+    await _api.post(
+      '/api/v1/checklists/tasks/$taskId/reassign',
+      data: {'employeeId': employeeId},
+    ),
+  );
+
   /// Đề nghị tăng ca theo trạng thái (GET /api/v1/attendance/overtime-requests).
   /// Trạng thái: PENDING, APPROVED, REJECTED.
   Future<List<Map<String, dynamic>>> getManagerOvertimeRequests({
@@ -946,6 +1066,25 @@ class EmployeeRepository {
     return _unwrapList(response, 'Danh sách ca làm không hợp lệ.');
   }
 
+  Future<Map<String, dynamic>> createWorkShift(
+    Map<String, dynamic> payload,
+  ) async => _unwrapMap(await _api.post('/api/v1/work-shifts', data: payload));
+
+  Future<Map<String, dynamic>> updateWorkShift(
+    int shiftId,
+    Map<String, dynamic> payload,
+  ) async =>
+      _unwrapMap(await _api.put('/api/v1/work-shifts/$shiftId', data: payload));
+
+  Future<Map<String, dynamic>> getShiftAssignment(int assignmentId) async =>
+      _unwrapMap(await _api.get('/api/v1/shift-assignments/$assignmentId'));
+
+  Future<Map<String, dynamic>> getShiftAssignmentEligibility(
+    int assignmentId,
+  ) async => _unwrapMap(
+    await _api.get('/api/v1/shift-assignments/$assignmentId/eligibility'),
+  );
+
   Future<Map<String, dynamic>> createShiftAssignment({
     required int employeeId,
     required int workShiftId,
@@ -995,6 +1134,62 @@ class EmployeeRepository {
   Future<Map<String, dynamic>> getManagerDashboardOverview() async =>
       _unwrapMap(await _api.get('/api/v1/dashboard/manager/overview'));
 
+  Future<Map<String, dynamic>> getManagerEmployeeStatus() async =>
+      _unwrapMap(await _api.get('/api/v1/dashboard/manager/employee-status'));
+
+  Future<Map<String, dynamic>> getManagerOperations({
+    String? from,
+    String? to,
+  }) async => _unwrapMap(
+    await _api.get(
+      '/api/v1/dashboard/manager/operations',
+      queryParameters: {
+        if (from != null) 'from': from,
+        if (to != null) 'to': to,
+      },
+    ),
+  );
+
+  Future<Map<String, dynamic>> getManagerRewardsPenalties({
+    String? from,
+    String? to,
+  }) async => _unwrapMap(
+    await _api.get(
+      '/api/v1/dashboard/manager/rewards-penalties',
+      queryParameters: {
+        if (from != null) 'from': from,
+        if (to != null) 'to': to,
+      },
+    ),
+  );
+
+  Future<List<Map<String, dynamic>>> getOperationsReport({
+    required String from,
+    required String to,
+  }) async {
+    final response = await _api.get(
+      '/api/v1/reports/operations',
+      queryParameters: {'from': from, 'to': to},
+    );
+    final data = response.data is Map ? (response.data as Map)['data'] : null;
+    if (data is List) {
+      return data
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+    if (data is Map) return [Map<String, dynamic>.from(data)];
+    throw const ApiException(message: 'Báo cáo vận hành không hợp lệ.');
+  }
+
+  Future<Map<String, dynamic>> getPayrollReadinessReport(int periodId) async =>
+      _unwrapMap(
+        await _api.get(
+          '/api/v1/reports/payroll-readiness',
+          queryParameters: {'periodId': periodId},
+        ),
+      );
+
   /// Bản ghi chấm công trong khoảng ngày, cho quản lý (GET /api/v1/attendance). from/to: yyyy-MM-dd.
   Future<List<Map<String, dynamic>>> getAttendanceRecords({
     required String from,
@@ -1006,6 +1201,33 @@ class EmployeeRepository {
     );
     return _unwrapPageItems(response, 'Dữ liệu chấm công không hợp lệ.');
   }
+
+  Future<Map<String, dynamic>> getAttendanceDetail(int attendanceId) async =>
+      _unwrapMap(await _api.get('/api/v1/attendance/$attendanceId'));
+
+  Future<List<Map<String, dynamic>>> getAttendanceVerifications(
+    int attendanceId,
+  ) async => _unwrapList(
+    await _api.get('/api/v1/attendance/$attendanceId/verifications'),
+    'Lịch sử xác minh chấm công không hợp lệ.',
+  );
+
+  Future<Map<String, dynamic>> getAttendanceSummary({
+    required String from,
+    required String to,
+    int? shiftId,
+    int? employeeId,
+  }) async => _unwrapMap(
+    await _api.get(
+      '/api/v1/attendance/summary',
+      queryParameters: {
+        'from': from,
+        'to': to,
+        if (shiftId != null) 'shiftId': shiftId,
+        if (employeeId != null) 'employeeId': employeeId,
+      },
+    ),
+  );
 
   /// Thống kê chấm công trong khoảng ngày, có thể lọc theo ca (GET /api/v1/dashboard/manager/attendance).
   /// Trả về StatsView: scheduledShifts, checkedInOnTime, late, absent, missingCheckOuts,
@@ -1061,10 +1283,38 @@ class EmployeeRepository {
     );
   }
 
+  Future<Map<String, dynamic>> reviewHrAttendanceAdjustment({
+    required int requestId,
+    required bool approve,
+    String? reason,
+  }) async => _unwrapMap(
+    await _api.post(
+      '/api/v1/attendance/adjustment-requests/$requestId/${approve ? 'hr-approve' : 'hr-reject'}',
+      data: approve ? {'note': reason ?? ''} : {'reason': reason ?? ''},
+    ),
+  );
+
+  Future<Map<String, dynamic>> getAttendanceAdjustmentRequest(
+    int requestId,
+  ) async => _unwrapMap(
+    await _api.get('/api/v1/attendance/adjustment-requests/$requestId'),
+  );
+
   /// Tổng quan của một nhân viên, gồm `training` (số khóa bắt buộc, đã đạt, hạn chế ca).
   /// Nhân viên xem được hồ sơ của chính mình (GET /api/v1/employees/{id}/overview).
   Future<Map<String, dynamic>> getEmployeeOverviewById(int employeeId) async =>
       _unwrapMap(await _api.get('/api/v1/employees/$employeeId/overview'));
+
+  Future<Map<String, dynamic>> getEmployeeAttendanceSummary(
+    int employeeId, {
+    required String from,
+    required String to,
+  }) async => _unwrapMap(
+    await _api.get(
+      '/api/v1/employees/$employeeId/attendance-summary',
+      queryParameters: {'from': from, 'to': to},
+    ),
+  );
 
   /// Cấu hình cửa hàng hiện tại: toạ độ và bán kính chấm công (GET /api/v1/stores/current).
   Future<Map<String, dynamic>> getCurrentStore() async =>
@@ -1419,9 +1669,8 @@ class EmployeeRepository {
         .toList();
   }
 
-  /// Khóa bắt buộc đang hiệu lực của chức vụ hiện tại, kể cả khóa chưa ghi danh
-  /// (GET /api/v1/training/me/requirements). Mỗi dòng: courseId, courseName,
-  /// blocksShiftAssignment, status (NOT_ENROLLED hoặc trạng thái đào tạo), satisfied.
+  /// Khóa được theo dõi theo chức vụ, kể cả khóa chưa ghi danh
+  /// (GET /api/v1/training/me/requirements). blocksShiftAssignment luôn false.
   Future<List<Map<String, dynamic>>> getMyTrainingRequirements() async {
     final response = await _api.get('/api/v1/training/me/requirements');
     return _unwrapList(response, 'Danh sách khóa bắt buộc không hợp lệ.');
@@ -1430,10 +1679,82 @@ class EmployeeRepository {
   Future<Map<String, dynamic>> enrollTraining(int courseId) async =>
       _unwrapMap(await _api.post('/api/v1/training/courses/$courseId/enroll'));
 
+  Future<List<Map<String, dynamic>>> getPendingTrainingCompletions() async =>
+      _unwrapList(
+        await _api.get('/api/v1/training/completion-reviews/pending'),
+        'Không tải được danh sách khóa học cần xác nhận hoàn thành.',
+      );
+
+  Future<Map<String, dynamic>> approveTrainingCompletion(
+    int employeeTrainingId, {
+    String? note,
+  }) async => _unwrapMap(
+    await _api.post(
+      '/api/v1/training/completion-reviews/$employeeTrainingId/approve',
+      data: note == null || note.trim().isEmpty ? null : {'note': note.trim()},
+    ),
+  );
+
+  Future<Map<String, dynamic>> markTrainingNotComplete(
+    int employeeTrainingId,
+    String reason,
+  ) async => _unwrapMap(
+    await _api.post(
+      '/api/v1/training/completion-reviews/$employeeTrainingId/not-complete',
+      data: {'reason': reason},
+    ),
+  );
+
+  /// Câu hỏi của bài trắc nghiệm; đáp án đúng không được trả về cho nhân viên.
+  Future<List<Map<String, dynamic>>> getTrainingQuizQuestions(
+    int courseId,
+  ) async => _unwrapList(
+    await _api.get('/api/v1/training/courses/$courseId/quiz'),
+    'Không tải được câu hỏi trắc nghiệm.',
+  );
+
+  /// Gửi lựa chọn để backend chấm điểm và cập nhật tiến độ đào tạo.
+  Future<Map<String, dynamic>> submitTrainingQuiz(
+    int courseId,
+    List<Map<String, dynamic>> answers,
+  ) async => _unwrapMap(
+    await _api.post(
+      '/api/v1/training/courses/$courseId/quiz-attempts',
+      data: {'answers': answers},
+    ),
+  );
+
+  Future<List<Map<String, dynamic>>> getAdminTrainingQuestions(
+    int courseId,
+  ) async => _unwrapList(
+    await _api.get('/api/v1/admin/training/courses/$courseId/questions'),
+    'Không tải được ngân hàng câu hỏi.',
+  );
+
+  Future<List<Map<String, dynamic>>> replaceAdminTrainingQuestions(
+    int courseId,
+    List<Map<String, dynamic>> questions,
+  ) async => _unwrapList(
+    await _api.put(
+      '/api/v1/admin/training/courses/$courseId/questions',
+      data: {'questions': questions},
+    ),
+    'Không lưu được ngân hàng câu hỏi.',
+  );
+
   /// Cấu hình cửa hàng và chính sách chấm công (GET /api/v1/admin/store-settings).
   /// Trả về SettingsView: store {name, address, latitude, longitude, ...} và các chính sách.
   Future<Map<String, dynamic>> getStoreSettings() async =>
       _unwrapMap(await _api.get('/api/v1/admin/store-settings'));
+
+  Future<Map<String, dynamic>> getAttendancePolicies() async =>
+      _unwrapMap(await _api.get('/api/v1/admin/attendance-policies'));
+
+  Future<Map<String, dynamic>> updateAttendancePolicies(
+    Map<String, dynamic> changes,
+  ) async => _unwrapMap(
+    await _api.put('/api/v1/admin/attendance-policies', data: changes),
+  );
 
   /// Sửa một phần cấu hình (PATCH). Chỉ gửi các trường cần đổi.
   Future<Map<String, dynamic>> updateStoreSettings(
