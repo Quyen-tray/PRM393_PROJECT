@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_providers.dart';
+import 'google_oauth.dart';
 
 enum Workspace {
   employee('EMPLOYEE', 'Nhân viên'),
@@ -95,21 +95,17 @@ class SessionController extends Notifier<SessionState> {
             message:
                 'Đăng nhập Google hiện hỗ trợ Android, iOS và trình duyệt. Hãy chạy ứng dụng trên một nền tảng được hỗ trợ.');
       }
-      const clientId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
-      final google = GoogleSignIn(
-          scopes: ['email'],
-          clientId: kIsWeb && clientId.isNotEmpty ? clientId : null,
-          serverClientId: !kIsWeb && clientId.isNotEmpty ? clientId : null);
+      final google = ref.read(googleSignInProvider);
       final account = await google.signIn();
       if (account == null) {
         state = const SessionState();
         return;
       }
       final token = (await account.authentication).idToken;
-      if (token == null) {
+      if (token == null || token.trim().isEmpty) {
         throw const ApiException(
             message:
-                'Google không cấp ID token. Kiểm tra cấu hình OAuth của ứng dụng.');
+                'Google không cấp ID token. Kiểm tra Web OAuth Client ID trong GOOGLE_SERVER_CLIENT_ID/GOOGLE_CLIENT_ID và cấu hình Android package/SHA-1, rồi dừng và chạy lại ứng dụng.');
       }
       final api = ref.read(authenticatedApiProvider);
       await api.vault.load();
@@ -166,7 +162,7 @@ class SessionController extends Notifier<SessionState> {
       state = SessionState(error: error);
     }
     try {
-      await GoogleSignIn().signOut();
+      await ref.read(googleSignInProvider).signOut();
     } catch (_) {/* Local session was already cleared. */}
   }
 }

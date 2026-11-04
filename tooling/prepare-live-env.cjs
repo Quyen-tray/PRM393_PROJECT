@@ -8,7 +8,8 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8').replace(/^
 if (process.argv.includes('--production')) {
   const existing = fs.existsSync(path.join(root, 'env.json')) ? JSON.parse(read('env.json')) : {};
   const values = {API_BASE_URL: target === 'android' ? 'http://10.0.2.2:8081' : 'http://127.0.0.1:8081'};
-  if (existing.GOOGLE_SERVER_CLIENT_ID) values.GOOGLE_SERVER_CLIENT_ID = existing.GOOGLE_SERVER_CLIENT_ID;
+  const googleClientId = existing.GOOGLE_SERVER_CLIENT_ID?.trim() || existing.GOOGLE_CLIENT_ID?.trim();
+  if (googleClientId) values.GOOGLE_SERVER_CLIENT_ID = googleClientId;
   fs.mkdirSync(path.join(root,'.dart_tool'), {recursive:true});
   fs.writeFileSync(path.join(root, `.dart_tool/v3-build-env-${target}.json`), JSON.stringify(values));
   console.log(`Prepared local ${target} application configuration.`);
