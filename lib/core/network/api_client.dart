@@ -6,24 +6,24 @@ import 'api_exception.dart';
 class ApiClient {
   ApiClient()
       : dio = Dio(
-    BaseOptions(
-      baseUrl: ApiEndpoints.baseUrl,
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
-      sendTimeout: const Duration(seconds: 15),
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      },
-    ),
-  );
+          BaseOptions(
+            baseUrl: ApiEndpoints.baseUrl,
+            connectTimeout: const Duration(seconds: 15),
+            receiveTimeout: const Duration(seconds: 15),
+            sendTimeout: const Duration(seconds: 15),
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+          ),
+        );
 
   final Dio dio;
 
   Future<Response<dynamic>> get(
-      String path, {
-        Map<String, dynamic>? queryParameters,
-      }) async {
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
     try {
       return await dio.get(
         path,
@@ -35,9 +35,9 @@ class ApiClient {
   }
 
   Future<Response<dynamic>> post(
-      String path, {
-        Object? data,
-      }) async {
+    String path, {
+    Object? data,
+  }) async {
     try {
       return await dio.post(path, data: data);
     } on DioException catch (error) {

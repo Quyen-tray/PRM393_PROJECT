@@ -1,0 +1,66 @@
+spring:
+  application:
+    name: hrm-coffeeshop
+  datasource:
+    url: ${DB_URL:jdbc:sqlserver://localhost:1433;databaseName=HRM_CoffeeShop;encrypt=true;trustServerCertificate=true}
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:sa}
+  sql:
+    init:
+      mode: ${DB_MIGRATION_MODE:never}
+      schema-locations: classpath:db/migration/v3.sql
+      separator: '@@'
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none            # schema do config.sql quản lý
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+    properties:
+      hibernate:
+        default_schema: dbo
+        jdbc.time_zone: UTC     # mọi DATETIME2 lưu UTC (SYSUTCDATETIME)
+        type.preferred_instant_jdbc_type: TIMESTAMP
+  data:
+    web:
+      pageable:
+        max-page-size: 100
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      adjust-dates-to-context-time-zone: false
+
+server:
+  port: ${PORT:8080}
+  error:
+    include-stacktrace: never
+
+app:
+  zone: Asia/Ho_Chi_Minh
+  jwt:
+    secret: ${JWT_SECRET:}            # >= 32 ký tự, bắt buộc
+    access-ttl-seconds: 900
+    refresh-ttl-days: 14
+  google:
+    # Web Client ID (và iOS nếu cần), ngăn cách bằng dấu phẩy. Xem docs/GOOGLE_LOGIN.md
+    client-id: ${GOOGLE_CLIENT_ID:}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5000,http://127.0.0.1:5000}
+  storage:
+    signed-url-ttl-seconds: 120
+    signing-secret: ${STORAGE_SIGNING_SECRET:hrm-coffeeshop-local-dev-signing-secret-2026}     # >= 32 ký tự, bắt buộc (không có giá trị mặc định)
+    provider: local                   # local = lưu trên đĩa; đổi khi viết gateway S3/Azure/GCS
+    local-dir: ${STORAGE_LOCAL_DIR:./data/storage}
+    max-upload-bytes: 8388608         # 8 MB / ảnh (ATTENDANCE, CHECKLIST)
+    max-document-bytes: 10485760      # 10 MB / hồ sơ HR (PDF, ảnh) — DEC-PDF
+  attendance:
+    gps-max-accuracy-meters: 50       # D-05: cần chốt sau khi thử thực địa
+    gps-max-age-seconds: 120
+  rate-limit:
+    auth-per-minute: 20
+    attendance-per-minute: 20
+
+logging:
+  pattern:
+    level: "%5p [corr:%X{correlationId:-}]"

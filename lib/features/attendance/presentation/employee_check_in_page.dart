@@ -92,7 +92,8 @@ class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
     } on PermissionDeniedException {
       _showError('Bạn cần cho phép truy cập vị trí để chấm công.');
     } catch (_) {
-      _showError('Không thể lấy vị trí. Hãy di chuyển ra nơi thoáng rồi thử lại.');
+      _showError(
+          'Không thể lấy vị trí. Hãy di chuyển ra nơi thoáng rồi thử lại.');
     } finally {
       if (mounted) setState(() => _isLoadingLocation = false);
     }
@@ -154,7 +155,8 @@ class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
 
   @override
   Widget build(BuildContext context) {
-    final canSubmit = _hasValidLocation && _photoBytes != null && !_isSubmitting;
+    final canSubmit =
+        _hasValidLocation && _photoBytes != null && !_isSubmitting;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -189,9 +191,10 @@ class _EmployeeCheckInPageState extends State<EmployeeCheckInPage> {
                     children: [
                       Text(
                         'Ảnh xác minh',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                       ),
                       const Spacer(),
                       const Text(
@@ -333,7 +336,8 @@ class _LocationPreview extends StatelessWidget {
                   left: 10,
                   bottom: 10,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.94),
                       borderRadius: BorderRadius.circular(6),
@@ -341,9 +345,12 @@ class _LocationPreview extends StatelessWidget {
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.storefront_outlined, size: 15, color: AppColors.primary),
+                        Icon(Icons.storefront_outlined,
+                            size: 15, color: AppColors.primary),
                         SizedBox(width: 6),
-                        Text('HRM Coffee Shop', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                        Text('HRM Coffee Shop',
+                            style: TextStyle(
+                                fontSize: 11, fontWeight: FontWeight.w600)),
                       ],
                     ),
                   ),
@@ -391,13 +398,17 @@ class _LocationPreview extends StatelessWidget {
                     : isValid
                         ? 'Trong phạm vi ${distanceMeters.toStringAsFixed(0)} m'
                         : 'Ngoài phạm vi ${allowedRadiusMeters.toStringAsFixed(0)} m',
-                style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                    color: statusColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600),
               ),
             ),
             if (position != null)
               Text(
                 '±${position!.accuracy.toStringAsFixed(0)} m',
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 11),
               ),
           ],
         ),
@@ -417,14 +428,16 @@ class _MapPainter extends CustomPainter {
     final parkPaint = Paint()..color = const Color(0xFFD5E5D2);
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTWH(size.width * 0.66, size.height * 0.08, size.width * 0.28, size.height * 0.30),
+        Rect.fromLTWH(size.width * 0.66, size.height * 0.08, size.width * 0.28,
+            size.height * 0.30),
         const Radius.circular(12),
       ),
       parkPaint,
     );
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTWH(size.width * 0.04, size.height * 0.58, size.width * 0.24, size.height * 0.30),
+        Rect.fromLTWH(size.width * 0.04, size.height * 0.58, size.width * 0.24,
+            size.height * 0.30),
         const Radius.circular(12),
       ),
       parkPaint,
@@ -438,10 +451,12 @@ class _MapPainter extends CustomPainter {
     final roadPaths = [
       Path()
         ..moveTo(size.width * 0.08, size.height * 0.18)
-        ..cubicTo(size.width * 0.30, size.height * 0.30, size.width * 0.60, size.height * 0.18, size.width * 0.95, size.height * 0.50),
+        ..cubicTo(size.width * 0.30, size.height * 0.30, size.width * 0.60,
+            size.height * 0.18, size.width * 0.95, size.height * 0.50),
       Path()
         ..moveTo(size.width * 0.16, size.height * 0.98)
-        ..cubicTo(size.width * 0.35, size.height * 0.70, size.width * 0.60, size.height * 0.72, size.width * 0.88, size.height * 0.02),
+        ..cubicTo(size.width * 0.35, size.height * 0.70, size.width * 0.60,
+            size.height * 0.72, size.width * 0.88, size.height * 0.02),
       Path()
         ..moveTo(size.width * 0.02, size.height * 0.48)
         ..lineTo(size.width * 0.98, size.height * 0.72),
@@ -457,7 +472,8 @@ class _MapPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
     final mainRoadPath = Path()
       ..moveTo(size.width * 0.50, -10)
-      ..cubicTo(size.width * 0.42, size.height * 0.30, size.width * 0.57, size.height * 0.66, size.width * 0.47, size.height + 10);
+      ..cubicTo(size.width * 0.42, size.height * 0.30, size.width * 0.57,
+          size.height * 0.66, size.width * 0.47, size.height + 10);
     canvas.drawPath(mainRoadPath, mainRoad);
     canvas.drawPath(mainRoadPath, minorRoad..strokeWidth = 8);
 
@@ -506,10 +522,13 @@ class _SelfiePreview extends StatelessWidget {
                     CircleAvatar(
                       radius: 43,
                       backgroundColor: Color(0xFFE2D0BF),
-                      child: Icon(Icons.person, size: 56, color: Color(0xFF76533E)),
+                      child: Icon(Icons.person,
+                          size: 56, color: Color(0xFF76533E)),
                     ),
                     SizedBox(height: 10),
-                    Text('Canh khuôn mặt vào giữa khung hình', style: TextStyle(fontSize: 11, color: Color(0xFF76533E))),
+                    Text('Canh khuôn mặt vào giữa khung hình',
+                        style:
+                            TextStyle(fontSize: 11, color: Color(0xFF76533E))),
                   ],
                 ),
               ),
@@ -532,8 +551,12 @@ class _SelfiePreview extends StatelessWidget {
                 ),
                 onPressed: isLoading ? null : onCapture,
                 icon: isLoading
-                    ? const SizedBox.square(dimension: 17, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(photoBytes == null ? Icons.photo_camera : Icons.replay, size: 17),
+                    ? const SizedBox.square(
+                        dimension: 17,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(
+                        photoBytes == null ? Icons.photo_camera : Icons.replay,
+                        size: 17),
                 label: Text(photoBytes == null ? 'Chụp ảnh' : 'Chụp lại'),
               ),
             ),
@@ -563,8 +586,10 @@ class _FaceFramePainter extends CustomPainter {
       final origin = corner.$1;
       final horizontal = corner.$2;
       final vertical = corner.$3;
-      canvas.drawLine(origin, origin.translate(horizontal * cornerLength, 0), paint);
-      canvas.drawLine(origin, origin.translate(0, vertical * cornerLength), paint);
+      canvas.drawLine(
+          origin, origin.translate(horizontal * cornerLength, 0), paint);
+      canvas.drawLine(
+          origin, origin.translate(0, vertical * cornerLength), paint);
     }
   }
 
@@ -617,15 +642,18 @@ class _CheckInFooter extends StatelessWidget {
                   foregroundColor: Colors.white,
                   disabledBackgroundColor: const Color(0xFFD6C7BB),
                   minimumSize: const Size.fromHeight(48),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
                 ),
                 onPressed: canSubmit ? onSubmit : null,
                 child: isSubmitting
                     ? const SizedBox.square(
                         dimension: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
                       )
-                    : const Text('Xác nhận check-in', style: TextStyle(fontWeight: FontWeight.w700)),
+                    : const Text('Xác nhận check-in',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
               ),
             ),
           ],
@@ -652,7 +680,8 @@ class _CheckStatus extends StatelessWidget {
           size: 15,
         ),
         const SizedBox(width: 5),
-        Text('$label ${isReady ? 'đã sẵn sàng' : 'đang chờ'}', style: const TextStyle(fontSize: 11)),
+        Text('$label ${isReady ? 'đã sẵn sàng' : 'đang chờ'}',
+            style: const TextStyle(fontSize: 11)),
       ],
     );
   }
@@ -676,10 +705,11 @@ class _ErrorBanner extends StatelessWidget {
         children: [
           const Icon(Icons.error_outline, color: AppColors.error),
           const SizedBox(width: 10),
-          Expanded(child: Text(message, style: const TextStyle(color: AppColors.error))),
+          Expanded(
+              child: Text(message,
+                  style: const TextStyle(color: AppColors.error))),
         ],
       ),
     );
   }
 }
-

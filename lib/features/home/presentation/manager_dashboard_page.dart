@@ -96,9 +96,9 @@ class ManagerDashboardPage extends StatelessWidget {
             LayoutBuilder(
               builder: (context, constraints) {
                 final columnCount = constraints.maxWidth >= 900 ? 4 : 2;
-                final tileWidth = (constraints.maxWidth -
-                        10.0 * (columnCount - 1)) /
-                    columnCount;
+                final tileWidth =
+                    (constraints.maxWidth - 10.0 * (columnCount - 1)) /
+                        columnCount;
 
                 return GridView.count(
                   crossAxisCount: columnCount,
@@ -243,7 +243,8 @@ class _DateLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Icon(Icons.calendar_today_outlined, size: 16, color: AppColors.primary),
+        const Icon(Icons.calendar_today_outlined,
+            size: 16, color: AppColors.primary),
         const SizedBox(width: 7),
         Text(
           date,
@@ -311,7 +312,8 @@ class _ManagerMetricCard extends StatelessWidget {
             metric.label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+            style:
+                const TextStyle(color: AppColors.textSecondary, fontSize: 11),
           ),
         ],
       ),
@@ -407,7 +409,8 @@ class _AttendanceRow extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   entry.subtitle,
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 10),
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 10),
                 ),
                 const SizedBox(height: 3),
                 Text(

@@ -56,10 +56,10 @@ class _ManagerApprovalPageState extends State<ManagerApprovalPage> {
   bool _isInBucket(_ApprovalEntry entry, _ApprovalBucket bucket) {
     final status = _statusOf(entry);
     return switch (bucket) {
-      _ApprovalBucket.pending => status == DemoManagerReviewStatus.pendingManager,
-      _ApprovalBucket.approved =>
-        status == DemoManagerReviewStatus.pendingHr ||
-            status == DemoManagerReviewStatus.approved,
+      _ApprovalBucket.pending =>
+        status == DemoManagerReviewStatus.pendingManager,
+      _ApprovalBucket.approved => status == DemoManagerReviewStatus.pendingHr ||
+          status == DemoManagerReviewStatus.approved,
       _ApprovalBucket.rejected => status == DemoManagerReviewStatus.rejected,
     };
   }
@@ -151,13 +151,14 @@ class _ManagerApprovalPageState extends State<ManagerApprovalPage> {
             status: _statusOf(entry),
             rejectionReason:
                 _rejectionReasons[entry.id] ?? entry.initialRejectionReason,
-            onApprove: _statusOf(entry) == DemoManagerReviewStatus.pendingManager
-                ? () => _setStatus(
-                      entry,
-                      entry.approvedStatus,
-                      message: entry.approveMessage,
-                    )
-                : null,
+            onApprove:
+                _statusOf(entry) == DemoManagerReviewStatus.pendingManager
+                    ? () => _setStatus(
+                          entry,
+                          entry.approvedStatus,
+                          message: entry.approveMessage,
+                        )
+                    : null,
             onReject: _statusOf(entry) == DemoManagerReviewStatus.pendingManager
                 ? () => _rejectWithReason(entry)
                 : null,

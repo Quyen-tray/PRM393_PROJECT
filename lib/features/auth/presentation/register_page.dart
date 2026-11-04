@@ -103,7 +103,9 @@ class _RegisterPageState extends State<RegisterPage> {
                         labelText: 'Mật khẩu',
                         prefixIcon: const Icon(Icons.lock_outline),
                         suffixIcon: IconButton(
-                          tooltip: _obscurePassword ? 'Hiện mật khẩu' : 'Ẩn mật khẩu',
+                          tooltip: _obscurePassword
+                              ? 'Hiện mật khẩu'
+                              : 'Ẩn mật khẩu',
                           onPressed: () => setState(
                             () => _obscurePassword = !_obscurePassword,
                           ),

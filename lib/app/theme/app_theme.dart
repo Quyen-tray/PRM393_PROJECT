@@ -11,6 +11,27 @@ abstract final class AppTheme {
         brightness: Brightness.light,
       ),
       scaffoldBackgroundColor: AppColors.background,
+      cardTheme: CardThemeData(
+          color: AppColors.surface,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: Color(0xffe8e0d8)))),
+      filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 48),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)))),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 46),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)))),
+      inputDecorationTheme: const InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(),
+          contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 16)),
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.background,
         foregroundColor: AppColors.textPrimary,

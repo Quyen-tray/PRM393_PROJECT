@@ -12,7 +12,8 @@ class ManagerEmployeeListPage extends StatefulWidget {
   const ManagerEmployeeListPage({super.key});
 
   @override
-  State<ManagerEmployeeListPage> createState() => _ManagerEmployeeListPageState();
+  State<ManagerEmployeeListPage> createState() =>
+      _ManagerEmployeeListPageState();
 }
 
 class _ManagerEmployeeListPageState extends State<ManagerEmployeeListPage> {
@@ -166,7 +167,9 @@ class _ManagerEmployeeListPageState extends State<ManagerEmployeeListPage> {
                       fontWeight: FontWeight.w600,
                     ),
                     side: BorderSide(
-                      color: selected ? AppColors.primary : const Color(0xFFEDE8E3),
+                      color: selected
+                          ? AppColors.primary
+                          : const Color(0xFFEDE8E3),
                     ),
                     showCheckmark: false,
                     padding: const EdgeInsets.symmetric(horizontal: 4),

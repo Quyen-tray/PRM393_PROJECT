@@ -1,0 +1,338 @@
+import 'package:flutter/material.dart';
+
+const fieldLabels = <String, String>{
+  'attemptNo': 'Lần kiểm tra',
+  'score': 'Điểm',
+  'passed': 'Đạt yêu cầu',
+  'source': 'Nguồn kết quả',
+  'recordedAt': 'Ghi nhận lúc',
+  'totalQuestions': 'Số câu hỏi',
+  'correctAnswers': 'Số câu đúng',
+  'trainingStatus': 'Kết quả đào tạo',
+  'from': 'Từ ngày',
+  'to': 'Đến ngày',
+  'totalChecklists': 'Tổng checklist',
+  'completionRatePercent': 'Tỷ lệ hoàn thành (%)',
+  'lateCount': 'Số lần đi muộn',
+  'byStatus': 'Theo trạng thái',
+  'displayName': 'Tên hiển thị',
+  'fullName': 'Họ và tên',
+  'email': 'Email',
+  'phoneNumber': 'Số điện thoại',
+  'phone': 'Điện thoại',
+  'employeeCode': 'Mã nhân viên',
+  'employeeName': 'Nhân viên',
+  'jobTitle': 'Chức vụ',
+  'employmentType': 'Loại hợp đồng',
+  'employmentStatus': 'Trạng thái làm việc',
+  'profileStatus': 'Tình trạng hồ sơ',
+  'shiftEligibility': 'Điều kiện nhận ca',
+  'hireDate': 'Ngày vào làm',
+  'dateOfBirth': 'Ngày sinh',
+  'address': 'Địa chỉ',
+  'emergencyContact': 'Liên hệ khẩn cấp',
+  'identityNumber': 'Số định danh',
+  'status': 'Trạng thái',
+  'reviewStatus': 'Trạng thái duyệt',
+  'managerStatus': 'Bước quản lý',
+  'hrStatus': 'Bước nhân sự',
+  'attendanceStatus': 'Trạng thái chấm công',
+  'recordStatus': 'Kết quả công',
+  'payrollStatus': 'Trạng thái đối soát công',
+  'courseCode': 'Mã khóa học',
+  'courseName': 'Khóa học',
+  'description': 'Mô tả / nội dung',
+  'passScore': 'Điểm đạt',
+  'validityMonths': 'Hiệu lực (tháng)',
+  'isMandatoryTest': 'Có bài kiểm tra',
+  'isActive': 'Đang hoạt động',
+  'isMandatory': 'Bắt buộc',
+  'testScore': 'Điểm kiểm tra',
+  'dueAt': 'Hạn hoàn thành',
+  'completedAt': 'Hoàn thành lúc',
+  'expiresAt': 'Ngày hết hạn',
+  'enrolledAt': 'Đăng ký lúc',
+  'completionReviewedAt': 'Xác nhận lúc',
+  'completionReviewNote': 'Ý kiến xác nhận',
+  'note': 'Ghi chú',
+  'reviewNote': 'Ý kiến xét duyệt',
+  'reason': 'Lý do',
+  'workDate': 'Ngày làm việc',
+  'plannedStartAt': 'Bắt đầu dự kiến',
+  'plannedEndAt': 'Kết thúc dự kiến',
+  'checkInAt': 'Giờ vào',
+  'checkOutAt': 'Giờ ra',
+  'startTime': 'Giờ bắt đầu',
+  'endTime': 'Giờ kết thúc',
+  'shiftCode': 'Mã ca',
+  'shiftName': 'Tên ca',
+  'workShift': 'Ca làm',
+  'breakMinutes': 'Nghỉ giữa ca (phút)',
+  'earlyCheckInMinutes': 'Được vào sớm (phút)',
+  'graceMinutes': 'Ân hạn (phút)',
+  'requestedCheckInAt': 'Giờ vào đề nghị',
+  'requestedCheckOutAt': 'Giờ ra đề nghị',
+  'requestedStartAt': 'Bắt đầu tăng ca',
+  'requestedEndAt': 'Kết thúc tăng ca',
+  'submittedAt': 'Gửi lúc',
+  'createdAt': 'Tạo lúc',
+  'reviewedAt': 'Duyệt lúc',
+  'requestedAt': 'Đăng ký lúc',
+  'approvedAt': 'Chấp thuận lúc',
+  'deviceLabel': 'Tên thiết bị',
+  'deviceName': 'Thiết bị',
+  'platform': 'Nền tảng',
+  'rejectionReason': 'Lý do từ chối',
+  'requestType': 'Loại yêu cầu',
+  'fieldName': 'Trường cần sửa',
+  'oldValue': 'Giá trị cũ',
+  'newValue': 'Giá trị đề nghị',
+  'lateMinutes': 'Đi muộn (phút)',
+  'earlyLeaveMinutes': 'Về sớm (phút)',
+  'workedMinutes': 'Thời gian làm (phút)',
+  'approvedOvertimeMinutes': 'Tăng ca được duyệt (phút)',
+  'checklistCode': 'Mã checklist',
+  'checklistName': 'Tên checklist',
+  'checklistType': 'Loại checklist',
+  'managerApprovalRequired': 'Cần quản lý duyệt',
+  'itemName': 'Công việc',
+  'instructions': 'Hướng dẫn',
+  'isRequired': 'Bắt buộc',
+  'requiresEvidence': 'Cần bằng chứng',
+  'sortOrder': 'Thứ tự',
+  'requiresManagerApproval': 'Cần duyệt mục',
+  'version': 'Phiên bản',
+  'items': 'Các mục',
+  'isCompleted': 'Đã thực hiện',
+  'positionCode': 'Mã chức vụ',
+  'positionName': 'Tên chức vụ',
+  'documentCode': 'Mã giấy tờ',
+  'documentName': 'Tên giấy tờ',
+  'documentType': 'Loại giấy tờ',
+  'uploadedAt': 'Nộp lúc',
+  'issuedAt': 'Ngày cấp',
+  'fileName': 'Tên tệp',
+  'effectiveFrom': 'Hiệu lực từ',
+  'effectiveTo': 'Hiệu lực đến',
+  'skillCode': 'Mã kỹ năng',
+  'skillName': 'Kỹ năng',
+  'level': 'Mức đánh giá',
+  'assessedAt': 'Đánh giá lúc',
+  'ruleCode': 'Mã quy định',
+  'ruleName': 'Quy định',
+  'severity': 'Mức độ',
+  'details': 'Nội dung',
+  'incidentAt': 'Xảy ra lúc',
+  'decisionType': 'Loại quyết định',
+  'reasonCode': 'Mã lý do',
+  'reasonName': 'Lý do',
+  'amount': 'Số tiền',
+  'effectiveDate': 'Ngày áp dụng',
+  'effectiveAt': 'Hiệu lực lúc',
+  'periodCode': 'Mã kỳ công',
+  'startDate': 'Ngày bắt đầu',
+  'endDate': 'Ngày kết thúc',
+  'managerApprovedAt': 'Quản lý xác nhận lúc',
+  'hrApprovedAt': 'Nhân sự chốt lúc',
+  'lockedAt': 'Khóa lúc',
+  'periodStatus': 'Bước kỳ công',
+  'canFinalize': 'Có thể chốt',
+  'pendingAdjustments': 'Trường điều chỉnh chờ xử lý',
+  'pendingOvertimeApprovals': 'Tăng ca chờ duyệt',
+  'unresolvedAttendanceExceptions': 'Giải trình chưa xử lý',
+  'missingCheckOuts': 'Thiếu giờ ra',
+  'absentShifts': 'Ca vắng',
+  'totalEmployees': 'Nhân viên trong kỳ',
+  'scheduledShifts': 'Ca được phân',
+  'checkedInOnTime': 'Đúng giờ',
+  'late': 'Đi muộn',
+  'absent': 'Vắng',
+  'lateMinutesTotal': 'Tổng phút muộn',
+  'verificationPending': 'Chờ xác minh',
+  'type': 'Loại',
+  'title': 'Tiêu đề',
+  'message': 'Nội dung',
+  'readAt': 'Đã đọc lúc',
+  'sentAt': 'Gửi lúc',
+  'deliveryStatus': 'Trạng thái gửi',
+  'actionCode': 'Hành động',
+  'entityType': 'Đối tượng',
+  'occurredAt': 'Thời điểm',
+  'oldData': 'Trước thay đổi',
+  'newData': 'Sau thay đổi',
+  'name': 'Tên cửa hàng',
+  'latitude': 'Vĩ độ',
+  'longitude': 'Kinh độ',
+  'attendanceRadiusMeters': 'Bán kính chấm công (m)',
+  'checkInEarlyMinutes': 'Được vào sớm (phút)',
+  'monthlyGraceLimit': 'Ân hạn trong tháng',
+  'photoRetentionMonths': 'Lưu ảnh (tháng)',
+  'lateReminderIntervalMinutes': 'Nhắc muộn mỗi (phút)',
+  'maxLateReminders': 'Số lần nhắc muộn',
+  'shiftReminderMinutes': 'Nhắc trước ca (phút)',
+  'checklistDueSoonMinutes': 'Nhắc checklist trước (phút)',
+  'gpsMaxAccuracyMeters': 'Sai số GPS tối đa (m)',
+  'leadMinutes': 'Nhắc trước (phút)',
+  'intervalMinutes': 'Nhắc lại sau (phút)',
+  'maxAttempts': 'Số lần nhắc',
+  'totalAccounts': 'Tài khoản',
+  'activeAccounts': 'Tài khoản hoạt động',
+  'employees': 'Nhân viên',
+  'courses': 'Khóa học',
+  'checklistTemplates': 'Mẫu checklist',
+  'stores': 'Cửa hàng',
+};
+
+const statusLabels = <String, String>{
+  'ACTIVE': 'Đang hoạt động',
+  'INACTIVE': 'Ngừng hoạt động',
+  'ON_LEAVE': 'Nghỉ phép',
+  'SUSPENDED': 'Tạm ngưng',
+  'RESIGNED': 'Đã nghỉ việc',
+  'PENDING': 'Chờ xử lý',
+  'PENDING_APPROVAL': 'Chờ phê duyệt',
+  'PENDING_MANAGER': 'Chờ quản lý',
+  'PENDING_HR': 'Chờ nhân sự',
+  'APPROVED': 'Đã duyệt',
+  'REJECTED': 'Từ chối',
+  'CANCELLED': 'Đã hủy',
+  'REVOKED': 'Đã thu hồi',
+  'LOCKED': 'Đã khóa',
+  'PUBLISHED': 'Đã phân',
+  'DRAFT': 'Bản nháp',
+  'IN_PROGRESS': 'Đang thực hiện',
+  'SUBMITTED': 'Chờ duyệt',
+  'OVERDUE': 'Quá hạn',
+  'PASSED': 'Đạt',
+  'FAILED': 'Chưa đạt',
+  'EXPIRED': 'Hết hạn',
+  'NOT_ENROLLED': 'Chưa đăng ký',
+  'NOT_STARTED': 'Chưa bắt đầu',
+  'NOT_REQUIRED': 'Không cần duyệt',
+  'EXEMPTED': 'Được miễn kiểm tra',
+  'ENROLLED': 'Đã đăng ký',
+  'COMPLETE': 'Đầy đủ',
+  'COMPLETED': 'Hoàn thành',
+  'MISSING': 'Chưa có',
+  'INCOMPLETE': 'Cần bổ sung',
+  'UNDER_REVIEW': 'Đang xem xét',
+  'ELIGIBLE': 'Đủ điều kiện nhận ca',
+  'RESTRICTED': 'Có điều kiện chưa đạt',
+  'CHECKED_IN': 'Đã vào ca',
+  'CHECKED_OUT': 'Đã ra ca',
+  'REVIEW_REQUIRED': 'Cần rà soát công',
+  'ADJUSTMENT_PENDING': 'Đang điều chỉnh',
+  'EXPLANATION_PENDING': 'Chờ giải trình',
+  'FINALIZED': 'Đã chốt',
+  'READY': 'Sẵn sàng chốt',
+  'NOT_READY': 'Chưa sẵn sàng',
+  'REVIEWING': 'Đang đối soát',
+  'REOPENED': 'Đã mở lại',
+  'HR_REVIEW': 'Chờ nhân sự chốt',
+  'OPEN': 'Chưa xử lý',
+  'MANAGER_APPROVED': 'Quản lý đã xác nhận',
+  'HR_APPROVED': 'Nhân sự đã duyệt',
+  'CONFIRMED': 'Đã xác nhận',
+  'DISMISSED': 'Đã bác bỏ',
+  'RESOLVED': 'Đã xử lý',
+  'ON_TIME': 'Đúng giờ',
+  'LATE': 'Đi muộn',
+  'ABSENT': 'Vắng',
+  'FULL_TIME': 'Toàn thời gian',
+  'PART_TIME': 'Bán thời gian',
+  'TEMPORARY': 'Thời vụ',
+  'PROBATION': 'Thử việc',
+  'REWARD': 'Thưởng',
+  'PENALTY': 'Phạt',
+  'OPENING': 'Đầu ca',
+  'CLOSING': 'Cuối ca',
+  'HANDOVER': 'Bàn giao',
+  'SERVICE': 'Phục vụ',
+  'INVENTORY': 'Kiểm kê',
+  'CHECK_IN': 'Giờ vào',
+  'CHECK_OUT': 'Giờ ra',
+  'GPS_FAILURE': 'Sự cố GPS',
+  'MISSING_CHECK_IN': 'Thiếu giờ vào',
+  'MISSING_CHECK_OUT': 'Thiếu giờ ra',
+  'SENT': 'Đã gửi',
+  'NOT_RUN': 'Chưa thực hiện',
+  'SKIPPED': 'Bỏ qua',
+  'LOW': 'Nhẹ',
+  'MEDIUM': 'Vừa',
+  'HIGH': 'Nặng',
+  'CRITICAL': 'Nghiêm trọng',
+};
+String statusLabel(Object? status) => status == null
+    ? 'Chưa có'
+    : statusLabels[status.toString()] ?? status.toString();
+String dateText(Object? value) {
+  if (value == null) return 'Chưa có';
+  final parsed = DateTime.tryParse(value.toString());
+  if (parsed == null) return value.toString();
+  final d = value.toString().length <= 10
+      ? parsed
+      : parsed.toUtc().add(const Duration(hours: 7));
+  String pad(int n) => '$n'.padLeft(2, '0');
+  return '${pad(d.day)}/${pad(d.month)}/${d.year}${value.toString().length <= 10 ? '' : ' · ${pad(d.hour)}:${pad(d.minute)}'}';
+}
+
+String valueText(String field, Object? value) {
+  if (value == null) return 'Chưa có';
+  if (value is bool) return value ? 'Có' : 'Không';
+  if (['oldValue', 'newValue'].contains(field) &&
+      value is String &&
+      value.contains('T') &&
+      DateTime.tryParse(value) != null) {
+    return dateText(value);
+  }
+  if (field == 'deliveryStatus') {
+    return switch (value) {
+      'FAILED' => 'Gửi thất bại',
+      'PENDING' => 'Đang chờ gửi',
+      'SENT' => 'Đã gửi',
+      _ => value.toString()
+    };
+  }
+  if (field == 'periodStatus' && value == 'OPEN') return 'Đang mở';
+  if (field == 'payrollStatus' && value == 'OPEN') return 'Chưa đối soát';
+  if (field.endsWith('At') ||
+      field.endsWith('Date') ||
+      field == 'workDate' ||
+      field == 'dateOfBirth' ||
+      field == 'effectiveFrom' ||
+      field == 'effectiveTo') {
+    return dateText(value);
+  }
+  if (value is List) return value.map(statusLabel).join(', ');
+  return statusLabel(value);
+}
+
+class StatusChip extends StatelessWidget {
+  const StatusChip(this.value, {super.key});
+  final Object? value;
+  @override
+  Widget build(BuildContext context) {
+    final s = value?.toString() ?? '';
+    final color = [
+      'APPROVED',
+      'ACTIVE',
+      'PASSED',
+      'COMPLETE',
+      'FINALIZED',
+      'READY',
+      'CHECKED_OUT',
+      'CONFIRMED'
+    ].contains(s)
+        ? const Color(0xff24775d)
+        : ['REJECTED', 'FAILED', 'REVOKED', 'OVERDUE', 'EXPIRED', 'NOT_READY']
+                .contains(s)
+            ? const Color(0xffb84034)
+            : const Color(0xff996018);
+    return Chip(
+        label: Text(statusLabel(value),
+            style: TextStyle(color: color, fontSize: 12)),
+        side: BorderSide.none,
+        backgroundColor: color.withValues(alpha: .1),
+        visualDensity: VisualDensity.compact);
+  }
+}

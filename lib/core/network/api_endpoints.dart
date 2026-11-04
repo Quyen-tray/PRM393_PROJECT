@@ -1,8 +1,14 @@
+import 'package:flutter/foundation.dart';
+
 abstract final class ApiEndpoints {
-  // Thay bằng địa chỉ backend của bạn.
-  static const baseUrl = 'http://10.0.2.2:8080';
+  static const _configured = String.fromEnvironment('API_BASE_URL');
+  static String get baseUrl => _configured.isNotEmpty
+      ? _configured.replaceAll(RegExp(r'/$'), '')
+      : !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+          ? 'http://10.0.2.2:8081'
+          : 'http://localhost:8081';
 
   static const authGoogle = '/api/v1/auth/google';
-  static const authMe = '/api/v1/auth/me';
+  static const authMe = '/api/v1/users/me';
   static const authLogout = '/api/v1/auth/logout';
 }

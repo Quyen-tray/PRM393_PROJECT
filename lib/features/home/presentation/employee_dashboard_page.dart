@@ -28,9 +28,10 @@ class EmployeeDashboardPage extends StatelessWidget {
                       const SizedBox(height: 22),
                       Text(
                         'Truy cập nhanh',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                       ),
                       const SizedBox(height: 12),
                       const _TaskGrid(),
@@ -52,9 +53,10 @@ class EmployeeDashboardPage extends StatelessWidget {
                       const SizedBox(height: 22),
                       Text(
                         'Thông báo mới',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                       ),
                       const SizedBox(height: 10),
                       const _NotificationCard(),
@@ -69,11 +71,26 @@ class EmployeeDashboardPage extends StatelessWidget {
       bottomNavigationBar: NavigationBar(
         selectedIndex: 0,
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Trang chủ'),
-          NavigationDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month), label: 'Lịch'),
-          NavigationDestination(icon: Icon(Icons.checklist_outlined), selectedIcon: Icon(Icons.checklist), label: 'Checklist'),
-          NavigationDestination(icon: Icon(Icons.notifications_none), selectedIcon: Icon(Icons.notifications), label: 'Tin nhắn'),
-          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Cá nhân'),
+          NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home),
+              label: 'Trang chủ'),
+          NavigationDestination(
+              icon: Icon(Icons.calendar_month_outlined),
+              selectedIcon: Icon(Icons.calendar_month),
+              label: 'Lịch'),
+          NavigationDestination(
+              icon: Icon(Icons.checklist_outlined),
+              selectedIcon: Icon(Icons.checklist),
+              label: 'Checklist'),
+          NavigationDestination(
+              icon: Icon(Icons.notifications_none),
+              selectedIcon: Icon(Icons.notifications),
+              label: 'Tin nhắn'),
+          NavigationDestination(
+              icon: Icon(Icons.person_outline),
+              selectedIcon: Icon(Icons.person),
+              label: 'Cá nhân'),
         ],
         onDestinationSelected: (index) {
           if (index == 4) context.go(RouteNames.profile);
@@ -102,7 +119,8 @@ class _StoreHeader extends StatelessWidget {
                 color: Colors.white.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.coffee, color: Color(0xFFE9C89A), size: 21),
+              child:
+                  const Icon(Icons.coffee, color: Color(0xFFE9C89A), size: 21),
             ),
             const SizedBox(width: 10),
             const Expanded(
@@ -158,7 +176,8 @@ class _EmployeeGreeting extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Chào buổi sáng,', style: Theme.of(context).textTheme.bodySmall),
+              Text('Chào buổi sáng,',
+                  style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: 2),
               Text(
                 'Nguyễn Thị Mai',
@@ -276,7 +295,8 @@ class _AttendanceCard extends StatelessWidget {
                 padding: EdgeInsets.only(bottom: 2),
                 child: Text(
                   'Thứ Hai, 26/10',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                  style:
+                      TextStyle(color: AppColors.textSecondary, fontSize: 12),
                 ),
               ),
             ],
@@ -290,7 +310,8 @@ class _AttendanceCard extends StatelessWidget {
               SizedBox(width: 7),
               Text('Ca sáng', style: TextStyle(fontWeight: FontWeight.w600)),
               Spacer(),
-              Text('07:00 - 15:00', style: TextStyle(color: AppColors.textSecondary)),
+              Text('07:00 - 15:00',
+                  style: TextStyle(color: AppColors.textSecondary)),
             ],
           ),
           const SizedBox(height: 13),
@@ -301,7 +322,8 @@ class _AttendanceCard extends StatelessWidget {
                 backgroundColor: const Color(0xFF76503A),
                 foregroundColor: Colors.white,
                 minimumSize: const Size.fromHeight(44),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
               ),
               onPressed: () => context.go(RouteNames.checkIn),
               icon: const Icon(Icons.login_rounded, size: 18),
@@ -438,7 +460,8 @@ class _ChecklistRow extends StatelessWidget {
           ),
         ),
         if (!isDone)
-          const Icon(Icons.chevron_right, color: AppColors.textSecondary, size: 20),
+          const Icon(Icons.chevron_right,
+              color: AppColors.textSecondary, size: 20),
       ],
     );
   }
@@ -460,7 +483,8 @@ class _ScheduleCard extends StatelessWidget {
               children: [
                 Text('Ca chiều', style: TextStyle(fontWeight: FontWeight.w700)),
                 SizedBox(height: 4),
-                Text('14:00 - 22:00 · Tầng 1', style: TextStyle(color: AppColors.textSecondary)),
+                Text('14:00 - 22:00 · Tầng 1',
+                    style: TextStyle(color: AppColors.textSecondary)),
               ],
             ),
           ),
@@ -489,8 +513,12 @@ class _DateBadge extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(day, style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary)),
-          Text(month, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+          Text(day,
+              style: const TextStyle(
+                  fontWeight: FontWeight.w800, color: AppColors.primary)),
+          Text(month,
+              style: const TextStyle(
+                  fontSize: 11, color: AppColors.textSecondary)),
         ],
       ),
     );
@@ -509,16 +537,19 @@ class _NotificationCard extends StatelessWidget {
           CircleAvatar(
             radius: 18,
             backgroundColor: Color(0xFFF4E8C8),
-            child: Icon(Icons.priority_high, color: Color(0xFFA87412), size: 20),
+            child:
+                Icon(Icons.priority_high, color: Color(0xFFA87412), size: 20),
           ),
           SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Checklist đầu ca sắp hết hạn', style: TextStyle(fontWeight: FontWeight.w700)),
+                Text('Checklist đầu ca sắp hết hạn',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
                 SizedBox(height: 4),
-                Text('Hoàn thành trước 07:15 hôm nay.', style: TextStyle(color: AppColors.textSecondary)),
+                Text('Hoàn thành trước 07:15 hôm nay.',
+                    style: TextStyle(color: AppColors.textSecondary)),
               ],
             ),
           ),

@@ -147,8 +147,7 @@ class _ManagerShiftSchedulePageState extends State<ManagerShiftSchedulePage> {
                 anchorDate: _anchorDate,
                 selectedDate: _selectedDate,
                 scheduledEmployeeCount: _employeesScheduledOn,
-                onDateSelected: (date) =>
-                    setState(() => _selectedDate = date),
+                onDateSelected: (date) => setState(() => _selectedDate = date),
               ),
               const SizedBox(height: 16),
               _SelectedDayRoster(
@@ -217,9 +216,8 @@ class _ManagerShiftSchedulePageState extends State<ManagerShiftSchedulePage> {
     String? initialEmployeeCode,
     int? initialDayIndex,
   }) {
-    final days = _view == _ScheduleView.month
-        ? _daysForDate(_selectedDate)
-        : _days;
+    final days =
+        _view == _ScheduleView.month ? _daysForDate(_selectedDate) : _days;
     final selectedDayIndex = _view == _ScheduleView.month
         ? _selectedDate.difference(_tuesdayOnOrBefore(_selectedDate)).inDays
         : 0;
@@ -311,7 +309,8 @@ class _WeekSelector extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             IconButton(
-              tooltip: view == _ScheduleView.week ? 'Tuần trước' : 'Tháng trước',
+              tooltip:
+                  view == _ScheduleView.week ? 'Tuần trước' : 'Tháng trước',
               onPressed: () => onPeriodChanged(-1),
               icon: const Icon(Icons.chevron_left),
             ),

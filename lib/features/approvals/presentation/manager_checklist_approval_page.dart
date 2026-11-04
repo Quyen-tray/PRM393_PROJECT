@@ -119,18 +119,18 @@ class _ManagerChecklistApprovalPageState
             evidence: review.evidenceLabel,
             status: _statusOf(review),
             rejectionReason: _rejectionReasons[_idFor(review)],
-            onApprove: _statusOf(review) ==
-                    DemoManagerReviewStatus.pendingManager
-                ? () => _setStatus(
-                      review,
-                      DemoManagerReviewStatus.approved,
-                      message: 'Đã duyệt checklist trong phiên demo.',
-                    )
-                : null,
-            onReject: _statusOf(review) ==
-                    DemoManagerReviewStatus.pendingManager
-                ? () => _rejectWithReason(review)
-                : null,
+            onApprove:
+                _statusOf(review) == DemoManagerReviewStatus.pendingManager
+                    ? () => _setStatus(
+                          review,
+                          DemoManagerReviewStatus.approved,
+                          message: 'Đã duyệt checklist trong phiên demo.',
+                        )
+                    : null,
+            onReject:
+                _statusOf(review) == DemoManagerReviewStatus.pendingManager
+                    ? () => _rejectWithReason(review)
+                    : null,
           ),
       ],
     );

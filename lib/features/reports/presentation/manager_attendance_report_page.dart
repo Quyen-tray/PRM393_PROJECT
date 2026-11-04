@@ -22,8 +22,8 @@ class _ManagerAttendanceReportPageState
   String _selectedMonth = 'Tháng 10/2026';
   String _selectedShift = 'Tất cả ca';
 
-  DemoAttendanceReport get _report => DemoData.managerAttendanceReports
-      .firstWhere((item) =>
+  DemoAttendanceReport get _report =>
+      DemoData.managerAttendanceReports.firstWhere((item) =>
           item.monthLabel == _selectedMonth &&
           item.shiftLabel == _selectedShift);
 
@@ -94,9 +94,9 @@ class _ManagerAttendanceReportPageState
           LayoutBuilder(
             builder: (context, constraints) {
               final columnCount = constraints.maxWidth >= 900 ? 4 : 2;
-              final tileWidth = (constraints.maxWidth -
-                      10.0 * (columnCount - 1)) /
-                  columnCount;
+              final tileWidth =
+                  (constraints.maxWidth - 10.0 * (columnCount - 1)) /
+                      columnCount;
 
               return GridView.count(
                 crossAxisCount: columnCount,
