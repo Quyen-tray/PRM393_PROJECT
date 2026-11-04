@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../attendance/presentation/attendance_calendar_page.dart';
 import '../../schedule/presentation/schedule_board.dart';
@@ -504,28 +506,6 @@ class _ModulePageState extends ConsumerState<ModulePage> {
   Future<void> openRow(Json row) async {
     final spec = widget.spec;
     if (spec.kind == 'notifications') {
-      final ok = await ref.read(operationProvider.notifier).run(
-        'notification-${row['notificationId']}',
-        () async {
-          await ref
-              .read(resourceRepositoryProvider)
-              .write('POST', '/notifications/${row['notificationId']}/read');
-        },
-      );
-      if (!mounted) return;
-      if (!ok) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              ref
-                  .read(operationProvider)
-                  .errors['notification-${row['notificationId']}']
-                  .toString(),
-            ),
-          ),
-        );
-        return;
-      }
       final target = notificationRoute(row, ref.read(sessionProvider).user);
       if (target != null) {
         context.push(target);
@@ -546,9 +526,31 @@ class _ModulePageState extends ConsumerState<ModulePage> {
           ),
         );
       }
+      final notificationId = row['notificationId'];
+      if (notificationId != null) {
+        unawaited(_markNotificationRead(notificationId));
+      }
       return;
     }
     context.push(spec.recordRoute(recordId(spec, row)), extra: row);
+  }
+
+  Future<void> _markNotificationRead(Object notificationId) async {
+    try {
+      await ref.read(resourceRepositoryProvider).write(
+            'POST',
+            '/notifications/${Uri.encodeComponent('$notificationId')}/read',
+          );
+      if (!mounted) return;
+      ref.invalidate(
+        resourceProvider(const ResourceQuery('/notifications/me/unread-count')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không thể đánh dấu thông báo đã đọc: $error')),
+      );
+    }
   }
 
   void shiftWeek(int days) => setState(() {
