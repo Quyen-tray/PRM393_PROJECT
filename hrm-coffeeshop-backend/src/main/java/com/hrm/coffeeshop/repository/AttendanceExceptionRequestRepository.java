@@ -13,7 +13,7 @@ import java.util.*;
 public interface AttendanceExceptionRequestRepository extends JpaRepository<AttendanceExceptionRequest, Long> {
 
     boolean existsByEmployeeIdAndShiftAssignmentIdAndRequestTypeAndRequestStatus(Long employeeId, Long shiftAssignmentId, String type, String status);
-    Page<AttendanceExceptionRequest> findByRequestStatusOrderBySubmittedAtAsc(String status, Pageable p);
+    Page<AttendanceExceptionRequest> findByRequestStatus(String status, Pageable p);
     List<AttendanceExceptionRequest> findByShiftAssignmentIdInAndRequestStatus(Collection<Long> scheduleIds, String status);
     List<AttendanceExceptionRequest> findByShiftAssignmentIdInAndRequestType(Collection<Long> scheduleIds, String type);
     long countByRequestStatus(String status);

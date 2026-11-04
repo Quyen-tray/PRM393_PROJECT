@@ -12,6 +12,7 @@ import java.util.*;
 
 public interface ChecklistTaskRepository extends JpaRepository<ChecklistTask, Long> {
 
+    List<ChecklistTask> findByEmployeeIdOrderByDueAtDesc(Long employeeId);
     boolean existsByChecklistTemplateId(Integer templateId);
     boolean existsByChecklistTemplateIdAndShiftAssignmentId(Integer templateId, Long shiftAssignmentId);
     List<ChecklistTask> findByEmployeeIdAndRunStatus(Long employeeId, String status);

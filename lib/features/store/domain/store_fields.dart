@@ -1,0 +1,85 @@
+import 'package:hrm_coffee_shop_flutter/shared/resources/domain/module_spec.dart';
+
+const storeFields = [
+  FieldSpec('name', 'Tên cửa hàng', required: true),
+  FieldSpec('address', 'Địa chỉ'),
+  FieldSpec(
+    'latitude',
+    'Vĩ độ',
+    kind: FieldKind.decimal,
+    min: -90,
+    max: 90,
+    required: true,
+  ),
+  FieldSpec(
+    'longitude',
+    'Kinh độ',
+    kind: FieldKind.decimal,
+    min: -180,
+    max: 180,
+    required: true,
+  ),
+  FieldSpec(
+    'attendanceRadiusMeters',
+    'Bán kính chấm công (m)',
+    kind: FieldKind.integer,
+    min: 1,
+    required: true,
+  ),
+  FieldSpec(
+    'checkInEarlyMinutes',
+    'Vào sớm (phút)',
+    kind: FieldKind.integer,
+    min: 15,
+    max: 30,
+  ),
+  FieldSpec(
+    'graceMinutes',
+    'Ân hạn (phút)',
+    kind: FieldKind.integer,
+    min: 3,
+    max: 5,
+  ),
+  FieldSpec(
+    'monthlyGraceLimit',
+    'Số lần ân hạn mỗi tháng',
+    kind: FieldKind.integer,
+    min: 0,
+  ),
+  FieldSpec(
+    'photoRetentionMonths',
+    'Lưu ảnh (tháng)',
+    kind: FieldKind.integer,
+    min: 1,
+  ),
+  FieldSpec(
+    'gpsMaxAccuracyMeters',
+    'Sai số GPS tối đa (m)',
+    kind: FieldKind.integer,
+    min: 1,
+  ),
+  FieldSpec(
+    'shiftReminderMinutes',
+    'Nhắc trước ca (phút)',
+    kind: FieldKind.integer,
+    min: 0,
+  ),
+  FieldSpec(
+    'checklistDueSoonMinutes',
+    'Nhắc trước hạn checklist (phút)',
+    kind: FieldKind.integer,
+    min: 0,
+  ),
+  FieldSpec(
+    'lateReminderIntervalMinutes',
+    'Chu kỳ nhắc đi muộn (phút)',
+    kind: FieldKind.integer,
+    min: 1,
+  ),
+  FieldSpec(
+    'maxLateReminders',
+    'Số lần nhắc đi muộn',
+    kind: FieldKind.integer,
+    min: 0,
+  ),
+];

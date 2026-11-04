@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/router/navigation_observer.dart';
-import '../../operations/data/operations_repository.dart';
+import 'package:hrm_coffee_shop_flutter/shared/resources/data/resource_repository.dart';
 
 class RefreshOnReturn extends ConsumerStatefulWidget {
   const RefreshOnReturn({required this.child, super.key});

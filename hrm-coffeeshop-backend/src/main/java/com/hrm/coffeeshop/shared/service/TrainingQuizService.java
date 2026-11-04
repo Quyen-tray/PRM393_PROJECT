@@ -104,6 +104,31 @@ public class TrainingQuizService {
         questions.flush();audit.log("TRAINING_QUESTIONS_UPDATE","TrainingCourse",id,null,Map.of("questionCount",r.questions().size()));
         return adminQuestions(id);
     }
+    @Transactional
+    public QuizAdminQuestionView saveQuestion(Integer courseId, Long questionId, QuizQuestionRequest r) {
+        courses.findById(courseId).orElseThrow(()->BusinessException.notFound("khóa học"));
+        if(questionId != null) {
+            TrainingQuestion previous = questions.findById(questionId)
+                .filter(q->q.getCourseId().equals(courseId) && Boolean.TRUE.equals(q.getIsActive()))
+                .orElseThrow(()->BusinessException.notFound("câu hỏi"));
+            previous.setIsActive(false);
+        }
+        boolean duplicate = questions.findByCourseIdAndIsActiveTrueOrderBySortOrderAscQuestionIdAsc(courseId).stream()
+            .anyMatch(q->!Objects.equals(q.getQuestionId(),questionId) && Objects.equals(q.getSortOrder(),r.sortOrder()));
+        if(duplicate) throw new BusinessException(ErrorCode.VALIDATION_ERROR,"Thứ tự câu hỏi đã được sử dụng");
+        TrainingQuestion q=new TrainingQuestion(); q.setCourseId(courseId); q.setQuestionText(r.questionText().trim());
+        q.setOptionA(r.optionA().trim()); q.setOptionB(r.optionB().trim()); q.setOptionC(r.optionC().trim()); q.setOptionD(r.optionD().trim());
+        q.setCorrectOption(r.correctOption()); q.setSortOrder(r.sortOrder()); questions.saveAndFlush(q);
+        audit.log(questionId == null ? "TRAINING_QUESTION_CREATE" : "TRAINING_QUESTION_UPDATE","TrainingCourse",courseId,null,Map.of("questionId",q.getQuestionId()));
+        return adminView(q);
+    }
+    @Transactional
+    public void deleteQuestion(Integer courseId, Long questionId) {
+        TrainingQuestion q=questions.findById(questionId).filter(x->x.getCourseId().equals(courseId) && Boolean.TRUE.equals(x.getIsActive()))
+            .orElseThrow(()->BusinessException.notFound("câu hỏi"));
+        q.setIsActive(false);
+        audit.log("TRAINING_QUESTION_DELETE","TrainingCourse",courseId,null,Map.of("questionId",questionId));
+    }
     private QuizAdminQuestionView adminView(TrainingQuestion q){
         return new QuizAdminQuestionView(q.getQuestionId(),q.getQuestionText(),q.getOptionA(),q.getOptionB(),q.getOptionC(),
                 q.getOptionD(),q.getCorrectOption(),q.getSortOrder());

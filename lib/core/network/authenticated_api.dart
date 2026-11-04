@@ -47,6 +47,7 @@ class AuthenticatedApi {
       ResponseType? responseType}) async {
     final authenticated =
         !path.endsWith('/auth/google') && !path.endsWith('/auth/refresh');
+    var requestGeneration = vault.generation;
     Future<Response<dynamic>> send() => dio.request(path,
         data: data,
         queryParameters: queryParameters,
@@ -64,14 +65,17 @@ class AuthenticatedApi {
     try {
       return await send();
     } on DioException catch (e) {
+      if (requestGeneration != vault.generation) throw mapError(e);
       if (e.response?.statusCode == 401 &&
           authenticated &&
           vault.refreshToken != null) {
         if (await refresh()) {
+          requestGeneration = vault.generation;
           try {
             return await send();
           } on DioException catch (retry) {
-            if (retry.response?.statusCode == 401) {
+            if (retry.response?.statusCode == 401 &&
+                requestGeneration == vault.generation) {
               await vault.clear();
               onExpired?.call();
             }

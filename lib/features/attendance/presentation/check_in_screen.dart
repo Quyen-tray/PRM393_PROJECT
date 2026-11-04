@@ -168,7 +168,7 @@ class CheckInScreen extends ConsumerWidget {
                           : const Icon(Icons.fingerprint),
                       label: Text(s.busy
                           ? 'Đang gửi…'
-                          : s.shift?['canCheckOut'] == true
+                          : s.checkout
                               ? 'Xác nhận check-out'
                               : 'Xác nhận check-in')),
                   const SizedBox(height: 10),

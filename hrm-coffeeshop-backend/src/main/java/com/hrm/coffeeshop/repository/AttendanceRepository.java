@@ -30,7 +30,7 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
                         @Param("to") Instant to, @Param("excludeId") Long excludeId);
 
     @Query("select a from Attendance a where (:employeeId = 0L or a.employeeId = :employeeId) "
-         + "and (:status = '' or a.attendanceStatus = :status) "
+         + "and (:status = '' or a.attendanceStatus = :status or (:status = 'CHECKED_IN' and a.checkInAt is not null and a.checkOutAt is null) or (:status = 'CHECKED_OUT' and a.checkOutAt is not null) or (:status = 'FINALIZED' and a.payrollStatus = 'LOCKED') or (:status = 'EARLY_LEAVE' and a.earlyLeaveMinutes > 0) or (:status = 'LATE' and a.lateMinutes > 0)) "
          + "and a.shiftAssignmentId in (select s.shiftAssignmentId from ShiftAssignment s where s.workDate between :from and :to)")
     Page<Attendance> searchByWorkDate(@Param("employeeId") Long employeeId, @Param("status") String status,
                                             @Param("from") LocalDate from, @Param("to") LocalDate to, Pageable p);

@@ -79,7 +79,12 @@ public class UserService {
     // ---------- Admin ----------
     @Transactional(readOnly = true)
     public PageResponse<UserView> list(Pageable p) {
-        Page<AppUser> page = users.findAll(p);
+        return list("", "", "", p);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<UserView> list(String q, String status, String role, Pageable p) {
+        Page<AppUser> page = users.search(q == null ? "" : q.trim(), status == null ? "" : status, role == null ? "" : role, p);
         return PageResponse.of(page, u -> auth.view(u, roleRepo.findActiveCodesByUserId(u.getUserId())));
     }
 

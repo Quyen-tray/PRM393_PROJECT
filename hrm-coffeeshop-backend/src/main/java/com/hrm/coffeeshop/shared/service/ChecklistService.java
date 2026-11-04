@@ -248,7 +248,7 @@ public class ChecklistService {
     @Transactional(readOnly = true)
     public List<RunView> myTasks(String status) {
         Long empId = SecurityUtils.requireEmployeeId();
-        List<ChecklistTask> list = status == null || status.isBlank() ? runs.findMine(empId, OPEN_STATES) : runs.findByEmployeeIdAndRunStatus(empId, status);
+        List<ChecklistTask> list = status == null ? runs.findMine(empId, OPEN_STATES) : status.isBlank() ? runs.findByEmployeeIdOrderByDueAtDesc(empId) : runs.findByEmployeeIdAndRunStatus(empId, status);
         return list.stream().map(r -> runView(r, false)).toList();
     }
 
@@ -415,6 +415,17 @@ public class ChecklistService {
     private String latestReviewReason(ChecklistTask run) {
         return reviews.findFirstByChecklistTaskIdOrderByReviewedAtDesc(run.getChecklistTaskId())
                 .map(ChecklistReview::getReason).orElse(null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> evidence(Long taskId) {
+        ChecklistTask task = findRun(taskId);
+        assertCanSee(task);
+        AuthUser user = SecurityUtils.current();
+        if (!Objects.equals(task.getEmployeeId(), user.employeeId()) && !user.hasAnyPermission(Permissions.CHECKLIST_REVIEW, Permissions.EVIDENCE_VIEW))
+            throw BusinessException.forbidden("Bạn không có quyền xem minh chứng checklist");
+        return evidences.findByChecklistTaskId(taskId).stream().map(e -> Map.<String, Object>of(
+            "runItemId", e.getChecklistTaskItemId(), "evidenceViewUrl", storage.createViewUrl(e.getStorageKey(), java.time.Duration.ofMinutes(5), user.userId()))).toList();
     }
 
     // ================= helpers =================

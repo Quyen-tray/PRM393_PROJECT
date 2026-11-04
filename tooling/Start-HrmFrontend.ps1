@@ -17,7 +17,11 @@ try {
     if ($Target -eq 'web') {
         & flutter run --no-pub -d web-server --web-hostname=127.0.0.1 --web-port=5000 --no-web-resources-cdn "--dart-define-from-file=$defineFile" $entryPoint
     } else {
-        & flutter run --no-pub -d emulator-5554 "--dart-define-from-file=$defineFile" $entryPoint
+        $adb = Join-Path $env:LOCALAPPDATA 'Android/Sdk/platform-tools/adb.exe'
+        if (-not (Test-Path -LiteralPath $adb)) { $adb = 'D:/dev/Android/Sdk/platform-tools/adb.exe' }
+        & $adb -s emulator-5554 reverse tcp:8081 tcp:8081
+        if ($LASTEXITCODE -ne 0) { throw 'Android emulator is not connected. Start it before running the frontend.' }
+        & flutter run --no-pub -d emulator-5554 "--dart-define-from-file=$defineFile" "--target=$entryPoint"
     }
     exit $LASTEXITCODE
 } finally { Pop-Location }

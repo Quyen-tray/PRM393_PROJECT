@@ -340,7 +340,7 @@ public class AttendanceService {
             boolean inWindow = !now.isBefore(s.getPlannedStartAt().minus(Duration.ofMinutes(workShift.getEarlyCheckInMinutes())))
                     && !now.isAfter(s.getPlannedEndAt());
             boolean notStarted = ar == null || ar.getCheckInAt() == null;
-            int priority = open && inWindow ? 0 : notStarted && inWindow ? 1 : open ? 2
+            int priority = open ? 0 : notStarted && inWindow ? 1
                     : notStarted && s.getPlannedEndAt().isAfter(now) ? 3 : Integer.MAX_VALUE;
             if (priority < best) { best = priority; pick = s; }
         }
@@ -354,7 +354,7 @@ public class AttendanceService {
         List<String> blockers = new ArrayList<>();
         if (!deviceOk) blockers.add("DEVICE_NOT_ACTIVE");
         if (!"ACTIVE".equals(emp.getEmploymentStatus())) blockers.add("ACCOUNT_NOT_ACTIVE");
-        if (now.isBefore(opens)) blockers.add("CHECK_IN_TOO_EARLY");
+        if (now.isBefore(opens) && (ar == null || ar.getCheckInAt() == null)) blockers.add("CHECK_IN_TOO_EARLY");
         if (now.isAfter(pick.getPlannedEndAt()) && (ar == null || ar.getCheckInAt() == null)) blockers.add("CHECK_IN_WINDOW_CLOSED");
         try { lockGuard.assertWorkDateOpen(pick.getWorkDate()); }
         catch (BusinessException e) { blockers.add(e.getCode().name()); }

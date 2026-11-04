@@ -32,7 +32,9 @@ class TokenVault {
   String? deviceCredential;
   int generation = 0;
   Future<void> load() async {
-    accessToken = await store.read('access');
+    final loadedAccess = await store.read('access');
+    if (loadedAccess != accessToken) generation++;
+    accessToken = loadedAccess;
     refreshToken = await store.read('refresh');
     deviceCredential = await store.read('device-credential');
     if (deviceCredential == null) {
@@ -42,6 +44,7 @@ class TokenVault {
   }
 
   Future<void> save(Map<String, dynamic> tokens) async {
+    generation++;
     refreshToken = tokens['refreshToken'] as String;
     accessToken = tokens['accessToken'] as String;
     await store.write('refresh', refreshToken!);

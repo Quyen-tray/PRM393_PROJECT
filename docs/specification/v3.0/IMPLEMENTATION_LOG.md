@@ -41,7 +41,7 @@ Các thay đổi không tự đặt giới hạn ca, quota quiz, role HR mới, 
 | Lớp kiểm chứng | Kết quả |
 |---|---|
 | Flutter analyzer | 0 issue |
-| Flutter unit/widget | 16 đạt |
+| Flutter unit/widget | 23 đạt; phân theo `test/core`, `test/features`, `test/shared` |
 | Backend unit | 52 đạt, 0 skip |
 | Backend SQL Server integration | 42 đạt, 0 skip |
 | App web: màn hình/permission | 59/59 đạt |
@@ -58,3 +58,37 @@ Backend dùng database kiểm thử, cổng `8081`; frontend web cổng `5000`; 
 
 Ca đã check-out không mở lại để check-in lần hai. Muốn lặp chuỗi từ đầu, dùng fixture/database kiểm thử mới và khởi động lại backend theo README; không sửa chính sách hay xóa công để ép demo chạy lại.
 
+## Sắp xếp source Flutter theo feature V3 trên case2
+
+- Phân 41 module về 18 file định nghĩa trong các feature nghiệp vụ. `app/router/module_registry.dart` chỉ ghép module và giữ thứ tự menu/route.
+- Đưa màn hình, form chuyên biệt và 18 khối thao tác về feature sở hữu: accounts, positions, training, checklist, documents, devices, attendance, attendance_requests, employees, payroll, rewards, violations và các nhóm cấu hình/giám sát.
+- Tách login về auth; dashboard về dashboard; hồ sơ cá nhân về profile; trung tâm duyệt về approvals; shell/menu/chi tiết ghép theo workspace giữ trong workspace.
+- Chuyển repository/state, field spec, form, lookup và widget dùng lại sang `shared/resources`. Đổi tên `OperationsRepository` thành `ResourceRepository`; CSV audit dùng `features/audit/data/audit_repository.dart`.
+- Đặt model user/session trong auth/domain, model workspace trong workspace/domain, GPS dùng chung trong core/location.
+- Giữ 14 file UI demo ở `examples/ui_demo`, cùng các import tham khảo đã cập nhật. Các package tạm admin/operations/home không còn trong `lib/features`.
+- Phân test theo feature/core/shared và giữ fixtures ở test/support. Analyzer sạch; 23 test đạt. Snapshot xác nhận route, API, form, permission và nội dung các khối xử lý giữ nguyên; `pubspec.lock` không đổi.
+- Build lại APK debug từ `lib/main.dart` với cấu trúc mới thành công; artifact ở `build/app/outputs/flutter-apk/app-debug.apk`.
+
+Sơ đồ thư mục và trách nhiệm từng nhóm được cập nhật trong README gốc. Backend, schema và quy tắc nghiệp vụ giữ nguyên trong đợt sắp xếp này.
+
+
+
+## 2026-11-05 — UI và workflow theo phản hồi ba role
+
+- Đọc/giải nén mobile-app-ui-design-main.zip vào .dart_tool/ui-reference. ZIP chứa hướng dẫn mobile UI, không chứa app mẫu. Áp dụng nội dung gọn, thao tác từng mục, khoảng cách nhất quán và trạng thái rõ.
+- Admin: tài khoản tìm kiếm server theo tên/email; lọc ACTIVE/LOCKED/INACTIVE và role; sắp xếp, số dòng/trang. DELETE tài khoản chuyển INACTIVE và thu hồi refresh token, cấm tự ngừng tài khoản và bảo vệ Admin hoạt động cuối cùng.
+- DELETE khóa học, mẫu checklist, ca, kỹ năng và reminder chuyển isActive=false. Đây là xóa khỏi danh mục sử dụng, giữ lịch sử và quan hệ SQL Server. Quy tắc nhắc dùng mã chuỗi; tắt nhắc không bỏ xử lý trạng thái quá hạn/vi phạm.
+- Chức vụ giải thích giấy tờ và đào tạo áp dụng. Kích hoạt checklist chỉ hiện khi inactive, mô tả rõ chọn version cho checklist mới; task cũ giữ nguyên nội dung.
+- Trang quản lý câu hỏi riêng mở ngay đầu khóa học, có tìm kiếm/phân trang và CRUD từng câu. Sửa câu sinh ID mới, bảo toàn snapshot và ngăn chấm bài theo nội dung câu đã đổi.
+- Gỡ ghi điểm thủ công khỏi UI; endpoint cũ trả 409, không tạo enrollment/attempt. Học viên cần ghi danh và làm quiz hoặc theo quy trình review hoàn thành hiện có.
+- Profile bỏ tải lại quyền và đăng xuất; logout vẫn ở menu tài khoản/sidebar.
+- Manager: công hôm nay thu gọn; nhân viên chỉ đọc trong workspace Manager. Các mục đào tạo/thiết bị/giấy tờ/kỹ năng có route riêng /employee-records/:employeeId/:section, Back từ chi tiết về đúng mục, không lặp thanh tiêu đề. Chi tiết nhân viên dùng GET theo ID có sẵn.
+- Lịch phân ca nhóm ngày, chọn tuần, lọc nhân viên qua lookup tìm kiếm/phân trang. Chấm công/checklist/thiết bị có sort, page size và tổng kết quả.
+- Bộ lọc Tất cả gửi status rỗng rõ ràng; client bỏ status vẫn giữ mặc định cũ. Checklist APPROVED xuất hiện trong Tất cả. Attendance tách trạng thái vòng đời và chỉ số muộn/về sớm.
+- Checklist và yêu cầu công có API ảnh ký ngắn hạn, scope/quyền và màn xem phóng to. OT lấy ảnh attendance liên quan; không tạo ảnh thay thế.
+- Kỳ công giải thích hai bước và blocker; chỉ tạo đơn vắng khi còn thiếu/bị từ chối, báo số đơn thực tạo và mở danh sách duyệt. Backend giữ khóa kỳ/chống trùng.
+- Employee: lịch công tháng kết hợp assignment và attendance; có biểu tượng, màu, chi tiết ngày. Không coi ngày không phân ca là vắng mặt đã duyệt. Ca đã vào chưa ra được ưu tiên trước ca mới; dashboard vẫn là Check-out khi còn điều kiện cần xử lý.
+- Login chọn workspace đã lưu của đúng user hoặc mặc định Admin, Manager, Employee rồi mở tổng quan. 401 của tài khoản cũ không xóa phiên mới. Actor selector test cũng về tổng quan khi đổi actor.
+- Helper Android dùng ADB reverse 8081 + localhost. Không đổi schema, không chạy iOS, không thao tác Git.
+- Các bộ lọc phụ trên danh sách được thu gọn mặc định; bộ lọc tài khoản vẫn hiện trạng thái đang chọn và số dòng/trang để danh sách chiếm phần lớn màn hình.
+- Kiểm chứng: analyzer sạch; 30 Flutter test; 52 unit và 45 integration test SQL Server không failure/error/skip. Build/cài debug Android; mở trang câu hỏi, lịch tháng, kiểm tra nhân viên → thiết bị → chi tiết → Back trên emulator. Không coi các lượt mở màn hình là E2E đầy đủ mọi endpoint. OpenAPI runtime có 203 operation, gồm alias.

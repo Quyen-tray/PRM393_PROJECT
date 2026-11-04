@@ -41,17 +41,37 @@ Lệnh integration tạo database SQL Server riêng tên `HRM_CoffeeShop_V3_Test
 
 Các khóa seed chưa có câu hỏi cần được biên soạn trước khi làm quiz. Với app web acceptance đang mở trong Chrome CDP `9222`, có thể chạy `node tooling/Prepare-LiveTraining.cjs` để nhập câu hỏi mẫu qua màn Admin cho bốn khóa test; script không ghi vào database cửa hàng và giữ nguyên bank đã có. Giáo trình vận hành thật do Admin biên soạn/duyệt theo nội dung của cửa hàng.
 
-## Kiến trúc runtime
+## Tổ chức file theo feature V3
 
-- `core/network`, `core/storage`: JWT/refresh, error envelope, secure storage, installation credential, upload bytes.
-- `features/auth`: profile, permissions, workspace và phiên Google.
-- `app/router`: route guard theo phiên hiện tại, deep link, back stack và route alias.
-- `features/workspace`: shell mobile/desktop, dashboard và hàng đợi tác vụ theo quyền.
-- `features/operations`: registry chức năng/contract, repository, state, danh sách, detail, form và lookup phân trang.
-- `features/attendance`: GPS, camera, upload ảnh và check-in/out có idempotency.
-- `hrm-coffeeshop-backend`: Controller/DTO/Service/JPA, permission, audit, storage ký URL, SQL và tests.
+Source được phân theo nghiệp vụ trong tài liệu V3. `EMPLOYEE`, `STORE_MANAGER`, `SYSTEM_ADMIN` chọn workspace; các chức năng quản trị nằm trong feature sở hữu nghiệp vụ đó.
 
-Các màn scaffold cũ trong `lib/features/` và `lib/data/mock/` không được router runtime gọi. Có thể kiểm tra import graph bằng `node tooling/Audit-RuntimeImports.cjs`.
+| Thư mục trong `lib/features/` | Trách nhiệm |
+|---|---|
+| `auth` | Google OAuth, phiên đăng nhập, current user và trạng thái phiên |
+| `workspace` | Chọn workspace, app shell, menu, ghép màn danh sách/chi tiết theo module |
+| `dashboard` | Dashboard và truy cập nhanh theo workspace |
+| `accounts` | Tài khoản, vai trò, permission và trạng thái tài khoản |
+| `employees`, `positions`, `profile` | Hồ sơ nhân viên, chức vụ/điều kiện và hồ sơ cá nhân |
+| `schedule`, `attendance`, `devices` | Danh mục/phân ca, chấm công/camera và thiết bị |
+| `attendance_requests` | Giải trình, tăng ca, điều chỉnh công và các bước duyệt |
+| `approvals` | Trung tâm công việc và hàng đợi tác vụ theo quyền |
+| `training` | Khóa học, tiến độ, quiz, ngân hàng câu hỏi và xác nhận hoàn thành |
+| `checklist`, `documents`, `skills` | Checklist/mẫu, giấy tờ/catalog/review và đánh giá kỹ năng |
+| `violations`, `rewards` | Vi phạm/giải trình và quyết định thưởng/phạt |
+| `payroll`, `reports` | Kỳ công/readiness và báo cáo |
+| `store` | Cửa hàng, vị trí GPS và chính sách chấm công |
+| `notifications`, `audit` | Thông báo/deep link/delivery/nhắc việc và audit/CSV |
+
+Mỗi feature đặt cấu hình module/form trong `domain/`, repository riêng khi cần trong `data/`, màn hình/widget/thao tác trong `presentation/`. Ví dụ: [tài khoản](lib/features/accounts), [đào tạo](lib/features/training), [cửa hàng](lib/features/store).
+
+- `app/router/module_registry.dart` ghép 41 module từ các feature và giữ thứ tự điều hướng.
+- `shared/resources/` chứa `ResourceRepository`, state tải/ghi, mô tả field, form, lookup và widget tái sử dụng.
+- `core/network`, `core/storage`, `core/location`, `core/presentation` chứa API/JWT, secure storage/upload, GPS và thành phần giao diện dùng chung.
+- `test/features/`, `test/core/`, `test/shared/` đặt kiểm thử theo cùng ranh giới; fixtures dùng chung ở `test/support/`.
+- `examples/ui_demo/` giữ 14 file scaffold/demo ban đầu để tham khảo. Entry point phát hành `lib/main.dart` chỉ dùng source nghiệp vụ trong `lib/`.
+- `hrm-coffeeshop-backend` giữ các Controller/DTO/Service/JPA và contract hiện có.
+
+Kiểm tra import graph bằng `node tooling/Audit-RuntimeImports.cjs`.
 
 ## Phạm vi đã kiểm tra
 

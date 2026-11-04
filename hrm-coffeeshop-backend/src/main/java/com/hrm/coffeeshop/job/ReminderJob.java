@@ -75,7 +75,10 @@ public class ReminderJob {
         return rules.findByRuleCode(code).map(r -> r.getMaxAttempts() == null ? fallback : r.getMaxAttempts()).orElse(fallback);
     }
 
+    private boolean enabled(String code) { return rules.findByRuleCode(code).map(r -> !Boolean.FALSE.equals(r.getIsActive())).orElse(true); }
+
     void shiftReminders() {
+        if(!enabled("SHIFT_REMINDER")) return;
         Instant now = clock.instant();
         int lead = leadOf("SHIFT_REMINDER", 15);
         for (ShiftAssignment s : schedules.findStartingBetween(now, now.plus(Duration.ofMinutes(lead)))) {
@@ -97,7 +100,7 @@ public class ReminderJob {
         int interval = Math.max(1, intervalOf("CHECKLIST_OVERDUE", 5));
         int max = Math.max(1, maxOf("CHECKLIST_OVERDUE", 3));
 
-        for (ChecklistTask r : runs.findDueBetween(now, now.plus(Duration.ofMinutes(soon)), List.of("PENDING", "IN_PROGRESS"))) {
+        if(enabled("CHECKLIST_DUE_SOON")) for (ChecklistTask r : runs.findDueBetween(now, now.plus(Duration.ofMinutes(soon)), List.of("PENDING", "IN_PROGRESS"))) {
             try {
                 tx.executeWithoutResult(st -> notifications.notify(people.userIdOf(r.getEmployeeId()), "CHECKLIST_DUE_SOON",
                         "Checklist sắp đến hạn", "Checklist #" + r.getChecklistTaskId() + " sắp đến hạn.", "ChecklistTask",
@@ -112,7 +115,7 @@ public class ReminderJob {
                     if (!"OVERDUE".equals(run.getRunStatus())) run.setRunStatus("OVERDUE");
                     long overdueMinutes = Duration.between(run.getDueAt(), now).toMinutes();
                     int due = (int) Math.min(max, overdueMinutes / interval);
-                    for (int k = 1; k <= due; k++)
+                    if(enabled("CHECKLIST_OVERDUE")) for (int k = 1; k <= due; k++)
                         notifications.notify(people.userIdOf(run.getEmployeeId()), "CHECKLIST_OVERDUE", "Checklist đã quá hạn",
                                 "Nhắc lần " + k + "/" + max + " cho checklist #" + run.getChecklistTaskId(), "ChecklistTask",
                                 run.getChecklistTaskId(), "CHECKLIST_OVERDUE:" + run.getChecklistTaskId() + ":" + k);

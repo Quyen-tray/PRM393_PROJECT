@@ -10,7 +10,7 @@ import java.time.Instant;
 public final class SkillDto {
     private SkillDto() {}
 
-    public record SkillView(Integer skillId, String skillCode, String skillName, String description) {}
+    public record SkillView(Integer skillId, String skillCode, String skillName, String description, Boolean isActive) {}
 
     public record SkillRequest(@NotBlank @Size(max = 40) String skillCode, @NotBlank @Size(max = 150) String skillName,
                                @Size(max = 500) String description) {}

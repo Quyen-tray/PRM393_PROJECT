@@ -13,17 +13,19 @@
 | Kiểm tra | Kết quả | Bằng chứng local |
 |---|---|---|
 | `flutter analyze` | Không có issue | Output analyzer ở lượt cuối |
-| `flutter test --no-pub` | 16 test đạt | `test/widget_test.dart`, `test/unit/api_and_policy_test.dart` |
+| `flutter test --no-pub` | 23 test đạt sau khi phân feature | `test/core/`, `test/features/`, `test/shared/` |
 | Maven unit | 52 test đạt, 0 failure/error/skip | `hrm-coffeeshop-backend/target/v3-verification/unit/TEST-*.xml` |
 | Maven integration với SQL Server | 42 test đạt, 0 failure/error/skip | `target/v3-verification/integration/TEST-*.xml`; `target/failsafe-reports/failsafe-summary.xml` trong backend |
 | App web: screen/permission sweep | 59/59 kiểm tra đạt | `.dart_tool/live-screen-tour.json`, runner `tooling/Tour-LiveApp.cjs` |
 | Build Android từ `lib/main.dart` | APK debug build thành công | `build/app/outputs/flutter-apk/app-debug.apk` |
-| Import graph runtime | 29 file Dart reachable, 0 tham chiếu DemoData | `.dart_tool/runtime-import-audit.json`, `tooling/Audit-RuntimeImports.cjs` |
+| Import graph runtime | 100 file Dart reachable, 0 tham chiếu DemoData | `.dart_tool/runtime-import-audit.json`, `tooling/Audit-RuntimeImports.cjs` |
 | OpenAPI đang chạy | 190 operation, gồm alias | `.dart_tool/openapi-current.json`; [API inventory](API_INVENTORY_IMPLEMENTED.md) |
 
 59 kiểm tra màn hình gồm 16 trang Employee, 21 trang Manager, 20 trang Admin và 2 tình huống từ chối truy cập. Runner kiểm tra UI/HTTP thực tế khi điều hướng, không phải kiểm thử mọi tổ hợp CRUD trên mỗi trang. Các trang có dữ liệu cache có thể không phát sinh HTTP mới. Nhận định “59/59” không được thay bằng “toàn bộ API đã E2E”.
 
-16 test Flutter kiểm tra refresh single-flight, giữ credentials khi lỗi mạng/server, thông điệp 403, capability nhiều role/quyền đơn lẻ, pagination/state/date mapping, entity identity trong thông báo, trang chấm công vẫn mở khi bị chặn, quay lại, thay đổi grant ngay trên URL đang mở, giữ form/chống submit trùng, form vẫn gửi được khi widget nguồn đã bị thay thế và quyền thu hồi thiết bị không bị nhầm với cấm tự duyệt.
+23 test Flutter kiểm tra refresh single-flight, giữ credentials khi lỗi mạng/server, thông điệp 403, capability nhiều role/quyền đơn lẻ, pagination/state/date mapping, entity identity trong thông báo, trang chấm công vẫn mở khi bị chặn, quay lại, thay đổi grant ngay trên URL đang mở, giữ form/chống submit trùng, form vẫn gửi được khi widget nguồn đã bị thay thế và quyền thu hồi thiết bị không bị nhầm với cấm tự duyệt. Bảy test Google kiểm tra tên biến tương thích, ưu tiên cấu hình, thiếu cấu hình, nhận token, thiếu token, hủy đăng nhập và backend từ chối; đây là unit test với platform/HTTP fixture.
+
+Sau khi phân source theo feature V3, snapshot đối chiếu 41 module khớp toàn bộ thứ tự điều hướng, route, endpoint, cấu hình form và sáu tổ hợp role/permission. 19 route khai báo trong router và 18 khối thao tác nghiệp vụ cũng khớp bản trước khi di chuyển. Báo cáo local: `.dart_tool/feature-layout/validation.json`; snapshot trước/sau: `module_before.json`, `module_after.json` trong cùng thư mục. Các màn demo ban đầu được giữ ở `examples/ui_demo/`, ngoài import graph của `lib/main.dart`.
 
 Backend integration bao gồm tranh chấp/check-in idempotency/khóa kỳ, ca qua đêm, xác minh và signed file/audit, giới hạn upload, refresh token, thiết bị và binding installation, quiz chấm tại server/snapshot, review non-quiz, hồ sơ/permission-only, giải trình vi phạm, adjustment hai bước và các luồng hiện có của bộ IT. V3WorkflowIT bổ sung regression cho danh sách thiết bị, `/rewards-penalties/me`, default sort danh sách vi phạm và metadata hàng đợi công.
 
@@ -76,3 +78,16 @@ Bốn khóa seed #1–4 ban đầu chưa có ngân hàng câu hỏi. Đã biên 
 - Build Android còn cảnh báo phiên bản Gradle/AGP/Kotlin và SDK tooling sẽ cần nâng cấp theo một đợt riêng; build hiện tại đã thành công, không dùng cờ bỏ qua validation để che lỗi.
 
 Những điểm này không được đánh dấu hoàn thành chỉ vì đã có màn hình, unit fixture hoặc một adapter trả về giá trị.
+
+
+## 2026-11-05 — Xác minh đợt sửa UI theo phản hồi
+
+- Flutter analyze --no-pub: không còn issue.
+- Flutter test --no-pub: 30 test đạt. Bổ sung hồi quy status rỗng, Check-out khi thiết bị cần xử lý, chọn workspace, 401 tài khoản cũ, CRUD từng câu và Back giữa các phần hồ sơ nhân viên.
+- Maven unit: 52 test đạt, không failure/error/skip.
+- Maven verify trên database SQL Server test riêng, giữ nguyên marker/phiên live: 45 integration test đạt, không failure/error/skip. UiWorkflowRegressionIT kiểm tra CRUD câu hỏi qua JWT/controller/service/database, cấm pass thủ công, tự archive, giữ task sau archive, ảnh checklist ký URL, Tất cả có APPROVED, tìm tài khoản và reminder ID chuỗi.
+- APK debug build/cài trên emulator nvb; app dùng integration_test/live_app.dart và backend thật ở 8081 qua ADB reverse. Đã mở trang ngân hàng câu hỏi và lịch tháng, chạy luồng Manager nhân viên → thiết bị → chi tiết → Back; xác nhận một nút Back/thanh tiêu đề sau khi quay lại.
+- Một lượt nhập câu hỏi bằng ADB thoát form trước khi lưu: không coi là CRUD E2E thành công. CRUD đã được xác minh bằng widget flow và integration HTTP/SQL Server độc lập.
+- Screenshot thực tế lưu trong .dart_tool/screenshots/ui-refresh-*.png. Runtime import audit: 106 Dart file reachable, 0 production DemoData reference. OpenAPI runtime: 203 operation kể cả alias.
+- Các kết quả trên xác minh phạm vi sửa lần này; không khẳng định đã thực hiện đầy đủ E2E của mọi operation hay thử lại toàn bộ camera/GPS trong lần chạy này.
+- Sau khi thu gọn mặc định panel bộ lọc, hai hồi quy Tất cả cho giải trình và tăng ca pass; `flutter analyze --no-pub` không có issue. Emulator xác nhận danh sách tài khoản hiện ngay cùng panel lọc thu gọn.

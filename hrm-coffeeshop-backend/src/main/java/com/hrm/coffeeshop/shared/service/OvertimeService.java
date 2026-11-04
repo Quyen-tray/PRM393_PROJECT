@@ -113,8 +113,8 @@ public class OvertimeService {
 
     @Transactional(readOnly = true)
     public PageResponse<OvertimeView> list(String status, Pageable p) {
-        String st = status == null || status.isBlank() ? "PENDING" : status;
-        return PageResponse.of(requests.findByApprovalStatusOrderByRequestedAtAsc(st, p), this::view);
+        String st = status == null ? "PENDING" : status;
+        return PageResponse.of(st.isBlank() ? requests.findAll(p) : requests.findByApprovalStatus(st, p), this::view);
     }
 
     @Transactional

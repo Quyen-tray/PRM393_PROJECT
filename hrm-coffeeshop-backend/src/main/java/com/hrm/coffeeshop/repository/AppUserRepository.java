@@ -12,6 +12,11 @@ import java.util.*;
 
 public interface AppUserRepository extends JpaRepository<AppUser, Long> {
 
+    @Query("select u from AppUser u where (:q = '' or lower(u.displayName) like lower(concat('%', :q, '%')) or lower(u.email) like lower(concat('%', :q, '%'))) "
+         + "and (:status = '' or u.userStatus = :status) and (:role = '' or u.userId in "
+         + "(select ur.userId from UserRole ur where ur.roleId in (select r.roleId from Role r where r.roleCode = :role and r.isActive = true)))")
+    Page<AppUser> search(@Param("q") String q, @Param("status") String status, @Param("role") String role, Pageable p);
+
     Optional<AppUser> findByGoogleSubject(String googleSubject);
     Optional<AppUser> findByEmail(String email);
 

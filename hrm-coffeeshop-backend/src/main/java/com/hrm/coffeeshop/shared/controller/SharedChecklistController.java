@@ -21,6 +21,9 @@ public class SharedChecklistController {
         this.svc = svc;
     }
 
+    @GetMapping("/checklists/tasks/{taskId}/evidence")
+    public ApiResponse<List<java.util.Map<String, Object>>> evidence(@PathVariable Long taskId) { return ApiResponse.ok(svc.evidence(taskId)); }
+
     @GetMapping("/checklists/tasks/{taskId}")
     public ApiResponse<RunView> get(@PathVariable Long taskId) { return ApiResponse.ok(svc.get(taskId)); }
 }

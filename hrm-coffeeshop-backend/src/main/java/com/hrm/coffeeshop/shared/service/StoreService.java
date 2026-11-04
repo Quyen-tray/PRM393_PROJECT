@@ -148,12 +148,12 @@ public class StoreService {
     public List<ReminderRuleView> reminderRules() {
         return List.of(
                 new ReminderRuleView("SHIFT_REMINDER", "Nhắc nhân viên trước giờ vào ca",
-                        ruleInt("SHIFT_REMINDER", ReminderRule::getLeadMinutes, 15), null, null),
+                        ruleInt("SHIFT_REMINDER", ReminderRule::getLeadMinutes, 15), null, null, rule("SHIFT_REMINDER").getIsActive()),
                 new ReminderRuleView("CHECKLIST_DUE_SOON", "Nhắc checklist sắp đến hạn",
-                        ruleInt("CHECKLIST_DUE_SOON", ReminderRule::getLeadMinutes, 15), null, null),
+                        ruleInt("CHECKLIST_DUE_SOON", ReminderRule::getLeadMinutes, 15), null, null, rule("CHECKLIST_DUE_SOON").getIsActive()),
                 new ReminderRuleView("CHECKLIST_OVERDUE", "Nhắc checklist quá hạn", null,
                         ruleInt("CHECKLIST_OVERDUE", ReminderRule::getIntervalMinutes, 5),
-                        ruleInt("CHECKLIST_OVERDUE", ReminderRule::getMaxAttempts, 3)));
+                        ruleInt("CHECKLIST_OVERDUE", ReminderRule::getMaxAttempts, 3), rule("CHECKLIST_OVERDUE").getIsActive()));
     }
 
     @Transactional
@@ -173,6 +173,7 @@ public class StoreService {
             }
             default -> throw BusinessException.notFound("rule nhắc nhở");
         }
+        if(r.isActive()!=null) x.setIsActive(r.isActive());
         ReminderRuleView after = reminderRules().stream().filter(v -> v.ruleId().equals(ruleId)).findFirst().orElseThrow();
         audit.log("REMINDER_RULE_UPDATE", "ReminderRule", ruleId, before, after);
         return after;

@@ -23,7 +23,9 @@ public final class StoreDto {
                                Integer gpsMaxAccuracyMeters) {}
 
     public record ReminderRuleView(String ruleId, String description, Integer leadMinutes,
-                                   Integer intervalMinutes, Integer maxAttempts) {}
+                                   Integer intervalMinutes, Integer maxAttempts, Boolean isActive) {}
 
-    public record ReminderRuleRequest(Integer leadMinutes, Integer intervalMinutes, Integer maxAttempts) {}
+    public record ReminderRuleRequest(Integer leadMinutes, Integer intervalMinutes, Integer maxAttempts, Boolean isActive) {
+        public ReminderRuleRequest(Integer leadMinutes, Integer intervalMinutes, Integer maxAttempts) { this(leadMinutes, intervalMinutes, maxAttempts, null); }
+    }
 }

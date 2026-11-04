@@ -11,6 +11,18 @@ abstract final class AppTheme {
         brightness: Brightness.light,
       ),
       scaffoldBackgroundColor: AppColors.background,
+      textTheme: const TextTheme(
+        headlineSmall:
+            TextStyle(fontSize: 24, fontWeight: FontWeight.w700, height: 1.25),
+        titleMedium:
+            TextStyle(fontSize: 16, fontWeight: FontWeight.w600, height: 1.35),
+        bodyMedium: TextStyle(fontSize: 14, height: 1.5),
+        bodySmall: TextStyle(fontSize: 12, height: 1.4),
+      ),
+      listTileTheme: const ListTileThemeData(
+          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          minVerticalPadding: 8),
+      dividerTheme: const DividerThemeData(color: Color(0xffe8e0d8), space: 24),
       cardTheme: CardThemeData(
           color: AppColors.surface,
           elevation: 0,
@@ -27,10 +39,10 @@ abstract final class AppTheme {
               minimumSize: const Size(0, 46),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)))),
-      inputDecorationTheme: const InputDecorationTheme(
+      inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: Colors.white,
-          border: OutlineInputBorder(),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 16)),
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.background,

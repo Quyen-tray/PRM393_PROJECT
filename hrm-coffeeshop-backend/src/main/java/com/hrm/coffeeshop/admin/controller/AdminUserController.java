@@ -27,8 +27,13 @@ public class AdminUserController {
     public AdminUserController(UserService users) { this.users = users; }
 
     @GetMapping
-    public ApiResponse<PageResponse<UserView>> list(@PageableDefault(size = 20, sort = "userId") Pageable p) {
-        return ApiResponse.ok(users.list(p));
+    public ApiResponse<PageResponse<UserView>> list(@RequestParam(defaultValue = "") String q, @RequestParam(defaultValue = "") String status, @RequestParam(defaultValue = "") String role, @PageableDefault(size = 20, sort = "userId") Pageable p) {
+        return ApiResponse.ok(users.list(q, status, role, p));
+    }
+
+    @DeleteMapping("/{userId}")
+    public ApiResponse<UserView> archive(@PathVariable Long userId) {
+        return ApiResponse.ok("Đã lưu trữ tài khoản, giữ lại lịch sử", users.setStatus(userId, "INACTIVE"));
     }
 
     @PostMapping

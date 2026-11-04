@@ -150,7 +150,7 @@ public class AttendanceExceptionService {
     @Transactional(readOnly = true)
     public PageResponse<ExceptionView> list(String status, Pageable p) {
         String st = status == null ? "PENDING" : status.equals("PENDING_MANAGER") ? "PENDING" : status;
-        return PageResponse.of(st.isBlank() ? exceptions.findAll(p) : exceptions.findByRequestStatusOrderBySubmittedAtAsc(st, p),
+        return PageResponse.of(st.isBlank() ? exceptions.findAll(p) : exceptions.findByRequestStatus(st, p),
                 this::view);
     }
 

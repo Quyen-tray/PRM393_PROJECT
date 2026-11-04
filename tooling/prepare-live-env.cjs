@@ -7,7 +7,7 @@ if (!['android', 'web'].includes(target)) throw new Error('Target must be androi
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8').replace(/^\uFEFF/, '');
 if (process.argv.includes('--production')) {
   const existing = fs.existsSync(path.join(root, 'env.json')) ? JSON.parse(read('env.json')) : {};
-  const values = {API_BASE_URL: target === 'android' ? 'http://10.0.2.2:8081' : 'http://127.0.0.1:8081'};
+  const values = {API_BASE_URL: target === 'android' ? 'http://127.0.0.1:8081' : 'http://127.0.0.1:8081'};
   const googleClientId = existing.GOOGLE_SERVER_CLIENT_ID?.trim() || existing.GOOGLE_CLIENT_ID?.trim();
   if (googleClientId) values.GOOGLE_SERVER_CLIENT_ID = googleClientId;
   fs.mkdirSync(path.join(root,'.dart_tool'), {recursive:true});
@@ -27,6 +27,6 @@ for (const actor of ['employee','manager','admin']) {
   const signature = crypto.createHmac('sha256','it-jwt-secret-'+'a'.repeat(32)).update(`${header}.${payload}`).digest('base64url');
   sessions[actor].accessToken = `${header}.${payload}.${signature}`;
 }
-const values = {API_BASE_URL: target === 'android' ? 'http://10.0.2.2:8081' : 'http://127.0.0.1:8081', ACCEPTANCE_SESSIONS: JSON.stringify(sessions)};
+const values = {API_BASE_URL: target === 'android' ? 'http://127.0.0.1:8081' : 'http://127.0.0.1:8081', ACCEPTANCE_SESSIONS: JSON.stringify(sessions)};
 fs.writeFileSync(path.join(root, `.dart_tool/v3-build-env-${target}.json`), JSON.stringify(values));
 console.log(`Prepared local ${target} acceptance configuration.`);

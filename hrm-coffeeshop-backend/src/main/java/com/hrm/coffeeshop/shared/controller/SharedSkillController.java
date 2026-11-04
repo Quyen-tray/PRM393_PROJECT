@@ -20,7 +20,7 @@ public class SharedSkillController {
     public SharedSkillController(SkillService svc) { this.svc = svc; }
 
     @GetMapping("/skills")
-    public ApiResponse<List<SkillView>> list() { return ApiResponse.ok(svc.list()); }
+    public ApiResponse<List<SkillView>> list(@RequestParam(defaultValue="false") boolean includeInactive) { return ApiResponse.ok(includeInactive ? svc.listIncludingInactive() : svc.list()); }
 
     @PostMapping("/admin/skills")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")

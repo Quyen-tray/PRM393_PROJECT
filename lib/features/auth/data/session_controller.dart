@@ -5,57 +5,13 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_providers.dart';
 import 'google_oauth.dart';
 
-enum Workspace {
-  employee('EMPLOYEE', 'Nhân viên'),
-  manager('STORE_MANAGER', 'Quản lý cửa hàng'),
-  admin('SYSTEM_ADMIN', 'Quản trị hệ thống');
+import 'package:hrm_coffee_shop_flutter/features/auth/domain/current_user.dart';
+import 'package:hrm_coffee_shop_flutter/features/auth/domain/session_state.dart';
+import 'package:hrm_coffee_shop_flutter/features/workspace/domain/workspace.dart';
 
-  const Workspace(this.code, this.label);
-  final String code;
-  final String label;
-}
-
-class CurrentUser {
-  const CurrentUser(
-      {required this.id,
-      required this.name,
-      required this.email,
-      required this.roles,
-      required this.permissions,
-      this.employeeId});
-  final int id;
-  final String name, email;
-  final int? employeeId;
-  final Set<String> roles, permissions;
-  factory CurrentUser.fromJson(
-          Map<String, dynamic> profile, Map<String, dynamic> grants) =>
-      CurrentUser(
-          id: (profile['userId'] as num).toInt(),
-          name: profile['displayName'] as String? ?? '',
-          email: profile['email'] as String? ?? '',
-          employeeId: (profile['employeeId'] as num?)?.toInt(),
-          roles: Set<String>.from(
-              grants['roles'] as List? ?? profile['roles'] as List? ?? []),
-          permissions: Set<String>.from(grants['permissions'] as List? ?? []));
-  bool has(String permission) => permissions.contains(permission);
-  bool role(String role) => roles.contains(role);
-  bool get manager => role('STORE_MANAGER');
-  bool get admin => role('SYSTEM_ADMIN');
-  List<Workspace> get workspaces => [
-        if (employeeId != null || role('EMPLOYEE')) Workspace.employee,
-        if (manager || role('OPERATIONS_DIRECTOR')) Workspace.manager,
-        if (admin) Workspace.admin,
-      ];
-}
-
-class SessionState {
-  const SessionState(
-      {this.loading = false, this.user, this.workspace, this.error});
-  final bool loading;
-  final CurrentUser? user;
-  final Workspace? workspace;
-  final Object? error;
-}
+export 'package:hrm_coffee_shop_flutter/features/auth/domain/current_user.dart';
+export 'package:hrm_coffee_shop_flutter/features/auth/domain/session_state.dart';
+export 'package:hrm_coffee_shop_flutter/features/workspace/domain/workspace.dart';
 
 final sessionProvider =
     NotifierProvider<SessionController, SessionState>(SessionController.new);
@@ -128,11 +84,16 @@ class SessionController extends Notifier<SessionState> {
         Map<String, dynamic>.from(result[1]));
     final saved =
         await ref.read(sessionStoreProvider).read('workspace-${user.id}');
-    final selected =
-        state.workspace != null && user.workspaces.contains(state.workspace)
-            ? state.workspace
-            : user.workspaces.where((w) => w.code == saved).firstOrNull ??
-                (user.workspaces.length == 1 ? user.workspaces.first : null);
+    final selected = state.user?.id == user.id &&
+            state.workspace != null &&
+            user.workspaces.contains(state.workspace)
+        ? state.workspace
+        : user.workspaces.where((w) => w.code == saved).firstOrNull ??
+            (user.workspaces.contains(Workspace.admin)
+                ? Workspace.admin
+                : user.workspaces.contains(Workspace.manager)
+                    ? Workspace.manager
+                    : user.workspaces.firstOrNull);
     state = SessionState(user: user, workspace: selected);
   }
 

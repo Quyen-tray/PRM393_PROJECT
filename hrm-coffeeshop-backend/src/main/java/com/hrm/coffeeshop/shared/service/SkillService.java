@@ -37,6 +37,9 @@ public class SkillService {
     @Transactional(readOnly = true)
     public List<SkillView> list() { return skills.findActive().stream().map(SkillService::view).toList(); }
 
+    @Transactional(readOnly = true)
+    public List<SkillView> listIncludingInactive() { SecurityUtils.requireAny(Roles.SYSTEM_ADMIN); return skills.findAll().stream().map(SkillService::view).toList(); }
+
     @Transactional
     public SkillView create(SkillRequest r) {
         String code = r.skillCode().trim().toUpperCase();
@@ -85,7 +88,7 @@ public class SkillService {
     }
 
     private static SkillView view(Skill s) {
-        return new SkillView(s.getSkillId(), s.getSkillCode(), s.getSkillName(), s.getDescription());
+        return new SkillView(s.getSkillId(), s.getSkillCode(), s.getSkillName(), s.getDescription(), s.getIsActive());
     }
 
     private static AssessmentView view(EmployeeSkill a, String skillName) {

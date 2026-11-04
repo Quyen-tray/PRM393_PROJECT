@@ -18,7 +18,7 @@ Form, lookup, camera nằm trên root navigator, có quay lại. Dashboard/check
 
 ## 2. Ma trận màn hình – API – quyền – dữ liệu
 
-Prefix API trong bảng là `/api/v1`. Các màn dùng `OperationsRepository`/`resourceProvider`/`operationProvider`; chấm công có `AttendanceController`, phiên có `SessionController` và `AuthenticatedApi`. Form và các nút ghi không gọi HTTP trực tiếp rải rác trong widget.
+Prefix API trong bảng là `/api/v1`. Các màn dùng `ResourceRepository` trong `shared/resources/`, `resourceProvider`/`operationProvider`; chấm công có `AttendanceController`, phiên có `SessionController` và `AuthenticatedApi`. Cấu hình module/form và thao tác của từng nghiệp vụ nằm trong feature tương ứng; `app/router/module_registry.dart` ghép chúng thành menu/route. Audit CSV có `AuditRepository` riêng. Form và các nút ghi không gọi HTTP trực tiếp rải rác trong widget.
 
 | Nhóm | Route/màn hình | API chính | Guard và phạm vi | Backend/dữ liệu |
 |---|---|---|---|---|
@@ -85,3 +85,28 @@ Enum chưa biết được giữ nguyên để nhận ra thay đổi contract. N
 ## 5. Quyết định chưa tự bổ sung
 
 Giữ [BUSINESS_DECISION_REGISTER.md](BUSINESS_DECISION_REGISTER.md) cho giới hạn thời lượng ca, chính sách OT/retake/device, phân tách người duyệt, scope đa cửa hàng, ảnh hưởng thay đổi policy lên lịch sử, xử lý vi phạm sau điều chỉnh công, công thức lương và kênh push/face/scanner. Các giá trị/chính sách đang có trong source được giữ; không đặt thêm quy tắc để làm demo dễ đạt.
+
+
+## 2026-11-05 — Contract bổ sung cho UI
+
+| Method / path sau /api/v1 | Quyền và xử lý | UI |
+|---|---|---|
+| DELETE /admin/users/{id} | SYSTEM_ADMIN; INACTIVE và revoke refresh token; cấm tự ngừng và bảo vệ Admin cuối | Lưu trữ tài khoản có xác nhận |
+| DELETE /admin/training/courses/{id} | SYSTEM_ADMIN; isActive=false | Ngừng sử dụng khóa học, giữ enrollment/attempt |
+| DELETE /admin/checklist-templates/{id} | SYSTEM_ADMIN; isActive=false | Ngừng sử dụng mẫu, giữ version/task cũ |
+| DELETE /work-shifts/{id} | SYSTEM_ADMIN hoặc STORE_MANAGER; isActive=false | Admin ngừng danh mục ca; lookup không chọn inactive |
+| DELETE /admin/skills/{id} | SYSTEM_ADMIN; isActive=false | Ngừng kỹ năng, giữ assessment |
+| DELETE /admin/reminder-rules/{code} | SYSTEM_ADMIN; ID là mã chuỗi, isActive=false | Dừng nhắc; bật lại trong form |
+| POST /admin/training/courses/{id}/questions | SYSTEM_ADMIN; QuizQuestionRequest | Thêm một câu |
+| PUT /admin/training/courses/{id}/questions/{questionId} | SYSTEM_ADMIN; xác minh câu thuộc khóa, sinh ID mới | Sửa một câu, giữ snapshot |
+| DELETE /admin/training/courses/{id}/questions/{questionId} | SYSTEM_ADMIN; ngừng câu cũ | Xóa một câu; ngân hàng có thể rỗng khi chỉnh sửa |
+| GET /checklists/tasks/{id}/evidence | Scope task; owner hoặc CHECKLIST_REVIEW/EVIDENCE_VIEW | runItemId + evidenceViewUrl ký ngắn hạn |
+| GET /attendance/explanation-requests/{id}/evidence | Scope GET request; ảnh người khác cần EVIDENCE_VIEW | Xem ảnh giải trình |
+| GET /attendance/adjustment-requests/{id}/evidence | Scope GET request; ảnh người khác cần EVIDENCE_VIEW | Xem ảnh điều chỉnh công |
+| GET /attendance/overtime-requests/{id}/evidence | Scope GET OT và authorization attendance verifications | Xem ảnh công liên quan OT |
+
+GET /admin/users thêm q, status, role; pageable/sort giữ nguyên. GET /skills?includeInactive=true chỉ dành Admin; SkillView thêm isActive. ReminderRuleView và request cập nhật thêm isActive.
+
+POST /training/courses/{id}/attempts giữ mapping nhưng trả 409: đã ngừng ghi điểm thủ công. Không tạo enrollment/attempt từ endpoint này.
+
+Với checklist cá nhân, explanation và OT: thiếu status giữ mặc định trước đây; status rỗng là tất cả. Attendance lọc CHECKED_IN/CHECKED_OUT/FINALIZED cùng các chỉ số lateMinutes/earlyLeaveMinutes. Lịch ngày không tự xác nhận vắng/nghỉ.

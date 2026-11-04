@@ -188,27 +188,8 @@ public class TrainingService {
     @Transactional
     public MyTrainingView recordAttempt(Integer courseId,AttemptRequest r) {
         SecurityUtils.requirePermission(Permissions.TRAINING_MANAGE);
-        TrainingCourse c=course(courseId);Employee e=employee(r.employeeId());
-        if(Objects.equals(e.getUserId(),SecurityUtils.current().userId()))
-            throw BusinessException.forbidden("Không thể tự ghi nhận kết quả đào tạo của chính mình");
-        if(!Boolean.TRUE.equals(c.getIsActive()))throw BusinessException.invalidState("Khóa học đã ngưng");
-        boolean scored=!Boolean.FALSE.equals(c.getIsMandatoryTest());
-        if(scored&&(r.score()==null||r.note()==null||r.note().isBlank()))
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR,"Nhập điểm thủ công cần điểm và lý do ghi nhận ngoại lệ");
-        EmployeeTraining t=trainings.lockEnrollment(e.getEmployeeId(),courseId).orElseGet(()->{
-            EmployeeTraining n=new EmployeeTraining();n.setEmployeeId(e.getEmployeeId());n.setCourseId(courseId);return trainings.saveAndFlush(n);
-        });
-        if(validPass(t,clock.instant()))throw BusinessException.invalidState("Khóa học đã đạt và còn hiệu lực");
-        boolean passed=!scored||r.score().compareTo(c.getPassingScore())>=0;Instant now=clock.instant();
-        TrainingAttempt a=new TrainingAttempt();a.setEmployeeId(e.getEmployeeId());a.setCourseId(courseId);
-        a.setAttemptNo(Math.toIntExact(attempts.countByEmployeeIdAndCourseId(e.getEmployeeId(),courseId))+1);
-        a.setScore(r.score());a.setIsPassed(passed);a.setSource("MANUAL");a.setRecordedBy(SecurityUtils.current().userId());
-        a.setAnswersJson(r.note());attempts.save(a);
-        t.setTestScore(r.score());t.setTrainingStatus(passed?"PASSED":"FAILED");
-        t.setCompletedAt(passed?now:null);t.setExpiresAt(passed?expiry(c,now):null);trainings.save(t);
-        audit.log("TRAINING_ATTEMPT","EmployeeTraining",t.getEmployeeTrainingId(),null,Map.of("passed",passed,"source","MANUAL"));
-        notifications.notify(e.getUserId(),"TRAINING_RESULT","Kết quả đào tạo",c.getCourseName(), "EmployeeTraining",t.getEmployeeTrainingId(),null);
-        return enrollmentView(t,c,e);
+        throw BusinessException.invalidState("Đã ngừng ghi điểm thủ công. Nhân viên cần ghi danh và làm bài kiểm tra hoặc gửi yêu cầu xác nhận hoàn thành.");
+
     }
     static Instant expiry(TrainingCourse c,Instant now) {
         return c.getValidityMonths()==null?null:ZonedDateTime.ofInstant(now,TimeUtils.ZONE).plusMonths(c.getValidityMonths()).toInstant();
