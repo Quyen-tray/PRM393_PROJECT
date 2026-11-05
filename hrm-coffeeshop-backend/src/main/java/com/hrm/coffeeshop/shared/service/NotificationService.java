@@ -7,6 +7,7 @@ import com.hrm.coffeeshop.repository.NotificationRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -66,8 +67,9 @@ public class NotificationService {
 
     @Transactional(readOnly = true)
     public Page<Notification> mine(Long userId, boolean unreadOnly, Pageable p) {
-        return unreadOnly ? repo.findByUserIdAndReadAtIsNullOrderByCreatedAtDesc(userId, p)
-                : repo.findByUserIdOrderByCreatedAtDesc(userId, p);
+        Pageable page = notificationPage(p);
+        return unreadOnly ? repo.findByUserIdAndReadAtIsNull(userId, page)
+                : repo.findByUserId(userId, page);
     }
 
     @Transactional(readOnly = true)
@@ -85,7 +87,20 @@ public class NotificationService {
 
     @Transactional(readOnly = true)
     public Page<Notification> deliveries(String status, Pageable p) {
-        return status == null || status.isBlank() ? repo.findAll(PageRequest.of(p.getPageNumber(), p.getPageSize(), p.getSort().isSorted() ? p.getSort() : org.springframework.data.domain.Sort.by("createdAt").descending()))
-                : repo.findByDeliveryStatusOrderByCreatedAtDesc(status, p);
+        Pageable page = notificationPage(p);
+        return status == null || status.isBlank() ? repo.findAll(page)
+                : repo.findByDeliveryStatus(status, page);
+    }
+
+    private Pageable notificationPage(Pageable p) {
+        // Apply ordering only through Pageable so a client sort is not appended
+        // to a fixed repository ORDER BY on the same column.
+        Sort sort = p.getSort().isSorted() ? p.getSort() : Sort.by("createdAt").descending();
+        if (sort.getOrderFor("notificationId") == null) {
+            Sort.Order createdAt = sort.getOrderFor("createdAt");
+            Sort.Direction direction = createdAt == null ? Sort.Direction.DESC : createdAt.getDirection();
+            sort = sort.and(Sort.by(direction, "notificationId"));
+        }
+        return PageRequest.of(p.getPageNumber(), p.getPageSize(), sort);
     }
 }

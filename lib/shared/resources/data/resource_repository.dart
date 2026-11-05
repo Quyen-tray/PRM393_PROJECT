@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hrm_coffee_shop_flutter/core/network/authenticated_api.dart';
+import 'package:hrm_coffee_shop_flutter/core/network/api_exception.dart';
 import 'package:hrm_coffee_shop_flutter/core/network/api_providers.dart';
 import 'package:hrm_coffee_shop_flutter/features/auth/data/session_controller.dart';
 
@@ -73,11 +74,17 @@ final dataRevisionProvider = NotifierProvider<DataRevision, int>(
   DataRevision.new,
 );
 final resourceProvider = FutureProvider.autoDispose
-    .family<dynamic, ResourceQuery>((ref, query) async {
-  ref.watch(dataRevisionProvider);
-  ref.watch(sessionProvider.select((s) => s.user));
-  return ref.watch(resourceRepositoryProvider).read(query.path, query.query);
-});
+    .family<dynamic, ResourceQuery>(
+  (ref, query) async {
+    ref.watch(dataRevisionProvider);
+    ref.watch(sessionProvider.select((s) => s.user));
+    return ref.watch(resourceRepositoryProvider).read(query.path, query.query);
+  },
+  // Surface API failures immediately; ResourceView provides an explicit retry.
+  retry: (retryCount, error) => error is ApiException
+      ? null
+      : ProviderContainer.defaultRetry(retryCount, error),
+);
 
 class OperationState {
   const OperationState({this.busy = const {}, this.errors = const {}});

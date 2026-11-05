@@ -13,10 +13,10 @@ import java.util.*;
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
 
     boolean existsByDedupKey(String dedupKey);
-    Page<Notification> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable p);
-    Page<Notification> findByUserIdAndReadAtIsNullOrderByCreatedAtDesc(Long userId, Pageable p);
+    Page<Notification> findByUserId(Long userId, Pageable p);
+    Page<Notification> findByUserIdAndReadAtIsNull(Long userId, Pageable p);
     long countByUserIdAndReadAtIsNull(Long userId);
-    Page<Notification> findByDeliveryStatusOrderByCreatedAtDesc(String status, Pageable p);
+    Page<Notification> findByDeliveryStatus(String status, Pageable p);
     List<Notification> findTop100ByDeliveryStatusOrderByCreatedAtAsc(String status);
 
     /** Nhận xử lý một thông báo: chỉ thành công khi bản ghi còn PENDING và số lần thử chưa đổi (chống gửi trùng nhiều instance). */
