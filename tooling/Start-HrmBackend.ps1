@@ -1,9 +1,10 @@
 param(
-    [int]$Port = 8081,
+    [int]$Port = 8080,
     [switch]$TestDatabase,
     [switch]$ApplyMigration
 )
 $ErrorActionPreference = 'Stop'
+if ($TestDatabase -and -not $PSBoundParameters.ContainsKey('Port')) { $Port = 8081 }
 $backendRoot = (Resolve-Path (Join-Path $PSScriptRoot '../hrm-coffeeshop-backend')).Path
 $localEnv = Join-Path $backendRoot '.env'
 if (Test-Path -LiteralPath $localEnv) {

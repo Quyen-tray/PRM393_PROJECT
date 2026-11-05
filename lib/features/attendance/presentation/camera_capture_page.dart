@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 import '../../../core/presentation/resource_widgets.dart';
 
 class CameraCapturePage extends StatefulWidget {
-  const CameraCapturePage({super.key});
+  const CameraCapturePage({this.forChecklist = false, super.key});
+  final bool forChecklist;
   @override
   State<CameraCapturePage> createState() => _CameraCapturePageState();
 }
@@ -46,8 +47,11 @@ class _CameraCapturePageState extends State<CameraCapturePage>
         if (switchCamera) {
           index = (index + 1) % cameras.length;
         } else {
-          final front = cameras
-              .indexWhere((c) => c.lensDirection == CameraLensDirection.front);
+          final front = cameras.indexWhere((c) =>
+              c.lensDirection ==
+              (widget.forChecklist
+                  ? CameraLensDirection.back
+                  : CameraLensDirection.front));
           index = front < 0 ? 0 : front;
         }
         if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
@@ -120,7 +124,9 @@ class _CameraCapturePageState extends State<CameraCapturePage>
       appBar: AppBar(
           backgroundColor: Colors.black,
           foregroundColor: Colors.white,
-          title: const Text('Ảnh chấm công'),
+          title: Text(widget.forChecklist
+              ? 'Ảnh minh chứng công việc'
+              : 'Ảnh chấm công'),
           actions: [
             if (photo == null && cameras.length > 1)
               IconButton(
@@ -156,10 +162,13 @@ class _CameraCapturePageState extends State<CameraCapturePage>
                                 : const SizedBox.shrink())),
         if (error != null && controller != null)
           Padding(padding: const EdgeInsets.all(12), child: ErrorPanel(error!)),
-        const Padding(
+        Padding(
             padding: EdgeInsets.all(16),
-            child: Text('Chụp rõ mặt để lưu bằng chứng chấm công.',
-                style: TextStyle(color: Colors.white70))),
+            child: Text(
+                widget.forChecklist
+                    ? 'Chụp rõ khu vực và kết quả công việc để quản lý kiểm tra.'
+                    : 'Chụp rõ mặt để lưu bằng chứng chấm công.',
+                style: const TextStyle(color: Colors.white70))),
         Padding(
             padding: const EdgeInsets.only(bottom: 24),
             child: photo == null

@@ -27,10 +27,29 @@ class AttendanceState {
   final bool busy;
   final String? message;
   final Object? error;
+  bool get photoRequired => shift?['photoRequired'] != false;
+  bool get flexibleTesting => shift?['flexibleTesting'] == true;
+  bool get finished =>
+      ['CHECKED_OUT', 'FINALIZED'].contains(shift?['attendanceStatus']);
+  List<Json> get shiftChoices =>
+      ResourcePage.parse(shift?['shiftChoices']).items;
   bool get checkout =>
       shift?['attendanceId'] != null &&
       !['CHECKED_OUT', 'FINALIZED'].contains(shift?['attendanceStatus']);
 }
+
+class AttendanceSelection extends Notifier<int?> {
+  @override
+  int? build() {
+    ref.watch(sessionProvider.select((session) => session.user?.id));
+    return null;
+  }
+
+  void select(int? id) => state = id;
+}
+
+final selectedAttendanceAssignmentProvider =
+    NotifierProvider<AttendanceSelection, int?>(AttendanceSelection.new);
 
 final attendanceControllerProvider =
     AsyncNotifierProvider.autoDispose<AttendanceController, AttendanceState>(
@@ -38,12 +57,21 @@ final attendanceControllerProvider =
 );
 
 class AttendanceController extends AsyncNotifier<AttendanceState> {
+  int? _lastAssignmentId;
+  Json get _selectionQuery => {
+        if (ref.read(selectedAttendanceAssignmentProvider) != null)
+          'assignmentId': ref.read(selectedAttendanceAssignmentProvider),
+      };
   @override
   Future<AttendanceState> build() async {
+    final selection = ref.watch(selectedAttendanceAssignmentProvider);
+    final message =
+        _lastAssignmentId == selection ? state.asData?.value.message : null;
+    _lastAssignmentId = selection;
     ref.watch(dataRevisionProvider);
     final api = ref.watch(resourceRepositoryProvider);
     final result = await Future.wait([
-      api.read('/attendance/me/current'),
+      api.read('/attendance/me/current', _selectionQuery),
       api.read('/stores/current'),
       api.read('/attendance/devices/current'),
     ]);
@@ -55,7 +83,44 @@ class AttendanceController extends AsyncNotifier<AttendanceState> {
       store: json(result[1]),
       device: result[2] == null ? null : json(result[2]),
       pending: stored == null ? null : json(jsonDecode(stored)),
+      message: message,
     );
+  }
+
+  void selectAssignment(int id) {
+    final current = state.asData?.value;
+    if (current?.busy == true || current?.pending != null) return;
+    ref.read(selectedAttendanceAssignmentProvider.notifier).select(id);
+  }
+
+  Future<void> nextTestSession() async {
+    final old = state.asData?.value;
+    if (old == null ||
+        old.busy ||
+        !old.flexibleTesting ||
+        !old.finished ||
+        old.pending != null) {
+      return;
+    }
+    state = AsyncData(AttendanceState(
+        shift: old.shift, store: old.store, device: old.device, busy: true));
+    try {
+      final result = json(await ref
+          .read(resourceRepositoryProvider)
+          .write('POST', '/attendance/testing/next-session', {
+        'assignmentId': old.shift!['shiftAssignmentId'],
+      }));
+      ref
+          .read(selectedAttendanceAssignmentProvider.notifier)
+          .select((result['shiftAssignmentId'] as num).toInt());
+      ref.read(dataRevisionProvider.notifier).changed();
+    } catch (error) {
+      state = AsyncData(AttendanceState(
+          shift: old.shift,
+          store: old.store,
+          device: old.device,
+          error: error));
+    }
   }
 
   void setPhoto(Uint8List photo) {
@@ -87,7 +152,7 @@ class AttendanceController extends AsyncNotifier<AttendanceState> {
       ),
     );
     try {
-      final position = await actualLocation();
+      final position = await ref.read(locationProvider)();
       state = AsyncData(
         AttendanceState(
           shift: old.shift,
@@ -137,19 +202,21 @@ class AttendanceController extends AsyncNotifier<AttendanceState> {
             message: 'Ca hoặc thiết bị chưa sẵn sàng. Hãy tải lại thông tin.',
           );
         }
-        if (old.photo == null) {
+        if (old.photoRequired && old.photo == null) {
           throw const ApiException(
             message: 'Cần chụp ảnh trước khi chấm công.',
           );
         }
         // Measure just before submitting, so a slow upload cannot make the GPS sample stale.
-        final photoKey = await api.upload(
-          old.photo!,
-          'image/jpeg',
-          'ATTENDANCE',
-        );
-        final p = await actualLocation();
-        final checkout = old.shift!['canCheckOut'] == true;
+        final photoKey = old.photo == null
+            ? null
+            : await api.upload(
+                old.photo!,
+                'image/jpeg',
+                'ATTENDANCE',
+              );
+        final p = await ref.read(locationProvider)();
+        final checkout = old.checkout;
         final body = <String, dynamic>{
           if (checkout)
             'attendanceId': old.shift!['attendanceId']
@@ -162,10 +229,11 @@ class AttendanceController extends AsyncNotifier<AttendanceState> {
             'accuracyMeters': p.accuracy,
             'capturedAt': p.timestamp.toUtc().toIso8601String(),
           },
-          'photoEvidence': {
-            'storageKey': photoKey,
-            'cameraPermissionGranted': true,
-          },
+          if (photoKey != null)
+            'photoEvidence': {
+              'storageKey': photoKey,
+              'cameraPermissionGranted': true,
+            },
           'idempotencyKey': randomKey(),
         };
         pending = {
@@ -192,7 +260,7 @@ class AttendanceController extends AsyncNotifier<AttendanceState> {
       try {
         current = await ref
             .read(resourceRepositoryProvider)
-            .read('/attendance/me/current');
+            .read('/attendance/me/current', _selectionQuery);
       } catch (error) {
         reloadError = error;
       }

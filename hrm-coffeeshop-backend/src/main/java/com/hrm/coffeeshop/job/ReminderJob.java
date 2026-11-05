@@ -11,6 +11,7 @@ import com.hrm.coffeeshop.domain.ShiftAssignment;
 import com.hrm.coffeeshop.repository.AttendanceRepository;
 import com.hrm.coffeeshop.repository.ReminderRuleRepository;
 import com.hrm.coffeeshop.repository.ChecklistTaskRepository;
+import com.hrm.coffeeshop.repository.ChecklistReviewRepository;
 import com.hrm.coffeeshop.repository.ShiftAssignmentRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,7 +31,7 @@ import java.util.List;
 @Component
 public class ReminderJob {
     private static final Logger log = LoggerFactory.getLogger(ReminderJob.class);
-    private static final List<String> OPEN = List.of("PENDING", "IN_PROGRESS", "OVERDUE");
+    private static final List<String> OPEN = List.of("PENDING", "IN_PROGRESS", "OVERDUE", "REJECTED");
 
     private final ShiftAssignmentRepository schedules;
     private final AttendanceRepository attendance;
@@ -41,10 +42,11 @@ public class ReminderJob {
     private final PersonLookup people;
     private final TransactionTemplate tx;
     private final Clock clock;
+    private final ChecklistReviewRepository reviews;
 
     public ReminderJob(ShiftAssignmentRepository schedules, AttendanceRepository attendance, ChecklistTaskRepository runs,
                        NotificationService notifications, ViolationService violations, ReminderRuleRepository rules,
-                       PersonLookup people, TransactionTemplate tx, Clock clock) {
+                       PersonLookup people, TransactionTemplate tx, Clock clock, ChecklistReviewRepository reviews) {
         this.schedules = schedules;
         this.attendance = attendance;
         this.runs = runs;
@@ -54,6 +56,7 @@ public class ReminderJob {
         this.people = people;
         this.tx = tx;
         this.clock = clock;
+        this.reviews = reviews;
     }
 
     @Scheduled(fixedDelay = 60_000, initialDelay = 30_000)
@@ -100,11 +103,11 @@ public class ReminderJob {
         int interval = Math.max(1, intervalOf("CHECKLIST_OVERDUE", 5));
         int max = Math.max(1, maxOf("CHECKLIST_OVERDUE", 3));
 
-        if(enabled("CHECKLIST_DUE_SOON")) for (ChecklistTask r : runs.findDueBetween(now, now.plus(Duration.ofMinutes(soon)), List.of("PENDING", "IN_PROGRESS"))) {
+        if(enabled("CHECKLIST_DUE_SOON")) for (ChecklistTask r : runs.findDueBetween(now, now.plus(Duration.ofMinutes(soon)), List.of("PENDING", "IN_PROGRESS", "REJECTED"))) {
             try {
                 tx.executeWithoutResult(st -> notifications.notify(people.userIdOf(r.getEmployeeId()), "CHECKLIST_DUE_SOON",
                         "Checklist sắp đến hạn", "Checklist #" + r.getChecklistTaskId() + " sắp đến hạn.", "ChecklistTask",
-                        r.getChecklistTaskId(), "CHECKLIST_DUE_SOON:" + r.getChecklistTaskId()));
+                        r.getChecklistTaskId(), "CHECKLIST_DUE_SOON:" + r.getChecklistTaskId() + reviewCycle(r)));
             } catch (Exception e) { log.warn("due-soon skipped for {}: {}", r.getChecklistTaskId(), e.getMessage()); }
         }
 
@@ -118,11 +121,18 @@ public class ReminderJob {
                     if(enabled("CHECKLIST_OVERDUE")) for (int k = 1; k <= due; k++)
                         notifications.notify(people.userIdOf(run.getEmployeeId()), "CHECKLIST_OVERDUE", "Checklist đã quá hạn",
                                 "Nhắc lần " + k + "/" + max + " cho checklist #" + run.getChecklistTaskId(), "ChecklistTask",
-                                run.getChecklistTaskId(), "CHECKLIST_OVERDUE:" + run.getChecklistTaskId() + ":" + k);
+                                run.getChecklistTaskId(), "CHECKLIST_OVERDUE:" + run.getChecklistTaskId() + reviewCycle(run) + ":" + k);
                     // Sau khi hết số lần nhắc mà vẫn chưa nộp → ghi nhận vi phạm (chờ quản lý xác nhận, không tự khấu trừ)
-                    if (overdueMinutes >= (long) max * interval) violations.recordChecklistMissed(run.getEmployeeId(), run.getChecklistTaskId());
+                    if (enabled("CHECKLIST_OVERDUE") && overdueMinutes >= (long) max * interval)
+                        violations.recordChecklistMissed(run.getEmployeeId(), run.getChecklistTaskId());
                 });
             } catch (Exception e) { log.warn("overdue handling skipped for {}: {}", r.getChecklistTaskId(), e.getMessage()); }
         }
+    }
+
+    private String reviewCycle(ChecklistTask run) {
+        return reviews.findFirstByChecklistTaskIdOrderByReviewedAtDesc(run.getChecklistTaskId())
+                .filter(r -> "REJECTED".equals(r.getDecision()))
+                .map(r -> ":review:" + r.getChecklistReviewId()).orElse("");
     }
 }

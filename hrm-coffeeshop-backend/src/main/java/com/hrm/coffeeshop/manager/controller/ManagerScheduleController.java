@@ -45,7 +45,8 @@ public class ManagerScheduleController {
     public ApiResponse<PageResponse<AssignmentView>> list(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(required = false) Long employeeId, @PageableDefault(size = 50) Pageable p) {
+            @RequestParam(required = false) Long employeeId,
+            @PageableDefault(size = 50, sort = "plannedStartAt") Pageable p) {
         return ApiResponse.ok(svc.search(from, to, employeeId, p));
     }
 

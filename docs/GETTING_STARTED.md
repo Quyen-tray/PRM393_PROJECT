@@ -69,7 +69,7 @@ Copy-Item env.example.json env.json
 
 Sau đó điền `GOOGLE_SERVER_CLIENT_ID` trong `env.json`. Hướng dẫn tạo Client ID, cấu hình Gmail test user và Android SHA-1 nằm trong [hướng dẫn đăng nhập Google](../hrm-coffeeshop-backend/docs/GOOGLE_LOGIN.md).
 
-Khi dùng script khởi động bên dưới, cấu hình địa chỉ API được tạo tự động: Android emulator gọi `10.0.2.2:8081`, còn web gọi `127.0.0.1:8081`.
+Khi dùng script khởi động bên dưới, cấu hình địa chỉ API được tạo tự động: Android emulator gọi `127.0.0.1:8080` qua `adb reverse`, còn web gọi `127.0.0.1:8080`. Khi chạy Flutter trực tiếp từ IDE với `env.json`, Android emulator gọi `10.0.2.2:8080`.
 
 ## 5. Tải dependencies lần đầu hoặc sau khi dependency thay đổi
 
@@ -99,7 +99,7 @@ Từ thư mục gốc dự án:
 powershell -NoProfile -ExecutionPolicy Bypass -File tooling/Start-HrmBackend.ps1
 ```
 
-Backend chạy ở cổng `8081`; Swagger UI ở `http://localhost:8081/swagger-ui.html`.
+Backend chạy ở cổng `8080`; Swagger UI ở `http://localhost:8080/swagger-ui.html`.
 
 Nếu đang kết nối database cũ cần migration v3, dùng cờ dưới đây **một lần**:
 
@@ -137,7 +137,9 @@ Mở `http://127.0.0.1:5000` trong trình duyệt. Khi dừng một tiến trìn
 | Lỗi thiếu JWT secret | Đặt `JWT_SECRET` trong `.env`; giá trị cần ít nhất 32 ký tự. |
 | Maven báo thiếu dependency khi chạy script | Chạy `mvn -f hrm-coffeeshop-backend/pom.xml dependency:go-offline` khi có kết nối mạng. |
 | Flutter không tìm thấy `emulator-5554` | Khởi động emulator Android; kiểm tra tên thiết bị bằng `flutter devices`. |
+| App mở ra màn hình đen trên máy ảo `nvb` | Dừng `flutter run` bằng `q`, tắt máy ảo, rồi chọn **Device Manager → nvb → Cold Boot Now** và chạy lại lệnh Flutter cũ. Đã xác nhận snapshot Fast Boot lỗi có thể làm màn hình đen dù Flutter đã dựng xong trang đăng nhập; Cold Boot giữ nguyên ứng dụng và dữ liệu. Không cần Wipe Data hoặc đổi cổng backend. |
 | Đăng nhập Google thất bại | So khớp `GOOGLE_CLIENT_ID` và `GOOGLE_SERVER_CLIENT_ID`, kiểm tra Gmail đã được cấp tài khoản và nằm trong OAuth Test users nếu ứng dụng còn ở chế độ Testing. |
+| `Could not decrypt key` khi mở app sau khi cài lại | Dừng hẳn Flutter bằng `q`, rồi chạy lại để nạp kho phiên `hrm_session_v2` và quy tắc backup mới. Đăng nhập Google lại một lần. Nếu tài khoản nhân viên cần chấm công, đăng ký và duyệt lại thiết bị khi app yêu cầu vì khóa bản cài đặt cũ không đọc được. |
 
 ## Sau mỗi lần `git pull`
 

@@ -10,7 +10,15 @@ abstract interface class SessionStore {
 
 class SecureSessionStore implements SessionStore {
   final FlutterSecureStorage storage;
-  const SecureSessionStore([this.storage = const FlutterSecureStorage()]);
+  // Isolate the app's keys from legacy preferences restored without their Keystore keys.
+  static const _defaultStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      storageNamespace: 'hrm_session_v2',
+      resetOnError: true,
+      migrateWithBackup: true,
+    ),
+  );
+  const SecureSessionStore([this.storage = _defaultStorage]);
   @override
   Future<String?> read(String key) => storage.read(key: key);
   @override

@@ -20,7 +20,7 @@ public interface ShiftAssignmentRepository extends JpaRepository<ShiftAssignment
                                            @Param("end") Instant end, @Param("excludeId") Long excludeId);
 
     @Query("select s from ShiftAssignment s where s.workDate between :from and :to "
-         + "and (:employeeId = 0L or s.employeeId = :employeeId) order by s.plannedStartAt")
+         + "and (:employeeId = 0L or s.employeeId = :employeeId)")
     Page<ShiftAssignment> search(@Param("from") LocalDate from, @Param("to") LocalDate to,
                                   @Param("employeeId") Long employeeId, Pageable p);
 

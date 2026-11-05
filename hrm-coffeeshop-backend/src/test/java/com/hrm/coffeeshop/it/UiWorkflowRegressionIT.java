@@ -51,7 +51,7 @@ class UiWorkflowRegressionIT extends IntegrationTestBase {
         var run=call(manager,"POST","/checklists/instances/generate",Map.of("templateId",template,"employeeId",employeeId,"workDate","2038-06-10"),201);
         long task=run.path("taskId").asLong(),item=run.path("items").get(0).path("runItemId").asLong();
         call(employee,"POST","/checklists/tasks/"+task+"/start",Map.of(),200);
-        String key="checklist-evidence/"+employeeId+"/20380610/"+UUID.randomUUID()+".jpg";storage.store(key,new byte[]{(byte)255,(byte)216,(byte)255,0});
+        String key="checklist-evidence/"+employeeId+"/"+UUID.randomUUID()+".jpg";storage.store(key,new byte[]{(byte)255,(byte)216,(byte)255,0});
         call(employee,"POST","/checklists/tasks/"+task+"/items/"+item+"/complete",Map.of("evidenceStorageKey",key),200);
         var evidence=call(manager,"GET","/checklists/tasks/"+task+"/evidence",null,200);
         assertEquals(item,evidence.get(0).path("runItemId").asLong());assertTrue(evidence.get(0).path("evidenceViewUrl").asText().contains("sig="));

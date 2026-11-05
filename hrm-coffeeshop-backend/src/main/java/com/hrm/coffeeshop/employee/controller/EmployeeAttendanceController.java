@@ -8,6 +8,7 @@ import com.hrm.coffeeshop.shared.dto.AttendanceDto.CheckInResponse;
 import com.hrm.coffeeshop.shared.dto.AttendanceDto.CheckOutRequest;
 import com.hrm.coffeeshop.shared.dto.AttendanceDto.CheckOutResponse;
 import com.hrm.coffeeshop.shared.dto.AttendanceDto.CurrentShiftView;
+import com.hrm.coffeeshop.shared.dto.AttendanceDto.NextTestSessionRequest;
 import com.hrm.coffeeshop.shared.dto.AttendanceDto.ExceptionView;
 import com.hrm.coffeeshop.shared.dto.AttendanceDto.ExplanationRequest;
 import com.hrm.coffeeshop.shared.dto.AttendanceDto.OvertimeRequestDto;
@@ -76,7 +77,16 @@ public class EmployeeAttendanceController {
     }
 
     @GetMapping("/me/current")
-    public ApiResponse<CurrentShiftView> current(@RequestHeader(value = "X-Device-Credential", required = false) String credential) { return ApiResponse.ok(svc.current(credential)); }
+    public ApiResponse<CurrentShiftView> current(@RequestHeader(value = "X-Device-Credential", required = false) String credential,
+                                                @RequestParam(required = false) Long assignmentId) {
+        return ApiResponse.ok(svc.current(credential, assignmentId));
+    }
+
+    @PostMapping("/testing/next-session")
+    public ApiResponse<CurrentShiftView> nextTestSession(@Valid @RequestBody NextTestSessionRequest request,
+            @RequestHeader(value = "X-Device-Credential", required = false) String credential) {
+        return ApiResponse.ok("Sẵn sàng chấm công lượt mới", svc.nextTestSession(request.assignmentId(), credential));
+    }
 
     @GetMapping("/me")
     public ApiResponse<PageResponse<AttendanceView>> mine(

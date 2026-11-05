@@ -185,6 +185,11 @@ public class ChecklistService {
         ShiftAssignment sc = null;
         if (scheduleId != null) {
             sc = schedules.findById(scheduleId).orElseThrow(() -> BusinessException.notFound("phân ca"));
+            if (!"PUBLISHED".equals(sc.getScheduleStatus())) throw BusinessException.rule("Ca đã hủy hoặc đã kết thúc nghiệp vụ");
+            if (employeeId != null && !employeeId.equals(sc.getEmployeeId()))
+                throw BusinessException.rule("Nhân viên được giao phải trùng với nhân viên của ca đã chọn");
+            if (r.workDate() != null && !r.workDate().equals(sc.getWorkDate()))
+                throw BusinessException.rule("Ngày thực hiện phải trùng với ngày của ca đã chọn");
             if (employeeId == null) employeeId = sc.getEmployeeId();
         }
         if (employeeId == null) throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Cần scheduleId hoặc employeeId");
@@ -289,7 +294,8 @@ public class ChecklistService {
                 throw new BusinessException(ErrorCode.VALIDATION_ERROR, "evidenceStorageKey phải nằm trong checklist-evidence/");
             saveEvidence(run, ri, key);
         }
-        if (Boolean.TRUE.equals(it.getRequiresEvidence()) && !evidences.existsByChecklistTaskItemId(ri.getChecklistTaskItemId()))
+        if (Boolean.TRUE.equals(it.getRequiresEvidence()) && currentEvidence(run).stream()
+                .noneMatch(e -> e.getChecklistTaskItemId().equals(ri.getChecklistTaskItemId())))
             throw new BusinessException(ErrorCode.CHECKLIST_EVIDENCE_REQUIRED, "Mục này bắt buộc có minh chứng",
                     BusinessException.details("runItemId", runItemId));
         ri.setIsCompleted(true);
@@ -308,10 +314,6 @@ public class ChecklistService {
         ChecklistTaskItem ri = runItems.findById(r.runItemId()).filter(x -> x.getChecklistTaskId().equals(taskId))
                 .orElseThrow(() -> BusinessException.notFound("mục checklist"));
         String key = r.evidenceStorageKey().trim();
-        // Khóa phải có dạng checklist-evidence/{employeeId của người đang thao tác}/{uuid}.ext
-        EvidenceKeys.requireOwnedChecklistEvidence(key, SecurityUtils.requireEmployeeId());
-        if (!storage.exists(key))
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Minh chứng chưa được tải lên hoặc đã bị xóa");
         saveEvidence(run, ri, key);
         return runView(run, true);
     }
@@ -325,7 +327,7 @@ public class ChecklistService {
         Map<Integer, ChecklistTemplateItem> tmpl = new HashMap<>();
         items.findByChecklistTemplateIdOrderBySortOrderAsc(t.getChecklistTemplateId()).forEach(i -> tmpl.put(i.getChecklistTemplateItemId(), i));
         Set<Long> withEvidence = new HashSet<>();
-        evidences.findByChecklistTaskId(taskId).forEach(e -> withEvidence.add(e.getChecklistTaskItemId()));
+        currentEvidence(run).forEach(e -> withEvidence.add(e.getChecklistTaskItemId()));
         List<Long> missing = new ArrayList<>(), noEvidence = new ArrayList<>();
         for (ChecklistTaskItem ri : runItems.findByChecklistTaskIdOrderByChecklistTaskItemIdAsc(taskId)) {
             ChecklistTemplateItem it = tmpl.get(ri.getChecklistTemplateItemId());
@@ -373,6 +375,11 @@ public class ChecklistService {
         ChecklistTask run = reviewable(taskId);
         run.setRunStatus("REJECTED");
         run.setManagerStatus("REJECTED");
+        for (ChecklistTaskItem item : runItems.findByChecklistTaskIdOrderByChecklistTaskItemIdAsc(taskId)) {
+            item.setIsCompleted(false);
+            item.setCompletedAt(null);
+            item.setCompletedBy(null);
+        }
         finish(run, "REJECTED", reason.trim());
         audit.log("CHECKLIST_REJECT", "ChecklistTask", taskId, Map.of("status", "SUBMITTED"), Map.of("status", "REJECTED", "reason", reason));
         notifications.notify(people.userIdOf(run.getEmployeeId()), "CHECKLIST_REVIEWED", "Checklist bị từ chối - cần làm lại",
@@ -403,6 +410,14 @@ public class ChecklistService {
 
     /** Minh chứng: mỗi ảnh/tệp một dòng ChecklistEvidence (SRS 7.4). */
     private void saveEvidence(ChecklistTask run, ChecklistTaskItem ri, String key) {
+        EvidenceKeys.requireOwnedChecklistEvidence(key, SecurityUtils.requireEmployeeId());
+        if (!storage.exists(key))
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Minh chứng chưa được tải lên hoặc đã bị xóa");
+        Instant rejectedAt = reviews.findFirstByChecklistTaskIdOrderByReviewedAtDesc(run.getChecklistTaskId())
+                .filter(r -> "REJECTED".equals(r.getDecision())).map(ChecklistReview::getReviewedAt).orElse(null);
+        if (rejectedAt != null && evidences.findByChecklistTaskId(run.getChecklistTaskId()).stream()
+                .anyMatch(e -> key.equals(e.getStorageKey()) && !e.getUploadedAt().isAfter(rejectedAt)))
+            throw new BusinessException(ErrorCode.CHECKLIST_EVIDENCE_REQUIRED, "Cần tải ảnh mới sau khi quản lý yêu cầu làm lại");
         ChecklistEvidence ev = new ChecklistEvidence();
         ev.setChecklistTaskId(run.getChecklistTaskId());
         ev.setChecklistTaskItemId(ri.getChecklistTaskItemId());
@@ -410,6 +425,13 @@ public class ChecklistService {
         ev.setUploadedBy(SecurityUtils.current().userId());
         ev.setUploadedAt(clock.instant());
         evidences.save(ev);
+    }
+
+    private List<ChecklistEvidence> currentEvidence(ChecklistTask run) {
+        Instant rejectedAt = reviews.findFirstByChecklistTaskIdOrderByReviewedAtDesc(run.getChecklistTaskId())
+                .filter(r -> "REJECTED".equals(r.getDecision())).map(ChecklistReview::getReviewedAt).orElse(null);
+        return evidences.findByChecklistTaskId(run.getChecklistTaskId()).stream()
+                .filter(e -> rejectedAt == null || e.getUploadedAt().isAfter(rejectedAt)).toList();
     }
 
     private String latestReviewReason(ChecklistTask run) {
@@ -450,7 +472,7 @@ public class ChecklistService {
             Map<Integer, ChecklistTemplateItem> tm = new HashMap<>();
             items.findByChecklistTemplateIdOrderBySortOrderAsc(t.getChecklistTemplateId()).forEach(i -> tm.put(i.getChecklistTemplateItemId(), i));
             Set<Long> hasEvidence = new HashSet<>();
-            evidences.findByChecklistTaskId(run.getChecklistTaskId()).forEach(e -> hasEvidence.add(e.getChecklistTaskItemId()));
+            currentEvidence(run).forEach(e -> hasEvidence.add(e.getChecklistTaskItemId()));
             iv = runItems.findByChecklistTaskIdOrderByChecklistTaskItemIdAsc(run.getChecklistTaskId()).stream().map(ri -> {
                 ChecklistTemplateItem it = tm.get(ri.getChecklistTemplateItemId());
                 return new RunItemView(ri.getChecklistTaskItemId(), ri.getChecklistTemplateItemId(), it == null ? null : it.getItemName(),

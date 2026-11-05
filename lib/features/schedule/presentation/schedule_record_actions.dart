@@ -4,6 +4,7 @@ import 'package:hrm_coffee_shop_flutter/shared/resources/data/resource_repositor
 import 'package:go_router/go_router.dart';
 import 'package:hrm_coffee_shop_flutter/core/presentation/resource_widgets.dart';
 import 'package:hrm_coffee_shop_flutter/features/attendance_requests/domain/attendance_request_fields.dart';
+import '../../attendance/data/attendance_controller.dart';
 
 List<Widget> buildScheduleRecordActions(RecordActionContext record) {
   final context = record.context;
@@ -20,7 +21,12 @@ List<Widget> buildScheduleRecordActions(RecordActionContext record) {
     if (own && status == 'PUBLISHED') {
       actions.add(
         FilledButton.icon(
-          onPressed: () => context.push('/attendance/check-in'),
+          onPressed: () {
+            record.ref
+                .read(selectedAttendanceAssignmentProvider.notifier)
+                .select(int.parse(id));
+            context.push('/attendance/check-in');
+          },
           icon: const Icon(Icons.fingerprint),
           label: const Text('Mở trang chấm công'),
         ),

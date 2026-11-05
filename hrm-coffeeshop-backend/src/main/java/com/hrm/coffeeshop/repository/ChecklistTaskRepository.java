@@ -18,6 +18,7 @@ public interface ChecklistTaskRepository extends JpaRepository<ChecklistTask, Lo
     List<ChecklistTask> findByEmployeeIdAndRunStatus(Long employeeId, String status);
     long countByRunStatus(String status);
     List<ChecklistTask> findByDueAtBetween(Instant from, Instant to);
+    List<ChecklistTask> findByDueAtGreaterThanEqualAndDueAtLessThan(Instant from, Instant to);
 
     @Query("select r from ChecklistTask r where r.employeeId = :employeeId and r.runStatus in :statuses order by r.dueAt")
     List<ChecklistTask> findMine(@Param("employeeId") Long employeeId, @Param("statuses") Collection<String> statuses);

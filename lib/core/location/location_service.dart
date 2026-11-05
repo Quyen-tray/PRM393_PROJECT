@@ -1,5 +1,9 @@
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hrm_coffee_shop_flutter/core/network/api_exception.dart';
+
+final locationProvider =
+    Provider<Future<Position> Function()>((ref) => actualLocation);
 
 Future<Position> actualLocation() async {
   if (!await Geolocator.isLocationServiceEnabled()) {

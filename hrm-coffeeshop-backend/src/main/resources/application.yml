@@ -55,6 +55,8 @@ app:
     max-upload-bytes: 8388608         # 8 MB / ảnh (ATTENDANCE, CHECKLIST)
     max-document-bytes: 10485760      # 10 MB / hồ sơ HR (PDF, ảnh) — DEC-PDF
   attendance:
+    flexible-testing-enabled: ${ATTENDANCE_FLEXIBLE_TESTING_ENABLED:false}
+    photo-sample-percent: ${ATTENDANCE_PHOTO_SAMPLE_PERCENT:50}
     gps-max-accuracy-meters: 50       # D-05: cần chốt sau khi thử thực địa
     gps-max-age-seconds: 120
   rate-limit:

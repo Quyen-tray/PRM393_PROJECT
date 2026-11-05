@@ -19,7 +19,8 @@ try {
     } else {
         $adb = Join-Path $env:LOCALAPPDATA 'Android/Sdk/platform-tools/adb.exe'
         if (-not (Test-Path -LiteralPath $adb)) { $adb = 'D:/dev/Android/Sdk/platform-tools/adb.exe' }
-        & $adb -s emulator-5554 reverse tcp:8081 tcp:8081
+        $apiPort = if ($TestSession) { 8081 } else { 8080 }
+        & $adb -s emulator-5554 reverse "tcp:$apiPort" "tcp:$apiPort"
         if ($LASTEXITCODE -ne 0) { throw 'Android emulator is not connected. Start it before running the frontend.' }
         & flutter run --no-pub -d emulator-5554 "--dart-define-from-file=$defineFile" "--target=$entryPoint"
     }

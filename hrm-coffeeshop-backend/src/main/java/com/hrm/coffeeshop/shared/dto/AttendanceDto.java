@@ -24,6 +24,11 @@ public final class AttendanceDto {
                                   @Valid PhotoEvidence photoEvidence, @Valid FaceVerification faceVerification,
                                   @Size(max = 100) String idempotencyKey) {}
 
+    public record NextTestSessionRequest(@NotNull Long assignmentId) {}
+
+    public record ShiftChoice(Long assignmentId, String shiftName, LocalDate workDate,
+                              OffsetDateTime plannedStartAt, OffsetDateTime plannedEndAt, String attendanceStatus) {}
+
     public record CheckInResponse(Long attendanceId, Long shiftAssignmentId, OffsetDateTime checkInAt,
                                   String attendanceStatus, String verificationStatus, int lateMinutes, boolean graceApplied) {}
 
@@ -40,7 +45,8 @@ public final class AttendanceDto {
     public record CurrentShiftView(Long shiftAssignmentId, String shiftName, OffsetDateTime plannedStartAt,
                                    OffsetDateTime plannedEndAt, OffsetDateTime checkInOpensAt, Long attendanceId,
                                    String attendanceStatus, boolean canCheckIn, boolean canCheckOut,
-                                   boolean deviceActive, boolean trainingEligible, List<String> blockers) {}
+                                   boolean deviceActive, boolean trainingEligible, List<String> blockers,
+                                   boolean photoRequired, boolean flexibleTesting, List<ShiftChoice> shiftChoices) {}
 
     public record VerificationView(String verificationType, String verificationStatus, Double latitude, Double longitude,
                                    Double accuracyMeters, Double distanceMeters, String evidenceViewUrl,

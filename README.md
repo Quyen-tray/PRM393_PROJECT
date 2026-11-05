@@ -21,7 +21,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tooling/Start-HrmBackend.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File tooling/Start-HrmFrontend.ps1 -Target android
 ```
 
-Chỉ thêm `-ApplyMigration` khi database hiện có cần migration v3; chạy một lần rồi bỏ cờ ở các lần sau. Chọn `-Target web` để chạy ở `http://127.0.0.1:5000`. Backend mặc định cổng `8081`. Android emulator dùng `10.0.2.2:8081`. Điện thoại thật cần URL máy chủ mà điện thoại truy cập được và cấu hình listen/network tương ứng.
+Chỉ thêm `-ApplyMigration` khi database hiện có cần migration v3; chạy một lần rồi bỏ cờ ở các lần sau. Chọn `-Target web` để chạy ở `http://127.0.0.1:5000`. Backend mặc định cổng `8080`. Android emulator dùng `10.0.2.2:8080`. Điện thoại thật cần URL máy chủ mà điện thoại truy cập được và cấu hình listen/network tương ứng.
 
 Đăng nhập bằng Google thật trong `lib/main.dart`. Tài khoản phải tồn tại và đang hoạt động trên backend; ứng dụng không có đăng ký hoặc đăng nhập mật khẩu giả. Xem cấu hình OAuth trong [GOOGLE_LOGIN.md](hrm-coffeeshop-backend/docs/GOOGLE_LOGIN.md).
 

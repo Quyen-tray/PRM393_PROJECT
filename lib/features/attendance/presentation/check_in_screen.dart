@@ -45,6 +45,52 @@ class CheckInScreen extends ConsumerWidget {
                   Text('Chấm công tại cửa hàng',
                       style: Theme.of(context).textTheme.headlineSmall),
                   const SizedBox(height: 12),
+                  if (s.flexibleTesting) ...[
+                    const Card(
+                        child: Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Text(
+                              'Test thủ công: chọn ca và chấm công bất cứ lúc nào trong ngày. Sau check-out, bấm “Chấm công lượt mới” để thử tiếp.',
+                            ))),
+                    if (s.shiftChoices.isNotEmpty)
+                      DropdownButtonFormField<int>(
+                        key: ValueKey(
+                            'attendance-choice-${s.shift?['shiftAssignmentId']}'),
+                        initialValue:
+                            (s.shift?['shiftAssignmentId'] as num?)?.toInt(),
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                            labelText: 'Chọn ca để chấm công'),
+                        items: s.shiftChoices
+                            .map((choice) => DropdownMenuItem<int>(
+                                  value:
+                                      (choice['assignmentId'] as num).toInt(),
+                                  child: Text(
+                                      '#${choice['assignmentId']} · ${choice['shiftName']} · ${dateText(choice['workDate'])} · '
+                                      '${choice['attendanceStatus'] == null ? 'Chưa vào ca' : statusLabel(choice['attendanceStatus'])}',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis),
+                                ))
+                            .toList(),
+                        onChanged: s.busy || s.pending != null
+                            ? null
+                            : (id) {
+                                if (id != null) controller.selectAssignment(id);
+                              },
+                      ),
+                    if (s.finished)
+                      Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: FilledButton.icon(
+                            onPressed: s.busy || s.pending != null
+                                ? null
+                                : controller.nextTestSession,
+                            icon: const Icon(Icons.replay),
+                            label: Text(s.busy
+                                ? 'Đang chuẩn bị…'
+                                : 'Chấm công lượt mới'),
+                          )),
+                  ],
                   if (s.message != null)
                     Card(
                         color: const Color(0xffdef3e6),
@@ -59,7 +105,7 @@ class CheckInScreen extends ConsumerWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text(
-                                      'Có thao tác chưa xác định được kết quả. Thử lại sẽ dùng nguyên khóa để tránh ghi công hai lần.'),
+                                      'Lượt chấm công trước chưa xác nhận được kết quả. Kiểm tra lại để tránh ghi nhận hai lần.'),
                                   const SizedBox(height: 10),
                                   FilledButton(
                                       onPressed: s.busy
@@ -67,7 +113,7 @@ class CheckInScreen extends ConsumerWidget {
                                           : () =>
                                               controller.submit(retry: true),
                                       child: const Text(
-                                          'Kiểm tra và gửi lại thao tác trước'))
+                                          'Kiểm tra kết quả chấm công'))
                                 ]))),
                   if (s.shift == null)
                     const EmptyPanel(
@@ -129,32 +175,55 @@ class CheckInScreen extends ConsumerWidget {
                   TextButton(
                       onPressed: () => Geolocator.openAppSettings(),
                       child: const Text('Mở cài đặt quyền vị trí')),
-                  const SectionTitle('2. Ảnh bằng chứng'),
-                  if (s.photo != null)
-                    ClipRRect(
-                        borderRadius: BorderRadius.circular(18),
-                        child: Image.memory(s.photo!,
-                            height: 250, fit: BoxFit.contain)),
-                  OutlinedButton.icon(
-                      onPressed: s.busy
-                          ? null
-                          : () async {
-                              final bytes = await Navigator.of(context,
-                                      rootNavigator: true)
-                                  .push<Uint8List>(MaterialPageRoute(
-                                      builder: (_) =>
-                                          const CameraCapturePage()));
-                              if (bytes != null) controller.setPhoto(bytes);
-                            },
-                      icon: const Icon(Icons.camera_alt_outlined),
-                      label: Text(s.photo == null
-                          ? 'Mở camera và chụp ảnh'
-                          : 'Chụp ảnh khác')),
+                  if (s.message != null)
+                    Wrap(spacing: 8, children: [
+                      TextButton.icon(
+                          onPressed: () =>
+                              context.push('/module/my-attendance'),
+                          icon: const Icon(Icons.fact_check_outlined),
+                          label: const Text('Xem công của tôi')),
+                      TextButton.icon(
+                          onPressed: () =>
+                              context.push('/module/my-checklists'),
+                          icon: const Icon(Icons.checklist),
+                          label: const Text('Tiếp tục checklist')),
+                    ]),
+                  if (s.shift != null && s.photoRequired && !s.finished) ...[
+                    const SectionTitle('2. Chụp ảnh xác minh'),
+                    const Text(
+                        'Lượt chấm công này được chọn xác minh bằng ảnh. Chụp ảnh trực tiếp để tiếp tục.'),
+                    if (s.photo != null)
+                      ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: Image.memory(s.photo!,
+                              height: 250, fit: BoxFit.contain)),
+                    OutlinedButton.icon(
+                        onPressed: s.busy
+                            ? null
+                            : () async {
+                                final bytes = await Navigator.of(context,
+                                        rootNavigator: true)
+                                    .push<Uint8List>(MaterialPageRoute(
+                                        builder: (_) =>
+                                            const CameraCapturePage()));
+                                if (bytes != null) controller.setPhoto(bytes);
+                              },
+                        icon: const Icon(Icons.camera_alt_outlined),
+                        label: Text(s.photo == null
+                            ? 'Mở camera và chụp ảnh'
+                            : 'Chụp ảnh khác')),
+                  ] else if (s.shift != null && !s.finished)
+                    const Card(
+                        child: ListTile(
+                            leading: Icon(Icons.verified_user_outlined),
+                            title: Text('Lượt này không yêu cầu chụp ảnh'),
+                            subtitle: Text(
+                                'GPS và thiết bị đã đăng ký vẫn được kiểm tra khi xác nhận.'))),
                   if (s.error != null) ErrorPanel(s.error!),
                   const SizedBox(height: 20),
                   FilledButton.icon(
                       onPressed: s.busy ||
-                              s.photo == null ||
+                              (s.photoRequired && s.photo == null) ||
                               s.pending != null ||
                               !(s.shift?['canCheckIn'] == true ||
                                   s.shift?['canCheckOut'] == true)

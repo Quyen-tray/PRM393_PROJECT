@@ -34,6 +34,7 @@ public class DashboardService {
     private final TrainingService training;
     private final PersonLookup people;
     private final Clock clock;
+    private final EmployeeSkillRepository skills;
 
     public DashboardService(AttendanceStatsService stats, AttendanceDeviceRepository devices,
                             AttendanceExceptionRequestRepository exceptions, OvertimeRequestRepository overtime,
@@ -41,7 +42,8 @@ public class DashboardService {
                             EmployeeRewardPenaltyRepository decisions, ViolationEventRepository violations,
                             EmployeeRepository employees, ShiftAssignmentRepository schedules,
                             AttendanceRepository attendance, NotificationRepository notificationRepo,
-                            DocumentService documents, TrainingService training, PersonLookup people, Clock clock) {
+                            DocumentService documents, TrainingService training, PersonLookup people, Clock clock,
+                            EmployeeSkillRepository skills) {
         this.stats = stats;
         this.devices = devices;
         this.exceptions = exceptions;
@@ -59,6 +61,7 @@ public class DashboardService {
         this.training = training;
         this.people = people;
         this.clock = clock;
+        this.skills = skills;
     }
 
     @Transactional(readOnly = true)
@@ -131,14 +134,22 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public Map<String, Object> employeeStatus() {
         Map<String, Integer> byEmployment = new TreeMap<>(), byProfile = new TreeMap<>();
+        Map<String, Integer> byTraining = new LinkedHashMap<>(Map.of("COMPLETE", 0, "MISSING", 0));
+        Map<String, Integer> bySkills = new LinkedHashMap<>(Map.of("ASSESSED", 0, "NOT_ASSESSED", 0));
+        Set<Long> assessed = new HashSet<>();
+        skills.findAll().forEach(s -> assessed.add(s.getEmployeeId()));
         int restricted = 0;
         for (Employee e : employees.findAll()) {
             byEmployment.merge(e.getEmploymentStatus(), 1, Integer::sum);
             if (!"ACTIVE".equals(e.getEmploymentStatus())) continue;
             byProfile.merge(documents.profile(e).profileStatus(), 1, Integer::sum);
-            if (!training.eligibility(e).eligible()) restricted++;
+            TrainingService.Eligibility progress = training.eligibility(e);
+            byTraining.merge(progress.completed() >= progress.required() ? "COMPLETE" : "MISSING", 1, Integer::sum);
+            bySkills.merge(assessed.contains(e.getEmployeeId()) ? "ASSESSED" : "NOT_ASSESSED", 1, Integer::sum);
+            if (!progress.eligible()) restricted++;
         }
-        return Map.of("employmentStatus", byEmployment, "profileStatus", byProfile, "shiftRestricted", restricted);
+        return Map.of("employmentStatus", byEmployment, "profileStatus", byProfile, "shiftRestricted", restricted,
+                "trainingStatus", byTraining, "skillAssessmentStatus", bySkills);
     }
 
     @Transactional(readOnly = true)
@@ -146,7 +157,7 @@ public class DashboardService {
         Instant f = TimeUtils.startOfDay(from), t = TimeUtils.startOfDay(to.plusDays(1));
         Map<String, Integer> byStatus = new TreeMap<>();
         int total = 0;
-        for (ChecklistTask r : runs.findByDueAtBetween(f, t)) { byStatus.merge(r.getRunStatus(), 1, Integer::sum); total++; }
+        for (ChecklistTask r : runs.findByDueAtGreaterThanEqualAndDueAtLessThan(f, t)) { byStatus.merge(r.getRunStatus(), 1, Integer::sum); total++; }
         int completed = byStatus.getOrDefault("APPROVED", 0);
         return Map.of("from", from, "to", to, "totalChecklists", total, "byStatus", byStatus,
                 "completionRatePercent", total == 0 ? 0 : Math.round(completed * 1000.0 / total) / 10.0);

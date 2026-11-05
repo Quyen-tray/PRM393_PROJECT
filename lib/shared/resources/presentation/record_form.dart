@@ -39,12 +39,14 @@ class RecordForm extends ConsumerStatefulWidget {
     required this.title,
     required this.fields,
     this.initial = const {},
+    this.header,
     required this.onSubmit,
     super.key,
   });
   final String title;
   final List<FieldSpec> fields;
   final Json initial;
+  final Widget? header;
   final Future<void> Function(Json value) onSubmit;
   @override
   ConsumerState<RecordForm> createState() => _RecordFormState();
@@ -121,6 +123,7 @@ class _RecordFormState extends ConsumerState<RecordForm> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (widget.header != null) widget.header!,
                     ...widget.fields.map(
                       (f) => Padding(
                         padding: const EdgeInsets.only(bottom: 18),

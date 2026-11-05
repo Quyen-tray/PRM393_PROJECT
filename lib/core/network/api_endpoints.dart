@@ -5,8 +5,8 @@ abstract final class ApiEndpoints {
   static String get baseUrl => _configured.isNotEmpty
       ? _configured.replaceAll(RegExp(r'/$'), '')
       : !kIsWeb && defaultTargetPlatform == TargetPlatform.android
-          ? 'http://10.0.2.2:8081'
-          : 'http://localhost:8081';
+          ? 'http://10.0.2.2:8080'
+          : 'http://localhost:8080';
 
   static const authGoogle = '/api/v1/auth/google';
   static const authMe = '/api/v1/users/me';

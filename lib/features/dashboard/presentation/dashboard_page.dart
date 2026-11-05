@@ -7,6 +7,7 @@ import 'package:hrm_coffee_shop_flutter/shared/resources/data/resource_repositor
 import 'package:hrm_coffee_shop_flutter/features/auth/data/session_controller.dart';
 import 'package:hrm_coffee_shop_flutter/app/router/module_registry.dart';
 import 'package:hrm_coffee_shop_flutter/features/dashboard/presentation/widgets/dashboard_quick_links.dart';
+import 'widgets/manager_insights.dart';
 import 'package:hrm_coffee_shop_flutter/features/approvals/presentation/approval_queues.dart';
 
 class DashboardPage extends ConsumerWidget {
@@ -149,16 +150,6 @@ class DashboardPage extends ConsumerWidget {
           ),
         ],
         if (s.workspace == Workspace.manager && u.has('DASHBOARD_MANAGER')) ...[
-          const SectionTitle('Chấm công hôm nay'),
-          ResourceView(
-            const ResourceQuery('/dashboard/manager/overview'),
-            builder: (data) => Card(
-                child: ExpansionTile(
-                    title: const Text('Tình hình chấm công hôm nay'),
-                    subtitle: const Text('Nhấn để xem hoặc thu gọn thống kê'),
-                    leading: const Icon(Icons.fact_check_outlined),
-                    children: [InfoCard(json(json(data)['attendanceToday']))])),
-          ),
           const SectionTitle('Điều phối cửa hàng'),
           DashboardQuickLinks(
             [
@@ -169,6 +160,7 @@ class DashboardPage extends ConsumerWidget {
               'payroll',
             ].where((key) => module(key).access(u)).toList(),
           ),
+          const ManagerInsights(),
         ],
         if (s.workspace == Workspace.admin) ...[
           const SectionTitle('Hệ thống hiện tại'),

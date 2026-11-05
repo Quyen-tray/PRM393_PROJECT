@@ -12,6 +12,7 @@ import com.hrm.coffeeshop.domain.*;
 import com.hrm.coffeeshop.repository.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,11 +37,13 @@ public class ShiftService {
     private final AuditService audit;
     private final PayrollLockGuard lockGuard;
     private final Clock clock;
+    private final boolean flexibleTesting;
 
     public ShiftService(WorkShiftRepository shifts, ShiftAssignmentRepository schedules,
                         EmployeeRepository employees, AppUserRepository users, AttendanceRepository attendance,
                         StoreService storeService, TrainingService training,
-                        NotificationService notifications, AuditService audit, PayrollLockGuard lockGuard, Clock clock) {
+                        NotificationService notifications, AuditService audit, PayrollLockGuard lockGuard, Clock clock,
+                        @Value("${app.attendance.flexible-testing-enabled:false}") boolean flexibleTesting) {
         this.shifts = shifts;
         this.schedules = schedules;
         this.employees = employees;
@@ -52,6 +55,7 @@ public class ShiftService {
         this.audit = audit;
         this.lockGuard = lockGuard;
         this.clock = clock;
+        this.flexibleTesting = flexibleTesting;
     }
 
     public static ShiftView view(WorkShift s) {
@@ -93,7 +97,7 @@ public class ShiftService {
     }
 
     private void apply(WorkShift s, ShiftRequest r, boolean isNew) {
-        if (r.startTime().equals(r.endTime())) throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Giờ bắt đầu và kết thúc không được trùng nhau");
+        if (!flexibleTesting && r.startTime().equals(r.endTime())) throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Giờ bắt đầu và kết thúc không được trùng nhau");
         requireBreakWithinShift(r.startTime(), r.endTime(), r.breakMinutes());
         int early = r.earlyCheckInMinutes() != null ? r.earlyCheckInMinutes() : storeService.current().getCheckInEarlyMinutes();
         int grace = r.graceMinutes() != null ? r.graceMinutes() : storeService.current().getGraceMinutes();
@@ -142,15 +146,16 @@ public class ShiftService {
 
     @Transactional
     public AssignmentView create(AssignmentRequest r) {
-        lockGuard.assertWorkDateOpen(r.workDate());   // ngày được phân phải nằm ngoài kỳ đã chốt
+        if (!flexibleTesting) lockGuard.assertWorkDateOpen(r.workDate());
         Employee e = employees.findByIdForUpdate(r.employeeId()).orElseThrow(() -> BusinessException.notFound("nhân viên"));
-        if (!"ACTIVE".equals(e.getEmploymentStatus()))
+        if (!flexibleTesting && !"ACTIVE".equals(e.getEmploymentStatus()))
             throw BusinessException.rule("Chỉ phân ca cho nhân viên đang làm việc (ACTIVE)");
         WorkShift sh = shifts.findById(r.workShiftId()).filter(x -> Boolean.TRUE.equals(x.getIsActive()))
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "Mẫu ca không tồn tại hoặc đã ngưng"));
-        requireEligible(e);
-        Instant start = plannedStart(r.workDate(), sh), end = plannedEnd(r.workDate(), sh);
-        requireNoOverlap(e.getEmployeeId(), start, end, -1L);
+        if (!flexibleTesting) requireEligible(e);
+        Instant start = flexibleTesting ? TimeUtils.startOfDay(r.workDate()) : plannedStart(r.workDate(), sh);
+        Instant end = flexibleTesting ? TimeUtils.startOfDay(r.workDate().plusDays(1)) : plannedEnd(r.workDate(), sh);
+        if (!flexibleTesting) requireNoOverlap(e.getEmployeeId(), start, end, -1L);
         ShiftAssignment sc = new ShiftAssignment();
         sc.setEmployeeId(e.getEmployeeId());
         sc.setWorkShiftId(sh.getWorkShiftId());
@@ -171,8 +176,10 @@ public class ShiftService {
     @Transactional
     public AssignmentView patch(Long id, AssignmentPatch p) {
         ShiftAssignment sc = schedules.findById(id).orElseThrow(() -> BusinessException.notFound("phân ca"));
-        lockGuard.assertWorkDateOpen(sc.getWorkDate());          // ngày cũ
-        if (p.workDate() != null) lockGuard.assertWorkDateOpen(p.workDate());   // ngày mới
+        if (!flexibleTesting) {
+            lockGuard.assertWorkDateOpen(sc.getWorkDate());
+            if (p.workDate() != null) lockGuard.assertWorkDateOpen(p.workDate());
+        }
         if (!List.of("DRAFT", "PUBLISHED").contains(sc.getScheduleStatus()))
             throw BusinessException.invalidState("Không thể sửa phân ca ở trạng thái " + sc.getScheduleStatus());
         if (attendance.findByShiftAssignmentId(id).isPresent())
@@ -182,9 +189,10 @@ public class ShiftService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "Mẫu ca không tồn tại hoặc đã ngưng"));
         LocalDate date = p.workDate() != null ? p.workDate() : sc.getWorkDate();
         Employee e = employees.findByIdForUpdate(sc.getEmployeeId()).orElseThrow();
-        requireEligible(e);
-        Instant start = plannedStart(date, sh), end = plannedEnd(date, sh);
-        requireNoOverlap(sc.getEmployeeId(), start, end, id);
+        if (!flexibleTesting) requireEligible(e);
+        Instant start = flexibleTesting ? TimeUtils.startOfDay(date) : plannedStart(date, sh);
+        Instant end = flexibleTesting ? TimeUtils.startOfDay(date.plusDays(1)) : plannedEnd(date, sh);
+        if (!flexibleTesting) requireNoOverlap(sc.getEmployeeId(), start, end, id);
         Map<String, Object> before = Map.of("shiftId", sc.getWorkShiftId(), "workDate", sc.getWorkDate().toString());
         sc.setWorkShiftId(sh.getWorkShiftId());
         sc.setWorkDate(date);
