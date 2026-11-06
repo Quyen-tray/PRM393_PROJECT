@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hrm_coffee_shop_flutter/core/network/api_exception.dart';
@@ -25,10 +26,17 @@ Future<Position> actualLocation() async {
       message: 'Cần quyền vị trí để kiểm tra khoảng cách tới cửa hàng.',
     );
   }
-  return Geolocator.getCurrentPosition(
-    locationSettings: const LocationSettings(
-      accuracy: LocationAccuracy.high,
-      timeLimit: Duration(seconds: 25),
-    ),
-  );
+  try {
+    return await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        timeLimit: Duration(seconds: 25),
+      ),
+    );
+  } on TimeoutException {
+    throw const ApiException(
+        code: 'GPS_UNAVAILABLE',
+        message:
+            'Chưa lấy được vị trí GPS. Hãy bật dịch vụ vị trí và thử lại ở nơi thoáng hơn.');
+  }
 }

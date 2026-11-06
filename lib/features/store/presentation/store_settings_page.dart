@@ -23,6 +23,8 @@ class _StoreSettingsPageState extends ConsumerState<StoreSettingsPage> {
           const Text(
             'Tọa độ đã lưu sẽ được dùng để kiểm tra GPS của nhân viên. Có thể lấy GPS ngay tại quán, xem lại vị trí và lưu trước khi đổi tài khoản để chấm công.',
           ),
+          const Text(
+              'Giờ vào sớm và ân hạn là mặc định cho mẫu ca mới. Quản lý có thể chỉnh riêng từng mẫu ca. GPS và nhắc việc dùng cấu hình đã lưu.'),
           ResourceView(
             const ResourceQuery('/admin/store-settings'),
             builder: (data) {
@@ -56,7 +58,7 @@ class _StoreSettingsPageState extends ConsumerState<StoreSettingsPage> {
                                   error = null;
                                 });
                                 try {
-                                  final p = await actualLocation();
+                                  final p = await ref.read(locationProvider)();
                                   if (context.mounted) {
                                     await editRecord(
                                       context,
@@ -84,7 +86,8 @@ class _StoreSettingsPageState extends ConsumerState<StoreSettingsPage> {
                                           'Bán kính chấm công (m)',
                                           kind: FieldKind.integer,
                                           required: true,
-                                          min: 1,
+                                          min: 15,
+                                          max: 50,
                                         ),
                                       ],
                                       initial: {

@@ -9,7 +9,11 @@ import java.util.List;
 public final class AttendanceDto {
     private AttendanceDto() {}
 
-    public record LocationDto(Double latitude, Double longitude, Double accuracyMeters, OffsetDateTime capturedAt) {}
+    public record LocationDto(Double latitude, Double longitude, Double accuracyMeters, OffsetDateTime capturedAt, Boolean isMocked) {
+        public LocationDto(Double latitude, Double longitude, Double accuracyMeters, OffsetDateTime capturedAt) {
+            this(latitude, longitude, accuracyMeters, capturedAt, null);
+        }
+    }
 
     /** cameraPermissionGranted=false: client báo chưa cấp quyền camera (BR-CAM-01). */
     public record PhotoEvidence(@Size(max = 500) String storageKey, Boolean cameraPermissionGranted) {}
@@ -23,8 +27,6 @@ public final class AttendanceDto {
     public record CheckOutRequest(@NotNull Long attendanceId, @NotNull Long deviceId, @Valid LocationDto location,
                                   @Valid PhotoEvidence photoEvidence, @Valid FaceVerification faceVerification,
                                   @Size(max = 100) String idempotencyKey) {}
-
-    public record NextTestSessionRequest(@NotNull Long assignmentId) {}
 
     public record ShiftChoice(Long assignmentId, String shiftName, LocalDate workDate,
                               OffsetDateTime plannedStartAt, OffsetDateTime plannedEndAt, String attendanceStatus) {}
@@ -40,13 +42,15 @@ public final class AttendanceDto {
                                  LocalDate workDate, OffsetDateTime checkInAt, OffsetDateTime checkOutAt,
                                  String attendanceStatus, String recordStatus, int lateMinutes, int earlyLeaveMinutes,
                                  Integer workedMinutes, int approvedOvertimeMinutes, String checkInMethod,
-                                 String checkOutMethod, String payrollStatus, String note) {}
+                                 String checkOutMethod, String payrollStatus, String note,
+                                 Long presenceMinutes, Long overtimeMinutes) {}
 
     public record CurrentShiftView(Long shiftAssignmentId, String shiftName, OffsetDateTime plannedStartAt,
                                    OffsetDateTime plannedEndAt, OffsetDateTime checkInOpensAt, Long attendanceId,
                                    String attendanceStatus, boolean canCheckIn, boolean canCheckOut,
                                    boolean deviceActive, boolean trainingEligible, List<String> blockers,
-                                   boolean photoRequired, boolean flexibleTesting, List<ShiftChoice> shiftChoices) {}
+                                   boolean photoRequired, boolean flexibleTesting, List<ShiftChoice> shiftChoices,
+                                   boolean mockLocationsAllowed, boolean faceVerificationRequired) {}
 
     public record VerificationView(String verificationType, String verificationStatus, Double latitude, Double longitude,
                                    Double accuracyMeters, Double distanceMeters, String evidenceViewUrl,

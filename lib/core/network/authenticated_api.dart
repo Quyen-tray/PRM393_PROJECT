@@ -28,10 +28,12 @@ class AuthenticatedApi {
       final response = await dio.post('/api/v1/auth/refresh',
           data: {'refreshToken': vault.refreshToken});
       if (generation != vault.generation) return false;
-      await vault.save(Map<String, dynamic>.from(response.data['data']));
+      await vault.save(Map<String, dynamic>.from(response.data['data']),
+          rotation: true);
       return true;
     } on DioException catch (e) {
-      if ([400, 401, 403].contains(e.response?.statusCode)) {
+      if (generation == vault.generation &&
+          [400, 401, 403].contains(e.response?.statusCode)) {
         await vault.clear();
         onExpired?.call();
       }
@@ -48,6 +50,7 @@ class AuthenticatedApi {
     final authenticated =
         !path.endsWith('/auth/google') && !path.endsWith('/auth/refresh');
     var requestGeneration = vault.generation;
+    final sessionGeneration = vault.sessionGeneration;
     Future<Response<dynamic>> send() => dio.request(path,
         data: data,
         queryParameters: queryParameters,
@@ -65,16 +68,18 @@ class AuthenticatedApi {
     try {
       return await send();
     } on DioException catch (e) {
-      if (requestGeneration != vault.generation) throw mapError(e);
+      if (sessionGeneration != vault.sessionGeneration) throw mapError(e);
       if (e.response?.statusCode == 401 &&
           authenticated &&
           vault.refreshToken != null) {
-        if (await refresh()) {
+        // A parallel request may have completed rotation before this 401 arrived.
+        if (requestGeneration != vault.generation || await refresh()) {
           requestGeneration = vault.generation;
           try {
             return await send();
           } on DioException catch (retry) {
             if (retry.response?.statusCode == 401 &&
+                sessionGeneration == vault.sessionGeneration &&
                 requestGeneration == vault.generation) {
               await vault.clear();
               onExpired?.call();
@@ -83,7 +88,10 @@ class AuthenticatedApi {
           }
         }
       }
-      if (e.response?.statusCode == 401 && authenticated) {
+      if (e.response?.statusCode == 401 &&
+          authenticated &&
+          sessionGeneration == vault.sessionGeneration &&
+          requestGeneration == vault.generation) {
         await vault.clear();
         onExpired?.call();
       }

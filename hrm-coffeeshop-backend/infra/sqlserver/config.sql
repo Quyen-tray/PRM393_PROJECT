@@ -1,6 +1,7 @@
 ﻿-- ============================================================================
 -- config.sql
 -- Tạo database và toàn bộ cấu trúc: bảng, khóa, CHECK/UNIQUE constraints, index.
+-- Đã bao gồm schema V3; database mới không cần chạy migration riêng.
 -- Chỉ dùng để cài mới. Nếu database đã tồn tại, script sẽ dừng và KHÔNG xóa dữ liệu.
 -- ============================================================================
 -- =====================================================================================
@@ -878,11 +879,12 @@ CREATE TABLE dbo.TrainingAttempt (
     Source VARCHAR(10) NOT NULL DEFAULT 'MANUAL',
     RecordedBy BIGINT NULL,
     RecordedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    AnswersJson NVARCHAR(MAX) NULL,
     CONSTRAINT FK_Attempt_Employee FOREIGN KEY (EmployeeId) REFERENCES dbo.Employee(EmployeeId),
     CONSTRAINT FK_Attempt_Course FOREIGN KEY (CourseId) REFERENCES dbo.TrainingCourse(CourseId),
     CONSTRAINT FK_Attempt_Recorder FOREIGN KEY (RecordedBy) REFERENCES dbo.AppUser(UserId),
     CONSTRAINT UQ_Attempt_No UNIQUE (EmployeeId, CourseId, AttemptNo),
-    CONSTRAINT CK_Attempt_Source CHECK (Source IN ('MANUAL','LMS')),
+    CONSTRAINT CK_Attempt_Source CHECK (Source IN ('MANUAL','LMS','QUIZ')),
     CONSTRAINT CK_Attempt_Score CHECK (Score IS NULL OR Score BETWEEN 0 AND 100)
 );
 GO
@@ -902,6 +904,9 @@ CREATE TABLE dbo.EmployeeTraining (
     ExpiresAt DATETIME2,
     TestScore DECIMAL(5,2),
     TrainingStatus VARCHAR(20) NOT NULL DEFAULT 'NOT_STARTED',
+    CompletionReviewedAt DATETIME2 NULL,
+    CompletionReviewedBy BIGINT NULL,
+    CompletionReviewNote NVARCHAR(500) NULL,
 
     CONSTRAINT FK_EmployeeTraining_Employee
         FOREIGN KEY (EmployeeId) REFERENCES dbo.Employee(EmployeeId),
@@ -1187,6 +1192,39 @@ IF OBJECT_ID('tempdb..#HrmInstallGuard') IS NULL
 
 -- Khuyến nghị: AuditLog chỉ append (tài khoản ứng dụng không được sửa/xóa)
 -- DENY UPDATE, DELETE ON dbo.AuditLog TO <app_db_user>;
+GO
+
+IF OBJECT_ID('tempdb..#HrmInstallGuard') IS NULL
+    THROW 51001, N'Cài đặt đã bị dừng: không tạo mới được database. Không tiếp tục chạy các batch schema.', 1;
+
+-- Câu hỏi đào tạo và giải trình vi phạm (schema V3).
+CREATE TABLE dbo.TrainingQuestion (
+    QuestionId BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    CourseId INT NOT NULL REFERENCES dbo.TrainingCourse(CourseId),
+    QuestionText NVARCHAR(2000) NOT NULL,
+    OptionA NVARCHAR(1000) NOT NULL,
+    OptionB NVARCHAR(1000) NOT NULL,
+    OptionC NVARCHAR(1000) NOT NULL,
+    OptionD NVARCHAR(1000) NOT NULL,
+    CorrectOption VARCHAR(1) NOT NULL CHECK (CorrectOption IN ('A','B','C','D')),
+    SortOrder INT NOT NULL CHECK (SortOrder > 0),
+    IsActive BIT NOT NULL DEFAULT 1
+);
+CREATE INDEX IX_TrainingQuestion_Course ON dbo.TrainingQuestion(CourseId, IsActive, SortOrder);
+GO
+
+IF OBJECT_ID('tempdb..#HrmInstallGuard') IS NULL
+    THROW 51001, N'Cài đặt đã bị dừng: không tạo mới được database. Không tiếp tục chạy các batch schema.', 1;
+
+CREATE TABLE dbo.ViolationExplanation (
+    ExplanationId BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    ViolationEventId BIGINT NOT NULL REFERENCES dbo.ViolationEvent(ViolationEventId),
+    EmployeeId BIGINT NOT NULL REFERENCES dbo.Employee(EmployeeId),
+    Reason NVARCHAR(2000) NOT NULL,
+    EvidenceStorageKey NVARCHAR(900) NULL,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+CREATE INDEX IX_ViolationExplanation_Violation ON dbo.ViolationExplanation(ViolationEventId, CreatedAt);
 GO
 
 IF OBJECT_ID('tempdb..#HrmInstallGuard') IS NULL

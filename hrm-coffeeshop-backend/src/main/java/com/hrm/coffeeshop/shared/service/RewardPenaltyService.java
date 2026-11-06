@@ -111,13 +111,18 @@ public class RewardPenaltyService {
         return v;
     }
 
-    /** Lọc theo loại, trạng thái, nhân viên (quy mô một cửa hàng: lọc trong bộ nhớ). */
+    /** Lọc và sắp xếp trước khi phân trang trong SQL. */
     @Transactional(readOnly = true)
     public PageResponse<DecisionView> list(String type, String status, Long employeeId, Pageable p) {
         String dbStatus = status == null || status.isBlank() ? "" : ("PENDING_APPROVAL".equals(status) ? "PENDING" : status);
         String dbType = type == null ? "" : type.trim();
+        Sort sort = p.getSort().isSorted() ? p.getSort() : Sort.by("effectiveDate").descending();
+        if (sort.getOrderFor("rewardPenaltyId") == null) {
+            Sort.Order date = sort.getOrderFor("effectiveDate");
+            sort = sort.and(Sort.by(date == null ? Sort.Direction.DESC : date.getDirection(), "rewardPenaltyId"));
+        }
         Page<EmployeeRewardPenalty> page = decisions.search(dbType, employeeId == null ? 0L : employeeId, dbStatus,
-                PageRequest.of(p.getPageNumber(), p.getPageSize()));
+                PageRequest.of(p.getPageNumber(), p.getPageSize(), sort));
         return PageResponse.of(page, this::view);
     }
 

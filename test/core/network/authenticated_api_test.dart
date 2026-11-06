@@ -7,16 +7,87 @@ import 'package:hrm_coffee_shop_flutter/core/storage/session_store.dart';
 import '../../support/test_support.dart';
 
 void main() {
-  test('A previous account 401 cannot clear the newly selected account', () async {
-    final started=Completer<void>(); final finish=Completer<void>();
-    final vault=TokenVault(MemoryStore({'access':'old','refresh':'old-refresh'}));await vault.load();
-    final dio=Dio();dio.httpClientAdapter=TestAdapter((r)async{started.complete();await finish.future;return response(null,status:401,code:'INVALID_TOKEN');});
-    final api=AuthenticatedApi(transport:dio,vault:vault);
-    final pending=expectLater(api.data('GET','/users/me'),throwsA(isA<ApiException>()));
+  test('A delayed 401 reuses the token rotated by a parallel request',
+      () async {
+    final waiting = Completer<void>(), release = Completer<void>();
+    final vault =
+        TokenVault(MemoryStore({'access': 'old', 'refresh': 'original'}));
+    await vault.load();
+    int refreshes = 0;
+    final dio = Dio();
+    dio.httpClientAdapter = TestAdapter((request) async {
+      if (request.path.endsWith('/auth/refresh')) {
+        refreshes++;
+        return response({'accessToken': 'new', 'refreshToken': 'rotated'});
+      }
+      if (request.headers['Authorization'] == 'Bearer new') {
+        return response({'ok': true});
+      }
+      if (request.path.endsWith('/permissions')) {
+        waiting.complete();
+        await release.future;
+      }
+      return response(null, status: 401, code: 'INVALID_TOKEN');
+    });
+    final api = AuthenticatedApi(transport: dio, vault: vault);
+    final delayed = api.data('GET', '/users/me/permissions');
+    await waiting.future;
+    expect((await api.data('GET', '/users/me'))['ok'], true);
+    release.complete();
+    expect((await delayed)['ok'], true);
+    expect(refreshes, 1);
+    expect(vault.refreshToken, 'rotated');
+  });
+
+  test('A failed refresh cannot clear a new account selected while waiting',
+      () async {
+    final waiting = Completer<void>(), release = Completer<void>();
+    final vault =
+        TokenVault(MemoryStore({'access': 'old', 'refresh': 'old-refresh'}));
+    await vault.load();
+    final dio = Dio();
+    dio.httpClientAdapter = TestAdapter((request) async {
+      if (request.path.endsWith('/auth/refresh')) {
+        waiting.complete();
+        await release.future;
+      }
+      return response(null, status: 401, code: 'INVALID_TOKEN');
+    });
+    final api = AuthenticatedApi(transport: dio, vault: vault);
+    final result =
+        expectLater(api.data('GET', '/users/me'), throwsA(isA<ApiException>()));
+    await waiting.future;
+    await vault
+        .save({'accessToken': 'new-account', 'refreshToken': 'new-refresh'});
+    release.complete();
+    await result;
+    expect(vault.accessToken, 'new-account');
+    expect(vault.refreshToken, 'new-refresh');
+  });
+
+  test('A previous account 401 cannot clear the newly selected account',
+      () async {
+    final started = Completer<void>();
+    final finish = Completer<void>();
+    final vault =
+        TokenVault(MemoryStore({'access': 'old', 'refresh': 'old-refresh'}));
+    await vault.load();
+    final dio = Dio();
+    dio.httpClientAdapter = TestAdapter((r) async {
+      started.complete();
+      await finish.future;
+      return response(null, status: 401, code: 'INVALID_TOKEN');
+    });
+    final api = AuthenticatedApi(transport: dio, vault: vault);
+    final pending =
+        expectLater(api.data('GET', '/users/me'), throwsA(isA<ApiException>()));
     await started.future;
-    await vault.save({'accessToken':'new-account','refreshToken':'new-refresh'});
-    finish.complete();await pending;
-    expect(vault.accessToken,'new-account');expect(vault.refreshToken,'new-refresh');
+    await vault
+        .save({'accessToken': 'new-account', 'refreshToken': 'new-refresh'});
+    finish.complete();
+    await pending;
+    expect(vault.accessToken, 'new-account');
+    expect(vault.refreshToken, 'new-refresh');
   });
   test(
     'Concurrent 401 responses rotate refresh token once and retry with new access token',

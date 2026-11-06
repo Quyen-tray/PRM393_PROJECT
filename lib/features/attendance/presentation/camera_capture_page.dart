@@ -1,6 +1,5 @@
+import 'dart:typed_data';
 import 'package:camera/camera.dart';
-import 'package:device_info_plus/device_info_plus.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../../core/presentation/resource_widgets.dart';
 
@@ -16,7 +15,7 @@ class _CameraCapturePageState extends State<CameraCapturePage>
   CameraController? controller;
   List<CameraDescription> cameras = [];
   int index = 0, generation = 0;
-  bool busy = true, emulator = false;
+  bool busy = true;
   Object? error;
   Uint8List? photo;
   Future<void> _serial = Future.value();
@@ -53,9 +52,6 @@ class _CameraCapturePageState extends State<CameraCapturePage>
                   ? CameraLensDirection.back
                   : CameraLensDirection.front));
           index = front < 0 ? 0 : front;
-        }
-        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-          emulator = !(await DeviceInfoPlugin().androidInfo).isPhysicalDevice;
         }
         final next = CameraController(cameras[index], ResolutionPreset.medium,
             enableAudio: false);
@@ -136,13 +132,6 @@ class _CameraCapturePageState extends State<CameraCapturePage>
           ]),
       body: SafeArea(
           child: Column(children: [
-        if (emulator)
-          Container(
-              width: double.infinity,
-              color: const Color(0xffefeadf),
-              padding: const EdgeInsets.all(12),
-              child: const Text(
-                  'Đây là camera của máy ảo. Nếu thấy hình mô phỏng, hãy chọn Webcam trong Camera của Android Emulator rồi khởi động lại máy ảo.')),
         Expanded(
             child: Center(
                 child: photo != null

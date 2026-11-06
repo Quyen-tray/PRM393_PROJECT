@@ -13,6 +13,9 @@ import java.util.*;
 public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
 
     Optional<Attendance> findByShiftAssignmentId(Long shiftAssignmentId);
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select a from Attendance a where a.attendanceId = :id")
+    Optional<Attendance> findByIdForUpdate(@Param("id") Long id);
     List<Attendance> findByShiftAssignmentIdIn(Collection<Long> scheduleIds);
 
     /**

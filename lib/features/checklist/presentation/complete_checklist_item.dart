@@ -19,7 +19,7 @@ Future<void> completeChecklistItem(
     final service = ref.read(evidenceServiceProvider);
     final file =
         item['requiresEvidence'] == true && !(item['hasEvidence'] == true)
-            ? await _chooseEvidence(context, service)
+            ? await _captureEvidence(context)
             : null;
     if (item['requiresEvidence'] == true &&
         item['hasEvidence'] != true &&
@@ -38,10 +38,8 @@ Future<void> completeChecklistItem(
               ? null
               : Padding(
                   padding: const EdgeInsets.only(bottom: 16),
-                  child: Column(children: [
-                    Image.memory(file.bytes, height: 220, fit: BoxFit.contain),
-                    Text(file.name),
-                  ]),
+                  child: Image.memory(file.bytes,
+                      height: 220, fit: BoxFit.contain),
                 ),
           onSubmit: (v) async {
             if (file != null) {
@@ -69,25 +67,7 @@ Future<void> completeChecklistItem(
   }
 }
 
-Future<UploadSelection?> _chooseEvidence(
-    BuildContext context, EvidenceService service) async {
-  final source = await showModalBottomSheet<String>(
-    context: context,
-    useRootNavigator: true,
-    builder: (context) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-      ListTile(
-          leading: const Icon(Icons.camera_alt_outlined),
-          title: const Text('Chụp ảnh minh chứng'),
-          onTap: () => Navigator.pop(context, 'camera')),
-      ListTile(
-          leading: const Icon(Icons.photo_library_outlined),
-          title: const Text('Chọn ảnh có sẵn'),
-          onTap: () => Navigator.pop(context, 'gallery')),
-    ])),
-  );
-  if (source == null || !context.mounted) return null;
-  if (source == 'gallery') return service.choose('CHECKLIST');
+Future<UploadSelection?> _captureEvidence(BuildContext context) async {
   final photo =
       await Navigator.of(context, rootNavigator: true).push<Uint8List>(
     MaterialPageRoute(

@@ -115,8 +115,8 @@ class ManagerScheduleIT extends IntegrationTestBase {
     }
 
     @Test
-    void defaultSortKeepsTheWeekInChronologicalOrder() throws Exception {
-        assertEquals(List.of(firstId, middleId, lastId), ids(list(request())));
+    void defaultSortShowsTheNewestShiftFirst() throws Exception {
+        assertEquals(List.of(lastId, middleId, firstId), ids(list(request())));
     }
 
     @Test

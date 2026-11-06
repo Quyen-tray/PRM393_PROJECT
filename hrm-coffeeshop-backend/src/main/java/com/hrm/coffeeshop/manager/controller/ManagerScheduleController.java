@@ -46,7 +46,7 @@ public class ManagerScheduleController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) Long employeeId,
-            @PageableDefault(size = 50, sort = "plannedStartAt") Pageable p) {
+            @PageableDefault(size = 50, sort = "plannedStartAt", direction = org.springframework.data.domain.Sort.Direction.DESC) Pageable p) {
         return ApiResponse.ok(svc.search(from, to, employeeId, p));
     }
 

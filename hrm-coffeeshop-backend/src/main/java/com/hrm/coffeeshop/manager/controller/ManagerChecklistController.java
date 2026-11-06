@@ -49,7 +49,7 @@ public class ManagerChecklistController {
     @GetMapping("/checklists/reviews/pending")
     @PreAuthorize("hasAuthority('CHECKLIST_REVIEW')")
     public ApiResponse<PageResponse<RunView>> pendingReviews(
-            @PageableDefault(size = 20, sort = "dueAt", direction = Sort.Direction.ASC) Pageable p) {
+            @PageableDefault(size = 20, sort = "dueAt", direction = Sort.Direction.DESC) Pageable p) {
         return ApiResponse.ok(svc.list("SUBMITTED", p));
     }
 

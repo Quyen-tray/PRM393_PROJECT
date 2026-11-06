@@ -70,8 +70,16 @@ public class DeviceService {
                 .filter(d -> "PENDING".equals(d.getStatus())).findFirst();
         if (pending.isPresent() && pending.get().getDeviceFingerprint().equals(hash))
             return view(pending.get(), nameOf(empId));
-        if (pending.isPresent())
-            throw new BusinessException(ErrorCode.CONFLICT, "Bạn đã có yêu cầu thiết bị đang chờ duyệt");
+        if (pending.isPresent()) {
+            // A reinstalled app cannot recover the old installation credential. Replace only its pending request;
+            // an existing ACTIVE device remains active until a reviewer approves this new installation.
+            AttendanceDevice old = pending.get();
+            old.setStatus("REVOKED");
+            old.setRevokedAt(clock.instant());
+            old.setLockReason("Thay bằng yêu cầu đăng ký từ bản cài đặt hiện tại");
+            audit.log("DEVICE_PENDING_REPLACED", "AttendanceDevice", old.getDeviceId(),
+                    Map.of("status", "PENDING"), Map.of("status", "REVOKED"));
+        }
         AttendanceDevice d = new AttendanceDevice();
         d.setEmployeeId(empId);
         d.setDeviceFingerprint(hash);

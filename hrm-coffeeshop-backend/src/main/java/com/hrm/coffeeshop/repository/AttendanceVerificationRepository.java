@@ -13,6 +13,7 @@ import java.util.*;
 public interface AttendanceVerificationRepository extends JpaRepository<AttendanceVerification, Long> {
 
     List<AttendanceVerification> findByAttendanceIdOrderByVerifiedAtAsc(Long attendanceId);
+    boolean existsByEvidenceStorageKey(String evidenceStorageKey);
 
     @Query("select e from AttendanceVerification e where e.retainUntil is not null and e.retainUntil < :today "
          + "and e.evidenceStorageKey is not null and e.evidenceStorageKey <> 'PURGED'")
