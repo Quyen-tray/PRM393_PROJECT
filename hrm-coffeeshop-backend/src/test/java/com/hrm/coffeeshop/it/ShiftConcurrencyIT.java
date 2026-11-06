@@ -33,7 +33,7 @@ class ShiftConcurrencyIT extends IntegrationTestBase {
     @Test
     void twoManagersAssigningOverlappingShiftOnlyOneSucceeds() throws Exception {
         long an = employeeIdByCode("NV001");
-        long manager1 = userIdByEmail("quanly@hrm.test");
+        long manager1 = userIdByEmail("baonvchaos@gmail.com");
         long manager2 = createUser("it-manager2-shift@hrm.test");
         int sang = workShiftId("CA_SANG");
         LocalDate day = LocalDate.of(2032, 4, 10);
@@ -76,7 +76,7 @@ class ShiftConcurrencyIT extends IntegrationTestBase {
     void nonOverlappingShiftStillAllowedAfterRace() {
         // Đối chứng: khóa theo nhân viên không được chặn việc phân ca hợp lệ (ca chiều không trùng ca sáng).
         long an = employeeIdByCode("NV001");
-        long manager = userIdByEmail("quanly@hrm.test");
+        long manager = userIdByEmail("baonvchaos@gmail.com");
         LocalDate day = LocalDate.of(2032, 4, 11);
         loginAs(manager, null, Set.of(Roles.STORE_MANAGER));
         assertDoesNotThrow(() -> shifts.create(new AssignmentRequest(an, workShiftId("CA_SANG"), day, null)));

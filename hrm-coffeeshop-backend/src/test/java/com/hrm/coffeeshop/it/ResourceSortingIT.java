@@ -26,7 +26,7 @@ class ResourceSortingIT extends IntegrationTestBase {
 
     @BeforeEach void fixtures() {
         employee = employeeIdByCode("NV001");
-        manager = userIdByEmail("quanly@hrm.test");
+        manager = userIdByEmail("baonvchaos@gmail.com");
         loginAs(manager, null, Set.of("STORE_MANAGER"));
         last = decision("2091-03-03T00:00:00Z");
         first = decision("2091-03-01T00:00:00Z");

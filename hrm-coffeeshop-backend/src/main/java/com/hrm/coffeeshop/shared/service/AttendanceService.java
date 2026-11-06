@@ -11,6 +11,7 @@ import com.hrm.coffeeshop.shared.dto.AttendanceDto.LocationDto;
 import com.hrm.coffeeshop.shared.dto.AttendanceDto.PhotoEvidence;
 import com.hrm.coffeeshop.shared.dto.AttendanceDto.VerificationView;
 import com.hrm.coffeeshop.shared.dto.AttendanceDto.ShiftChoice;
+import com.hrm.coffeeshop.shared.dto.AttendanceDto.SpotCheckView;
 
 import com.hrm.coffeeshop.common.*;
 import com.hrm.coffeeshop.config.AppProperties;
@@ -35,6 +36,7 @@ public class AttendanceService {
 
     private final AttendanceRepository attendance;
     private final AttendanceVerificationRepository evidences;
+    private final AttendanceSpotCheckRepository spotChecks;
     private final ShiftAssignmentRepository schedules;
     private final WorkShiftRepository shifts;
     private final EmployeeRepository employees;
@@ -52,24 +54,28 @@ public class AttendanceService {
     private final PayrollLockGuard lockGuard;
     private final VerificationAttemptRecorder attemptRecorder;
     private final Clock clock;
-    private final AttendancePhotoPolicy photoPolicy;
+    private final AttendanceSpotCheckPolicy spotCheckPolicy;
+    private final int spotCheckResponseMinutes;
     private final boolean flexibleTesting;
     private final boolean blockMockLocations;
     private final boolean faceVerificationRequired;
 
     public AttendanceService(AttendanceRepository attendance, AttendanceVerificationRepository evidences,
+                             AttendanceSpotCheckRepository spotChecks,
                              ShiftAssignmentRepository schedules, WorkShiftRepository shifts,
                              EmployeeRepository employees, AttendanceAdjustmentRequestRepository adjustments,
                              DeviceService devices, TrainingService training, StoreService storeService,
                              AttendanceMetricsService metrics, FaceVerificationClient face,
                              StorageGateway storage, ViolationService violations, PersonLookup people,
                              AuditService audit, AppProperties props, PayrollLockGuard lockGuard, VerificationAttemptRecorder attemptRecorder, Clock clock,
-                             AttendancePhotoPolicy photoPolicy,
+                             AttendanceSpotCheckPolicy spotCheckPolicy,
+                             @Value("${app.attendance.spot-check-response-minutes:5}") int spotCheckResponseMinutes,
                              @Value("${app.attendance.flexible-testing-enabled:false}") boolean flexibleTesting,
                              @Value("${app.attendance.block-mock-locations:true}") boolean blockMockLocations,
                              @Value("${app.attendance.face-verification-required:false}") boolean faceVerificationRequired) {
         this.attendance = attendance;
         this.evidences = evidences;
+        this.spotChecks = spotChecks;
         this.schedules = schedules;
         this.shifts = shifts;
         this.employees = employees;
@@ -87,13 +93,14 @@ public class AttendanceService {
         this.lockGuard = lockGuard;
         this.attemptRecorder = attemptRecorder;
         this.clock = clock;
-        this.photoPolicy = photoPolicy;
+        this.spotCheckPolicy = spotCheckPolicy;
+        this.spotCheckResponseMinutes = spotCheckResponseMinutes;
         this.flexibleTesting = flexibleTesting;
         this.blockMockLocations = blockMockLocations;
         this.faceVerificationRequired = faceVerificationRequired;
     }
 
-    private record Geo(BigDecimal lat, BigDecimal lon, BigDecimal accuracy, double distance) {}
+    record Geo(BigDecimal lat, BigDecimal lon, BigDecimal accuracy, double distance) {}
 
     // =============================== CHECK-IN ===============================
     @Transactional
@@ -134,7 +141,7 @@ public class AttendanceService {
                     BusinessException.details("restrictions", el.restrictions()));
         devices.requireActive(empId, r.deviceId());
         Geo geo = gpsOrRecord(r.location(), now, sc.getShiftAssignmentId(), empId, "CHECK_IN", r.deviceId());
-        String photoKey = requirePhoto(r.photoEvidence(), photoRequired(empId, sc.getShiftAssignmentId(), "CHECK_IN"));
+        String photoKey = requirePhoto(r.photoEvidence(), photoRequired());
         FaceVerificationClient.Result fr = faceOrRecord(r.faceVerification(), photoKey, empId, sc.getShiftAssignmentId(), "CHECK_IN", r.deviceId(), now);
 
         Attendance a = existing.orElseGet(Attendance::new);
@@ -161,6 +168,7 @@ public class AttendanceService {
                 throw new BusinessException(ErrorCode.ATTENDANCE_ALREADY_CHECKED_IN, "Bạn đã check-in ca này");
             throw dup;
         }
+        scheduleSpotCheck(a, sc, now);
         saveVerifications(a, "CHECK_IN", r.deviceId(), photoKey, geo, fr, now);
         if (a.getLateMinutes() > 0) violations.recordLate(emp, a.getAttendanceId(), a.getLateMinutes());
         audit.log("ATTENDANCE_CHECK_IN", "Attendance", a.getAttendanceId(), null,
@@ -194,9 +202,23 @@ public class AttendanceService {
         }
         if (!flexibleTesting) assertNotLocked(a);
         Instant now = clock.instant();
+        spotChecks.findByAttendanceIdForUpdate(a.getAttendanceId()).ifPresent(check -> {
+            if ("SCHEDULED".equals(check.getStatus())) {
+                if (check.getScheduledAt() != null && check.getScheduledAt().isAfter(now)) {
+                    check.setStatus("CANCELLED");
+                } else {
+                    throw BusinessException.invalidState("Yêu cầu kiểm tra hiện diện đang được gửi. Hãy tải lại rồi xác nhận trước khi check-out.");
+                }
+            } else if ("REQUESTED".equals(check.getStatus())) {
+                if (check.getResponseDeadlineAt() != null && check.getResponseDeadlineAt().isAfter(now))
+                    throw BusinessException.invalidState("Hãy hoàn thành kiểm tra hiện diện giữa ca trước khi check-out.");
+                check.setStatus("MISSED");
+                violations.recordAttendanceSpotCheckMissed(empId, a.getAttendanceId());
+            }
+        });
         devices.requireActive(empId, r.deviceId());
         Geo geo = gpsOrRecord(r.location(), now, sc.getShiftAssignmentId(), empId, "CHECK_OUT", r.deviceId());
-        String photoKey = requirePhoto(r.photoEvidence(), photoRequired(empId, sc.getShiftAssignmentId(), "CHECK_OUT"));
+        String photoKey = requirePhoto(r.photoEvidence(), photoRequired());
         FaceVerificationClient.Result fr = faceOrRecord(r.faceVerification(), photoKey, empId, sc.getShiftAssignmentId(), "CHECK_OUT", r.deviceId(), now);
 
         a.setCheckOutAt(now.isBefore(a.getCheckInAt()) ? a.getCheckInAt() : now);
@@ -224,7 +246,7 @@ public class AttendanceService {
 
     // =============================== XÁC MINH ===============================
     /** B-17: GPS thất bại được ghi nhận (transaction riêng) rồi mới ném lại lỗi cho người dùng. */
-    private Geo gpsOrRecord(LocationDto loc, Instant now, Long shiftId, Long empId, String event, Long deviceId) {
+    Geo gpsOrRecord(LocationDto loc, Instant now, Long shiftId, Long empId, String event, Long deviceId) {
         try {
             return verifyGps(loc, now);
         } catch (BusinessException e) {
@@ -271,7 +293,7 @@ public class AttendanceService {
                 BigDecimal.valueOf(loc.accuracyMeters()).setScale(2, RoundingMode.HALF_UP), d);
     }
 
-    private String requirePhoto(PhotoEvidence p, boolean required) {
+    String requirePhoto(PhotoEvidence p, boolean required) {
         if (!required && (p == null || p.storageKey() == null || p.storageKey().isBlank())) return null;
         if (p != null && Boolean.FALSE.equals(p.cameraPermissionGranted()))
             throw new BusinessException(ErrorCode.CAMERA_PERMISSION_DENIED, "Chưa cấp quyền camera. Hãy mở Cài đặt, cấp quyền camera rồi thử lại");
@@ -285,8 +307,8 @@ public class AttendanceService {
         return p.storageKey();
     }
 
-    private boolean photoRequired(Long employeeId, Long assignmentId, String event) {
-        return faceVerificationRequired || photoPolicy.required(employeeId, assignmentId, event);
+    private boolean photoRequired() {
+        return true;
     }
 
     private FaceVerificationClient.Result verifyFace(FaceVerification fv, String photoKey, Long empId) {
@@ -300,8 +322,24 @@ public class AttendanceService {
     }
 
     /** Ghi kết quả từng lần kiểm tra (SRS 7.4 AttendanceVerification): GPS, DEVICE, PHOTO, FACE_LIVENESS. */
-    private void saveVerifications(Attendance a, String event, Long deviceId, String photoKey, Geo geo,
-                                   FaceVerificationClient.Result fr, Instant now) {
+    void saveVerifications(Attendance a, String event, Long deviceId, String photoKey, Geo geo,
+                           FaceVerificationClient.Result fr, Instant now) {
+        saveGpsDevicePhotoVerifications(a, event, deviceId, photoKey, geo, now);
+
+        String face = faceStatus(fr);
+        AttendanceVerification fv = verification(a, event, "FACE_LIVENESS", face, now);
+        fv.setAiProvider(fr == null ? null : fr.provider());
+        if ("EXEMPTED".equals(face)) fv.setFailureReason("Chưa chạy xác minh khuôn mặt");
+        if ("REVIEW_REQUIRED".equals(face)) fv.setFailureReason("Khuôn mặt cần người duyệt xem lại");
+        evidences.save(fv);
+    }
+
+    void saveSpotCheckVerifications(Attendance a, Long deviceId, String photoKey, Geo geo, Instant now) {
+        saveGpsDevicePhotoVerifications(a, "SPOT_CHECK", deviceId, photoKey, geo, now);
+    }
+
+    private void saveGpsDevicePhotoVerifications(Attendance a, String event, Long deviceId, String photoKey,
+                                                Geo geo, Instant now) {
         AttendanceVerification gps = verification(a, event, "GPS", "PASSED", now);
         gps.setLatitude(geo.lat());
         gps.setLongitude(geo.lon());
@@ -318,13 +356,6 @@ public class AttendanceService {
         photo.setEvidenceStorageKey(photoKey);
         photo.setRetainUntil(TimeUtils.today(clock).plusMonths(storeService.current().getPhotoRetentionMonths()));
         evidences.save(photo);
-
-        String face = faceStatus(fr);
-        AttendanceVerification fv = verification(a, event, "FACE_LIVENESS", face, now);
-        fv.setAiProvider(fr == null ? null : fr.provider());
-        if ("EXEMPTED".equals(face)) fv.setFailureReason("Chưa chạy xác minh khuôn mặt");
-        if ("REVIEW_REQUIRED".equals(face)) fv.setFailureReason("Khuôn mặt cần người duyệt xem lại");
-        evidences.save(fv);
     }
 
     private static AttendanceVerification verification(Attendance a, String event, String type, String status, Instant at) {
@@ -343,6 +374,24 @@ public class AttendanceService {
         return List.of("MATCH", "PASSED").contains(fr.matchStatus())
                 && fr.livenessStatus() != null && List.of("LIVE", "PASSED").contains(fr.livenessStatus())
                 ? "PASSED" : "EXEMPTED";
+    }
+
+    private void scheduleSpotCheck(Attendance a, ShiftAssignment assignment, Instant checkedInAt) {
+        AttendanceSpotCheck check = new AttendanceSpotCheck();
+        check.setAttendanceId(a.getAttendanceId());
+        check.setEmployeeId(a.getEmployeeId());
+        check.setShiftAssignmentId(assignment.getShiftAssignmentId());
+        boolean selected = spotCheckPolicy.selected(a.getEmployeeId(), assignment.getShiftAssignmentId());
+        Instant scheduledAt = selected
+                ? spotCheckPolicy.scheduledAt(a.getEmployeeId(), assignment.getShiftAssignmentId(), checkedInAt,
+                        assignment.getPlannedEndAt(), spotCheckResponseMinutes)
+                : null;
+        // Ca quá ngắn để chừa đủ 5 phút phản hồi thì không phát sinh lượt kiểm tra bất khả thi.
+        boolean scheduled = selected && scheduledAt != null;
+        check.setSelected(scheduled);
+        check.setStatus(scheduled ? "SCHEDULED" : "NOT_SELECTED");
+        check.setScheduledAt(scheduledAt);
+        spotChecks.save(check);
     }
 
     void assertNotLocked(Attendance a) {
@@ -412,6 +461,12 @@ public class AttendanceService {
             default -> "DEVICE_NOT_ACTIVE";
         });
         boolean checkedIn = ar != null && ar.getCheckInAt() != null;
+        AttendanceSpotCheck spotCheck = checkedIn
+                ? spotChecks.findByAttendanceId(ar.getAttendanceId()).orElse(null) : null;
+        boolean spotCheckPending = spotCheck != null && ("REQUESTED".equals(spotCheck.getStatus())
+                || "SCHEDULED".equals(spotCheck.getStatus()) && spotCheck.getScheduledAt() != null
+                && !spotCheck.getScheduledAt().isAfter(now));
+        if (spotCheckPending) blockers.add("ATTENDANCE_SPOT_CHECK_PENDING");
         if (!flexibleTesting) {
             if (!checkedIn && !"ACTIVE".equals(emp.getEmploymentStatus())) blockers.add("ACCOUNT_NOT_ACTIVE");
             if (!checkedIn && !el.eligible()) blockers.add("EMPLOYEE_NOT_ELIGIBLE_FOR_SHIFT");
@@ -421,17 +476,21 @@ public class AttendanceService {
             catch (BusinessException e) { blockers.add(e.getCode().name()); }
         }
         boolean canIn = !checkedIn && (flexibleTesting || !now.isBefore(opens) && !now.isAfter(pick.getPlannedEndAt())) && blockers.isEmpty();
-        boolean canOut = checkedIn && ar.getCheckOutAt() == null && blockers.isEmpty();
+        boolean canOut = checkedIn && ar.getCheckOutAt() == null && !spotCheckPending && blockers.isEmpty();
         return new CurrentShiftView(pick.getShiftAssignmentId(), sh.getShiftName(), TimeUtils.vn(pick.getPlannedStartAt()),
                 TimeUtils.vn(pick.getPlannedEndAt()), TimeUtils.vn(opens), ar == null ? null : ar.getAttendanceId(),
                 ar == null ? null : apiStatus(ar, false), canIn, canOut, deviceOk, el.eligible(), blockers,
-                photoRequired(empId, pick.getShiftAssignmentId(), checkedIn ? "CHECK_OUT" : "CHECK_IN"), flexibleTesting,
+                photoRequired(), flexibleTesting,
                 flexibleTesting ? cand.stream().map(s -> {
                     Attendance record = records.get(s.getShiftAssignmentId());
                     String name = shifts.findById(s.getWorkShiftId()).map(WorkShift::getShiftName).orElse("Ca làm");
                     return new ShiftChoice(s.getShiftAssignmentId(), name, s.getWorkDate(), TimeUtils.vn(s.getPlannedStartAt()),
                             TimeUtils.vn(s.getPlannedEndAt()), record == null ? null : apiStatus(record, false));
-                }).toList() : List.of(), flexibleTesting || !blockMockLocations, faceVerificationRequired);
+                }).toList() : List.of(), flexibleTesting || !blockMockLocations, faceVerificationRequired,
+                spotCheck != null && "REQUESTED".equals(spotCheck.getStatus())
+                        ? new SpotCheckView(spotCheck.getSpotCheckId(), spotCheck.getStatus(),
+                                TimeUtils.vn(spotCheck.getRequestedAt()), TimeUtils.vn(spotCheck.getResponseDeadlineAt()))
+                        : null);
     }
 
     @Transactional(readOnly = true)
@@ -470,7 +529,7 @@ public class AttendanceService {
                 url = storage.createViewUrl(v.getEvidenceStorageKey(), Duration.ofSeconds(props.storage().signedUrlTtlSeconds()), u.userId());
                 audit.log("EVIDENCE_VIEW", "AttendanceVerification", v.getVerificationId(), null, Map.of("attendanceId", id));
             }
-            out.add(new VerificationView(v.getVerificationType(), v.getVerificationStatus(),
+            out.add(new VerificationView(v.getEventType(), v.getVerificationType(), v.getVerificationStatus(),
                     v.getLatitude() == null ? null : v.getLatitude().doubleValue(),
                     v.getLongitude() == null ? null : v.getLongitude().doubleValue(),
                     v.getAccuracyMeters() == null ? null : v.getAccuracyMeters().doubleValue(),
@@ -497,11 +556,17 @@ public class AttendanceService {
 
     AttendanceView toView(Attendance a) {
         ShiftAssignment sc = schedules.findById(a.getShiftAssignmentId()).orElse(null);
+        AttendanceSpotCheck spotCheck = spotChecks.findByAttendanceId(a.getAttendanceId()).orElse(null);
+        AuthUser viewer = SecurityUtils.currentOrNull();
+        boolean mayViewSpotCheckStatus = viewer != null && viewer.hasAnyPermission(
+                Permissions.ATTENDANCE_VIEW_ALL, Permissions.ATTENDANCE_REVIEW, Permissions.ATTENDANCE_ADJUST_HR);
         return new AttendanceView(a.getAttendanceId(), a.getShiftAssignmentId(), a.getEmployeeId(), people.nameOf(a.getEmployeeId()),
                 sc == null ? null : sc.getWorkDate(), TimeUtils.vn(a.getCheckInAt()), TimeUtils.vn(a.getCheckOutAt()),
                 apiStatus(a, true), a.getAttendanceStatus(), a.getLateMinutes(), a.getEarlyLeaveMinutes(), a.getWorkedMinutes(),
                 a.getApprovedOTMinutes(), a.getCheckInMethod(), a.getCheckOutMethod(), a.getPayrollStatus(), a.getNote(),
                 a.getCheckInAt() == null || a.getCheckOutAt() == null ? null : TimeUtils.minutes(a.getCheckInAt(), a.getCheckOutAt()),
-                sc == null || a.getCheckOutAt() == null ? null : metrics.rawOvertimeMinutes(a, sc));
+                sc == null || a.getCheckOutAt() == null ? null : metrics.rawOvertimeMinutes(a, sc),
+                !mayViewSpotCheckStatus || spotCheck == null ? null : new SpotCheckView(spotCheck.getSpotCheckId(), spotCheck.getStatus(),
+                        TimeUtils.vn(spotCheck.getRequestedAt()), TimeUtils.vn(spotCheck.getResponseDeadlineAt())));
     }
 }

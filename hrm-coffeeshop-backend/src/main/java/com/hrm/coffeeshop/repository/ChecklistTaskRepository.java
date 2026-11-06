@@ -12,15 +12,15 @@ import java.util.*;
 
 public interface ChecklistTaskRepository extends JpaRepository<ChecklistTask, Long> {
 
-    List<ChecklistTask> findByEmployeeIdOrderByDueAtDesc(Long employeeId);
+    List<ChecklistTask> findByEmployeeIdOrderByDueAtDescChecklistTaskIdDesc(Long employeeId);
     boolean existsByChecklistTemplateId(Integer templateId);
     boolean existsByChecklistTemplateIdAndShiftAssignmentId(Integer templateId, Long shiftAssignmentId);
-    List<ChecklistTask> findByEmployeeIdAndRunStatus(Long employeeId, String status);
+    List<ChecklistTask> findByEmployeeIdAndRunStatusOrderByDueAtDescChecklistTaskIdDesc(Long employeeId, String status);
     long countByRunStatus(String status);
     List<ChecklistTask> findByDueAtBetween(Instant from, Instant to);
     List<ChecklistTask> findByDueAtGreaterThanEqualAndDueAtLessThan(Instant from, Instant to);
 
-    @Query("select r from ChecklistTask r where r.employeeId = :employeeId and r.runStatus in :statuses order by r.dueAt")
+    @Query("select r from ChecklistTask r where r.employeeId = :employeeId and r.runStatus in :statuses order by r.dueAt desc, r.checklistTaskId desc")
     List<ChecklistTask> findMine(@Param("employeeId") Long employeeId, @Param("statuses") Collection<String> statuses);
 
     @Query("select r from ChecklistTask r where (:status = '' or r.runStatus = :status)")

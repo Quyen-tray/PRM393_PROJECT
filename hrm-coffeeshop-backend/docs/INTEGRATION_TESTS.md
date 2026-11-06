@@ -29,7 +29,7 @@ Hiện có 17 lớp `*IT`; script chạy toàn bộ bằng Failsafe `-Dit.test='
 - Nhân viên `NV001` (Pha chế) là ACTIVE, có thiết bị ACTIVE và đủ điều kiện đào tạo để phân ca. Nếu không đủ,
   `ShiftService.create` sẽ trả `EMPLOYEE_NOT_ELIGIBLE_FOR_SHIFT` và test sẽ báo rõ lý do.
 - Tọa độ cửa hàng `CF-HN01` (21.0278, 105.8342) và bán kính 30 m là các giá trị seed.
-- Tài khoản `quanly@hrm.test` tồn tại (seed).
+- Tài khoản `baonvchaos@gmail.com` tồn tại (seed).
 
 ## Thiết kế test
 - Đồng hồ `TestClock` được inject làm `Clock` chính; test đặt thời điểm cụ thể (giờ Việt Nam), không phụ thuộc giờ thật.

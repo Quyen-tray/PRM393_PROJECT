@@ -61,6 +61,7 @@ public class NotificationService {
         n.setMessage(message);
         n.setRelatedEntityType(entityType);
         n.setRelatedEntityId(entityId);
+        n.setCreatedAt(clock.instant());
         n.setDedupKey(dedupKey);
         repo.save(n);
     }

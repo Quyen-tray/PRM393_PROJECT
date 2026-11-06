@@ -1,4 +1,4 @@
-﻿-- ============================================================================
+-- ============================================================================
 -- seeddata.sql
 -- Dữ liệu nền (role, permission, danh mục) và dữ liệu demo/test.
 -- Chạy SAU config.sql. File có thể chạy lại; dữ liệu demo được bỏ qua nếu đã tồn tại.
@@ -101,6 +101,13 @@ IF NOT EXISTS (SELECT 1 FROM dbo.RuleCatalog WHERE RuleCode = 'CHECKLIST_MISSED'
         ('CHECKLIST_MISSED', N'Bỏ sót checklist', 'VIOLATION', 'MINOR', 0, 1,
          N'Ghi nhận sau khi hết số lần nhắc');
 
+IF NOT EXISTS (SELECT 1 FROM dbo.RuleCatalog WHERE RuleCode = 'ATTENDANCE_SPOT_CHECK_MISSED')
+    INSERT INTO dbo.RuleCatalog
+        (RuleCode, RuleName, RuleType, Severity, DefaultAmount, IsAutomatic, Description)
+    VALUES
+        ('ATTENDANCE_SPOT_CHECK_MISSED', N'Không phản hồi kiểm tra giữa ca', 'VIOLATION', 'MINOR', 0, 1,
+         N'Ghi nhận khi nhân viên không phản hồi yêu cầu kiểm tra hiện diện trong 5 phút');
+
 IF NOT EXISTS (SELECT 1 FROM dbo.RuleCatalog WHERE RuleCode = 'SERVICE_ISSUE')
     INSERT INTO dbo.RuleCatalog
         (RuleCode, RuleName, RuleType, Severity, DefaultAmount, IsAutomatic, Description)
@@ -199,7 +206,7 @@ GO
 -- Tài khoản quản trị đầu tiên (đăng nhập bằng Google)
 IF NOT EXISTS (SELECT 1 FROM dbo.AppUser WHERE Email='baonvhe181955@fpt.edu.vn')
 BEGIN
-    INSERT INTO dbo.AppUser (Email, DisplayName, UserStatus) VALUES ('baonvhe181955@fpt.edu.vn', N'System Admin', 'ACTIVE');
+    INSERT INTO dbo.AppUser (Email, DisplayName, UserStatus) VALUES ('baonvhe181955@fpt.edu.vn', N'Admin', 'ACTIVE');
     INSERT INTO dbo.UserRole (UserId, RoleId)
     SELECT u.UserId, r.RoleId FROM dbo.AppUser u CROSS JOIN dbo.Role r
     WHERE u.Email='baonvhe181955@fpt.edu.vn' AND r.RoleCode='SYSTEM_ADMIN';
@@ -209,538 +216,797 @@ GO
 GO
 
 -- =====================================================================================
--- DỮ LIỆU TEST (chỉ để thử API; XÓA CẢ KHỐI NÀY khi lên production)
--- Chạy lại nhiều lần vẫn an toàn: nếu cửa hàng CF-HN01 đã có thì bỏ qua. Lỗi giữa chừng sẽ rollback toàn bộ.
--- Mọi mốc thời gian tính theo NGÀY CHẠY SCRIPT (giờ VN), nên lịch "hôm nay" luôn mới.
---
--- Tài khoản (chưa có mật khẩu: đặt DEV_PASSWORD_LOGIN_ENABLED=true cùng BOOTSTRAP_ADMIN_PASSWORD (admin) và TEST_ACCOUNTS_PASSWORD (*@hrm.test) rồi khởi động app; hoặc dùng Google ID token):
---   baonvhe181955@fpt.edu.vn   SYSTEM_ADMIN          tài khoản, cấu hình, audit log, mẫu checklist
---   giamdoc@hrm.test    OPERATIONS_DIRECTOR   duyệt thưởng/phạt CRITICAL, mở lại kỳ công
---   quanly@hrm.test     STORE_MANAGER         lịch, duyệt giải trình/OT/thiết bị/checklist, xác nhận kỳ công
---   hr@hrm.test         EMPLOYEE + tập quyền HR (+ EVIDENCE_DOWNLOAD)   chốt kỳ công, duyệt điều chỉnh bước HR
---   nv.an@hrm.test      EMPLOYEE  thiết bị đã duyệt, đủ đào tạo  -> check-in/out thành công hôm nay
---   nv.binh@hrm.test    EMPLOYEE  thiết bị đang chờ duyệt        -> check-in báo DEVICE_NOT_ACTIVE; thử duyệt/từ chối thiết bị
---   nv.chi@hrm.test     EMPLOYEE  chưa đạt đào tạo bắt buộc      -> check-in báo SHIFT_NOT_ELIGIBLE
---   nv.dung@hrm.test    EMPLOYEE  chưa có thiết bị, hồ sơ thiếu  -> thử đăng ký thiết bị, nộp hồ sơ
---   nv.khoa@hrm.test    tài khoản LOCKED, nhân viên đã nghỉ      -> thử trạng thái tài khoản bị khóa
--- Vị trí cửa hàng: lat 21.0278, lon 105.8342, bán kính 30 m (dùng tọa độ này để check-in qua GPS).
--- Kỳ công: kỳ A (hôm nay-27..-14) sạch -> thử xác nhận + chốt; kỳ B (hôm nay-13..-1) còn đơn treo -> readiness báo vướng.
--- Hôm nay: An/Bình/Chi/Hà đều có ca CA_TEST cả ngày; Hà đã check-in sẵn để thử check-out.
+-- DỮ LIỆU TEST TỐI GIẢN
+-- Tổng cộng 3 tài khoản: admin, manager và một employee. Demo được tạo một lần cho CF-HN01.
+-- Test password: đặt DEV_PASSWORD_LOGIN_ENABLED=true, BOOTSTRAP_ADMIN_PASSWORD và TEST_ACCOUNTS_PASSWORD.
+-- Để thử chấm công: đăng nhập panchisuru@gmail.com, đăng ký thiết bị với fingerprint seed-device-an
+-- (hoặc đăng ký thiết bị mới và duyệt bằng tài khoản quản lý), rồi dùng GPS trong bán kính 30 m.
 -- =====================================================================================
 GO
 
 SET XACT_ABORT ON;
 IF EXISTS (SELECT 1 FROM dbo.Store WHERE StoreCode = 'CF-HN01')
-    PRINT N'Dữ liệu test đã tồn tại (CF-HN01) - bỏ qua.';
+    PRINT N'Dữ liệu demo tối giản đã tồn tại (CF-HN01) - bỏ qua.';
 ELSE
 BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        DECLARE @D  DATE      = CAST(DATEADD(HOUR, 7, SYSUTCDATETIME()) AS DATE);  -- hôm nay theo giờ VN
-        DECLARE @T0 DATETIME2 = DATEADD(HOUR, -7, CAST(@D AS DATETIME2));          -- 00:00 hôm nay (VN) quy ra UTC
+        DECLARE @D DATE = CAST(DATEADD(HOUR, 7, SYSUTCDATETIME()) AS DATE);
+        DECLARE @T0 DATETIME2 = DATEADD(HOUR, -7, CAST(@D AS DATETIME2));
+        DECLARE @ManagerRoleId INT = (SELECT RoleId FROM dbo.Role WHERE RoleCode = 'STORE_MANAGER');
+        DECLARE @EmployeeRoleId INT = (SELECT RoleId FROM dbo.Role WHERE RoleCode = 'EMPLOYEE');
 
-        -- 1. Cửa hàng + tài khoản + vai trò + quyền
-        DECLARE @uAdmin BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'baonvhe181955@fpt.edu.vn');
-        DECLARE @rAdmin INT = (SELECT RoleId FROM dbo.Role WHERE RoleCode = 'SYSTEM_ADMIN');
-        DECLARE @rMgr INT = (SELECT RoleId FROM dbo.Role WHERE RoleCode = 'STORE_MANAGER');
-        DECLARE @rEmp INT = (SELECT RoleId FROM dbo.Role WHERE RoleCode = 'EMPLOYEE');
-        DECLARE @rDir INT = (SELECT RoleId FROM dbo.Role WHERE RoleCode = 'OPERATIONS_DIRECTOR');
         INSERT INTO dbo.Store (StoreCode, Name, AddressLine, Latitude, Longitude, AttendanceRadiusMeters, IsActive)
-        VALUES
-            ('CF-HN01', N'Cà phê Mộc – Cửa hàng Test', N'1 Tràng Tiền, Hoàn Kiếm, Hà Nội', 21.0278000, 105.8342000, 30, 1);
+        VALUES ('CF-HN01', N'Cà phê Mộc – Cửa hàng Test', N'1 Tràng Tiền, Hoàn Kiếm, Hà Nội', 21.0278000, 105.8342000, 30, 1);
 
-        DECLARE @sId INT = (SELECT StoreId FROM dbo.Store WHERE StoreCode = 'CF-HN01');
-        INSERT INTO dbo.AppUser (Email, DisplayName, PhoneNumber, UserStatus)
-        VALUES
-            ('giamdoc@hrm.test', N'Nguyễn Văn Hùng', '0901000001', 'ACTIVE'),
-            ('quanly@hrm.test', N'Trần Thị Mai', '0901000002', 'ACTIVE'),
-            ('hr@hrm.test', N'Lê Thu Hà', '0901000003', 'ACTIVE'),
-            ('nv.an@hrm.test', N'Phạm Minh An', '0901000004', 'ACTIVE'),
-            ('nv.binh@hrm.test', N'Vũ Quốc Bình', '0901000005', 'ACTIVE'),
-            ('nv.chi@hrm.test', N'Đỗ Khánh Chi', '0901000006', 'ACTIVE'),
-            ('nv.dung@hrm.test', N'Hoàng Tiến Dũng', '0901000007', 'ACTIVE'),
-            ('nv.khoa@hrm.test', N'Lý Đăng Khoa', '0901000008', 'LOCKED');
+        DECLARE @StoreId INT = (SELECT StoreId FROM dbo.Store WHERE StoreCode = 'CF-HN01');
 
-        DECLARE @uDir BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'giamdoc@hrm.test');
-        DECLARE @uMgr BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'quanly@hrm.test');
-        DECLARE @uHr BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'hr@hrm.test');
-        DECLARE @uAn BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'nv.an@hrm.test');
-        DECLARE @uBinh BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'nv.binh@hrm.test');
-        DECLARE @uChi BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'nv.chi@hrm.test');
-        DECLARE @uDung BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'nv.dung@hrm.test');
-        DECLARE @uKhoa BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'nv.khoa@hrm.test');
+        IF NOT EXISTS (SELECT 1 FROM dbo.AppUser WHERE Email = 'baonvchaos@gmail.com')
+            INSERT INTO dbo.AppUser (Email, DisplayName, PhoneNumber, UserStatus)
+            VALUES ('baonvchaos@gmail.com', N'Manager', '0901000002', 'ACTIVE');
+
+        IF NOT EXISTS (SELECT 1 FROM dbo.AppUser WHERE Email = 'panchisuru@gmail.com')
+            INSERT INTO dbo.AppUser (Email, DisplayName, PhoneNumber, UserStatus)
+            VALUES ('panchisuru@gmail.com', N'Employee', '0901000004', 'ACTIVE');
+
+        DECLARE @ManagerId BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'baonvchaos@gmail.com');
+        DECLARE @EmployeeUserId BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'panchisuru@gmail.com');
+
         INSERT INTO dbo.UserRole (UserId, RoleId)
-        VALUES
-            (@uDir, @rDir),
-            (@uMgr, @rMgr),
-            (@uHr, @rEmp),
-            (@uAn, @rEmp),
-            (@uBinh, @rEmp),
-            (@uChi, @rEmp),
-            (@uDung, @rEmp),
-            (@uKhoa, @rEmp);
+        SELECT @ManagerId, @ManagerRoleId
+        WHERE NOT EXISTS (SELECT 1 FROM dbo.UserRole WHERE UserId = @ManagerId AND RoleId = @ManagerRoleId);
 
-        INSERT INTO dbo.UserPermission (UserId, PermissionId, GrantedBy)
-        SELECT @uHr, p.PermissionId, @uAdmin
-        FROM dbo.Permission p
-        WHERE p.PermissionCode IN ('DOCUMENT_REVIEW', 'STAFF_REVIEW', 'EMPLOYEE_VIEW', 'EMPLOYEE_MANAGE', 'EMPLOYEE_PII_VIEW', 'ATTENDANCE_VIEW_ALL', 'ATTENDANCE_ADJUST_HR', 'PAYROLL_VIEW', 'PAYROLL_PERIOD_MANAGE', 'PAYROLL_FINALIZE', 'DEVICE_APPROVE', 'DASHBOARD_MANAGER', 'CHECKLIST_VIEW', 'TRAINING_MANAGE', 'VIOLATION_REVIEW', 'REWARD_VIEW', 'REWARD_PROPOSE', 'REWARD_APPROVE', 'EVIDENCE_VIEW', 'EVIDENCE_DOWNLOAD');
+        INSERT INTO dbo.UserRole (UserId, RoleId)
+        SELECT @EmployeeUserId, @EmployeeRoleId
+        WHERE NOT EXISTS (SELECT 1 FROM dbo.UserRole WHERE UserId = @EmployeeUserId AND RoleId = @EmployeeRoleId);
 
+        INSERT INTO dbo.Employee
+            (UserId, EmployeeCode, StoreId, JobTitle, PositionId, EmploymentType, EmploymentStatus,
+             DateOfBirth, HireDate, IdentityNumber, Address, EmergencyContact, ProfileStatus)
+        SELECT @ManagerId, 'QL001', @StoreId, N'Quản lý cửa hàng',
+               (SELECT PositionId FROM dbo.JobPosition WHERE PositionCode = 'QL'),
+               'FULL_TIME', 'ACTIVE', '1990-05-12', DATEADD(DAY, -900, @D),
+               '000000000001', N'Hà Nội', N'Người thân – 0912000000', 'COMPLETE'
+        WHERE NOT EXISTS (SELECT 1 FROM dbo.Employee WHERE UserId = @ManagerId);
 
-        -- 2. Hồ sơ nhân viên (key, mã, chức danh, loại HĐ, trạng thái làm việc, ngày vào làm trước hôm nay, hồ sơ giấy tờ)
-        INSERT INTO dbo.Employee (UserId, EmployeeCode, StoreId, JobTitle, PositionId, EmploymentType, EmploymentStatus, DateOfBirth, HireDate, IdentityNumber, Address, EmergencyContact, ProfileStatus)
-        VALUES
-            (@uMgr, 'QL001', @sId, N'Quản lý cửa hàng', (SELECT PositionId FROM dbo.JobPosition WHERE PositionName = N'Quản lý cửa hàng'), 'FULL_TIME', 'ACTIVE', '1990-05-12', DATEADD(DAY, -900, @D), '000000000001', N'Hà Nội', N'Người thân – 0912000000', 'COMPLETE'),
-            (@uHr, 'NV004', @sId, N'Thu ngân', (SELECT PositionId FROM dbo.JobPosition WHERE PositionName = N'Thu ngân'), 'FULL_TIME', 'ACTIVE', '1995-08-20', DATEADD(DAY, -600, @D), '000000000004', N'Hà Nội', N'Người thân – 0912000000', 'COMPLETE'),
-            (@uAn, 'NV001', @sId, N'Pha chế', (SELECT PositionId FROM dbo.JobPosition WHERE PositionName = N'Pha chế'), 'FULL_TIME', 'ACTIVE', '1998-02-14', DATEADD(DAY, -400, @D), '000000000002', N'Hà Nội', N'Người thân – 0912000000', 'COMPLETE'),
-            (@uBinh, 'NV002', @sId, N'Pha chế', (SELECT PositionId FROM dbo.JobPosition WHERE PositionName = N'Pha chế'), 'PART_TIME', 'ACTIVE', '2002-11-03', DATEADD(DAY, -250, @D), '000000000003', N'Hà Nội', N'Người thân – 0912000000', 'UNDER_REVIEW'),
-            (@uChi, 'NV003', @sId, N'Phục vụ', (SELECT PositionId FROM dbo.JobPosition WHERE PositionName = N'Phục vụ'), 'FULL_TIME', 'ACTIVE', '2001-07-25', DATEADD(DAY, -120, @D), '000000000005', N'Hà Nội', N'Người thân – 0912000000', 'UNDER_REVIEW'),
-            (@uDung, 'NV005', @sId, N'Đầu bếp', (SELECT PositionId FROM dbo.JobPosition WHERE PositionName = N'Đầu bếp'), 'PROBATION', 'ACTIVE', '1997-12-01', DATEADD(DAY, -20, @D), NULL, N'Hà Nội', N'Người thân – 0912000000', 'INCOMPLETE'),
-            (@uKhoa, 'NV006', @sId, N'Phục vụ', (SELECT PositionId FROM dbo.JobPosition WHERE PositionName = N'Phục vụ'), 'TEMPORARY', 'RESIGNED', '2003-03-09', DATEADD(DAY, -300, @D), '000000000006', N'Hà Nội', N'Người thân – 0912000000', 'COMPLETE');
+        INSERT INTO dbo.Employee
+            (UserId, EmployeeCode, StoreId, JobTitle, PositionId, EmploymentType, EmploymentStatus,
+             DateOfBirth, HireDate, IdentityNumber, Address, EmergencyContact, ProfileStatus)
+        SELECT @EmployeeUserId, 'NV001', @StoreId, N'Pha chế',
+               (SELECT PositionId FROM dbo.JobPosition WHERE PositionCode = 'PHA_CHE'),
+               'FULL_TIME', 'ACTIVE', '1998-02-14', DATEADD(DAY, -400, @D),
+               '000000000002', N'Hà Nội', N'Người thân – 0912000000', 'COMPLETE'
+        WHERE NOT EXISTS (SELECT 1 FROM dbo.Employee WHERE UserId = @EmployeeUserId);
 
-        DECLARE @eMgr BIGINT = (SELECT EmployeeId FROM dbo.Employee WHERE UserId = @uMgr);
-        DECLARE @eHr BIGINT = (SELECT EmployeeId FROM dbo.Employee WHERE UserId = @uHr);
-        DECLARE @eAn BIGINT = (SELECT EmployeeId FROM dbo.Employee WHERE UserId = @uAn);
-        DECLARE @eBinh BIGINT = (SELECT EmployeeId FROM dbo.Employee WHERE UserId = @uBinh);
-        DECLARE @eChi BIGINT = (SELECT EmployeeId FROM dbo.Employee WHERE UserId = @uChi);
-        DECLARE @eDung BIGINT = (SELECT EmployeeId FROM dbo.Employee WHERE UserId = @uDung);
-        DECLARE @eKhoa BIGINT = (SELECT EmployeeId FROM dbo.Employee WHERE UserId = @uKhoa);
+        DECLARE @EmployeeId BIGINT = (SELECT EmployeeId FROM dbo.Employee WHERE UserId = @EmployeeUserId);
+        DECLARE @ManagerEmployeeId BIGINT = (SELECT EmployeeId FROM dbo.Employee WHERE UserId = @ManagerId);
 
-        -- 3. Giấy tờ nhân viên (loại giấy tờ lấy từ danh mục có sẵn ở phần dữ liệu nền)
-        DECLARE @dtCccd INT = (SELECT DocumentTypeId FROM dbo.DocumentType WHERE DocumentCode = 'CITIZEN_ID');
-        DECLARE @dtResume INT = (SELECT DocumentTypeId FROM dbo.DocumentType WHERE DocumentCode = 'RESUME');
-        DECLARE @dtCommit INT = (SELECT DocumentTypeId FROM dbo.DocumentType WHERE DocumentCode = 'COMMITMENT');
-        DECLARE @dtFood INT = (SELECT DocumentTypeId FROM dbo.DocumentType WHERE DocumentCode = 'FOOD_SAFETY_CERT');
-        INSERT INTO dbo.EmployeeDocument (EmployeeId, DocumentTypeId, FileName, StorageKey, ReviewStatus, ReviewedBy, ReviewedAt, ExpiresAt, UploadedAt, RejectionReason)
-        VALUES
-            (@eMgr, @dtCccd, 'cccd-mgr.jpg', 'private-documents/seed/mgr-cccd.jpg', 'APPROVED', @uHr, DATEADD(MINUTE, -28800, @T0), NULL, DATEADD(MINUTE, -36000, @T0), NULL),
-            (@eMgr, @dtResume, 'so-yeu-ly-lich-mgr.jpg', 'private-documents/seed/mgr-so-yeu-ly-lich.jpg', 'APPROVED', @uHr, DATEADD(MINUTE, -28800, @T0), NULL, DATEADD(MINUTE, -36000, @T0), NULL),
-            (@eMgr, @dtCommit, 'cam-ket-mgr.jpg', 'private-documents/seed/mgr-cam-ket.jpg', 'APPROVED', @uHr, DATEADD(MINUTE, -28800, @T0), NULL, DATEADD(MINUTE, -36000, @T0), NULL),
-            (@eHr, @dtCccd, 'cccd-hr.jpg', 'private-documents/seed/hr-cccd.jpg', 'APPROVED', @uMgr, DATEADD(MINUTE, -28800, @T0), NULL, DATEADD(MINUTE, -36000, @T0), NULL),
-            (@eHr, @dtResume, 'so-yeu-ly-lich-hr.jpg', 'private-documents/seed/hr-so-yeu-ly-lich.jpg', 'APPROVED', @uMgr, DATEADD(MINUTE, -28800, @T0), NULL, DATEADD(MINUTE, -36000, @T0), NULL),
-            (@eHr, @dtCommit, 'cam-ket-hr.jpg', 'private-documents/seed/hr-cam-ket.jpg', 'APPROVED', @uMgr, DATEADD(MINUTE, -28800, @T0), NULL, DATEADD(MINUTE, -36000, @T0), NULL),
-            (@eAn, @dtCccd, 'cccd-an.jpg', 'private-documents/seed/an-cccd.jpg', 'APPROVED', @uHr, DATEADD(MINUTE, -28800, @T0), NULL, DATEADD(MINUTE, -36000, @T0), NULL),
-            (@eAn, @dtResume, 'so-yeu-ly-lich-an.jpg', 'private-documents/seed/an-so-yeu-ly-lich.jpg', 'APPROVED', @uHr, DATEADD(MINUTE, -28800, @T0), NULL, DATEADD(MINUTE, -36000, @T0), NULL),
-            (@eAn, @dtCommit, 'cam-ket-an.jpg', 'private-documents/seed/an-cam-ket.jpg', 'APPROVED', @uHr, DATEADD(MINUTE, -28800, @T0), NULL, DATEADD(MINUTE, -36000, @T0), NULL),
-            (@eBinh, @dtCccd, 'cccd-binh.jpg', 'private-documents/seed/binh-cccd.jpg', 'APPROVED', @uHr, DATEADD(MINUTE, -28800, @T0), NULL, DATEADD(MINUTE, -36000, @T0), NULL),
-            (@eBinh, @dtResume, 'so-yeu-ly-lich-binh.jpg', 'private-documents/seed/binh-so-yeu-ly-lich.jpg', 'PENDING', NULL, NULL, NULL, DATEADD(MINUTE, -36000, @T0), NULL),
-            (@eBinh, @dtCommit, 'cam-ket-binh.jpg', 'private-documents/seed/binh-cam-ket.jpg', 'PENDING', NULL, NULL, NULL, DATEADD(MINUTE, -36000, @T0), NULL),
-            (@eChi, @dtCccd, 'cccd-chi.jpg', 'private-documents/seed/chi-cccd.jpg', 'PENDING', NULL, NULL, NULL, DATEADD(MINUTE, -36000, @T0), NULL),
-            (@eChi, @dtResume, 'so-yeu-ly-lich-chi.jpg', 'private-documents/seed/chi-so-yeu-ly-lich.jpg', 'REJECTED', @uHr, DATEADD(MINUTE, -28800, @T0), NULL, DATEADD(MINUTE, -36000, @T0), N'Ảnh bị mờ, vui lòng chụp lại rõ nét'),
-            (@eDung, @dtCccd, 'cccd-dung.jpg', 'private-documents/seed/dung-cccd.jpg', 'APPROVED', @uHr, DATEADD(MINUTE, -28800, @T0), NULL, DATEADD(MINUTE, -36000, @T0), NULL),
-            (@eDung, @dtFood, 'an-toan-thuc-pham-dung.jpg', 'private-documents/seed/dung-an-toan-thuc-pham.jpg', 'EXPIRED', @uHr, DATEADD(MINUTE, -28800, @T0), DATEADD(DAY, -30, @D), DATEADD(MINUTE, -36000, @T0), N'Chứng chỉ đã hết hạn, cần nộp bản mới');
-
-
-        -- 4. Thiết bị chấm công. Vân hạn là SHA-256 của chuỗi 'seed-device-<tên>' (gọi /attendance/devices/register với đúng chuỗi này để thử luồng 'cài lại app')
-        INSERT INTO dbo.AttendanceDevice (EmployeeId, DeviceFingerprint, DeviceName, Platform, Status, RequestedAt, ApprovedBy, ApprovedAt, LockedAt, LockReason)
-        VALUES
-            (@eAn, LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'seed-device-an'), 2)), N'Pixel 7 của An', 'ANDROID', 'ACTIVE', DATEADD(MINUTE, -432000, @T0), @uMgr, DATEADD(MINUTE, -430560, @T0), NULL, NULL),
-            (@eAn, LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'seed-device-an-old'), 2)), N'iPhone 8 cũ của An', 'IOS', 'LOCKED', DATEADD(MINUTE, -432000, @T0), @uMgr, DATEADD(MINUTE, -430560, @T0), DATEADD(MINUTE, -144000, @T0), N'Mất máy, đã thu hồi'),
-            (@eBinh, LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'seed-device-binh-old'), 2)), N'Máy cũ của Bình', 'ANDROID', 'LOCKED', DATEADD(MINUTE, -432000, @T0), @uMgr, DATEADD(MINUTE, -430560, @T0), DATEADD(MINUTE, -144000, @T0), N'Đã đổi máy mới'),
-            (@eBinh, LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'seed-device-binh'), 2)), N'Galaxy A54 của Bình', 'ANDROID', 'PENDING', DATEADD(MINUTE, -432000, @T0), NULL, NULL, NULL, NULL),
-            (@eChi, LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'seed-device-chi'), 2)), N'Redmi Note 12 của Chi', 'ANDROID', 'ACTIVE', DATEADD(MINUTE, -432000, @T0), @uMgr, DATEADD(MINUTE, -430560, @T0), NULL, NULL),
-            (@eHr, LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'seed-device-hr'), 2)), N'iPhone 13 của Hà', 'IOS', 'ACTIVE', DATEADD(MINUTE, -432000, @T0), @uMgr, DATEADD(MINUTE, -430560, @T0), NULL, NULL),
-            (@eDung, LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'seed-device-dung-old'), 2)), N'Máy cũ của Dũng', 'ANDROID', 'REJECTED', DATEADD(MINUTE, -432000, @T0), @uMgr, NULL, NULL, N'Thông tin thiết bị không khớp');
-
-        DECLARE @dvAn BIGINT = (SELECT DeviceId FROM dbo.AttendanceDevice WHERE DeviceFingerprint = LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'seed-device-an'), 2)));
-        DECLARE @dvBinhOld BIGINT = (SELECT DeviceId FROM dbo.AttendanceDevice WHERE DeviceFingerprint = LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'seed-device-binh-old'), 2)));
-        DECLARE @dvChi BIGINT = (SELECT DeviceId FROM dbo.AttendanceDevice WHERE DeviceFingerprint = LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'seed-device-chi'), 2)));
-        DECLARE @dvHr BIGINT = (SELECT DeviceId FROM dbo.AttendanceDevice WHERE DeviceFingerprint = LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'seed-device-hr'), 2)));
-
-        -- 5. Mẫu ca. CA_TEST kéo dài cả ngày để bạn thử check-in/check-out bất kỳ lúc nào
-        INSERT INTO dbo.WorkShift (StoreId, ShiftCode, ShiftName, StartTime, EndTime, BreakMinutes, EarlyCheckInMinutes, GraceMinutes)
-        VALUES
-            (@sId, 'CA_SANG', N'Ca sáng', '07:00', '12:00', 0, 15, 5),
-            (@sId, 'CA_CHIEU', N'Ca chiều', '12:00', '17:00', 0, 15, 5),
-            (@sId, 'CA_TOI', N'Ca tối', '17:00', '22:00', 0, 15, 5),
-            (@sId, 'CA_FULL', N'Ca full-time (nghỉ 30 phút)', '07:00', '15:30', 30, 15, 5),
-            (@sId, 'CA_TEST', N'Ca TEST cả ngày (check-in được mọi lúc trong ngày)', '00:00', '23:59', 0, 15, 5);
-
-        DECLARE @shSang INT = (SELECT WorkShiftId FROM dbo.WorkShift WHERE StoreId = @sId AND ShiftCode = 'CA_SANG');
-        DECLARE @shChieu INT = (SELECT WorkShiftId FROM dbo.WorkShift WHERE StoreId = @sId AND ShiftCode = 'CA_CHIEU');
-        DECLARE @shToi INT = (SELECT WorkShiftId FROM dbo.WorkShift WHERE StoreId = @sId AND ShiftCode = 'CA_TOI');
-        DECLARE @shFull INT = (SELECT WorkShiftId FROM dbo.WorkShift WHERE StoreId = @sId AND ShiftCode = 'CA_FULL');
-        DECLARE @shTest INT = (SELECT WorkShiftId FROM dbo.WorkShift WHERE StoreId = @sId AND ShiftCode = 'CA_TEST');
-
-        -- 6. Lịch làm: quá khứ (kỳ A + kỳ B), HÔM NAY và 6 ngày tới (CA_TEST), 1 ca đã hủy
-        INSERT INTO dbo.ShiftAssignment (EmployeeId, WorkShiftId, WorkDate, PlannedStartAt, PlannedEndAt, ScheduleStatus, CreatedBy, CreatedAt, UpdatedAt, Note)
-        VALUES
-            (@eAn, @shSang, DATEADD(DAY, -27, @D), DATEADD(MINUTE, -38460, @T0), DATEADD(MINUTE, -38160, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -41340, @T0), DATEADD(MINUTE, -41340, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -26, @D), DATEADD(MINUTE, -37020, @T0), DATEADD(MINUTE, -36720, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -39900, @T0), DATEADD(MINUTE, -39900, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -25, @D), DATEADD(MINUTE, -35580, @T0), DATEADD(MINUTE, -35280, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -38460, @T0), DATEADD(MINUTE, -38460, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -24, @D), DATEADD(MINUTE, -34140, @T0), DATEADD(MINUTE, -33840, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -37020, @T0), DATEADD(MINUTE, -37020, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -23, @D), DATEADD(MINUTE, -32700, @T0), DATEADD(MINUTE, -32400, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -35580, @T0), DATEADD(MINUTE, -35580, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -22, @D), DATEADD(MINUTE, -31260, @T0), DATEADD(MINUTE, -30960, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -34140, @T0), DATEADD(MINUTE, -34140, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -20, @D), DATEADD(MINUTE, -28380, @T0), DATEADD(MINUTE, -28080, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -31260, @T0), DATEADD(MINUTE, -31260, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -19, @D), DATEADD(MINUTE, -26940, @T0), DATEADD(MINUTE, -26640, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -29820, @T0), DATEADD(MINUTE, -29820, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -18, @D), DATEADD(MINUTE, -25500, @T0), DATEADD(MINUTE, -25200, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -28380, @T0), DATEADD(MINUTE, -28380, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -17, @D), DATEADD(MINUTE, -24060, @T0), DATEADD(MINUTE, -23760, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -26940, @T0), DATEADD(MINUTE, -26940, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -16, @D), DATEADD(MINUTE, -22620, @T0), DATEADD(MINUTE, -22320, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -25500, @T0), DATEADD(MINUTE, -25500, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -15, @D), DATEADD(MINUTE, -21180, @T0), DATEADD(MINUTE, -20880, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -24060, @T0), DATEADD(MINUTE, -24060, @T0), NULL),
-            (@eBinh, @shChieu, DATEADD(DAY, -26, @D), DATEADD(MINUTE, -36720, @T0), DATEADD(MINUTE, -36420, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -39600, @T0), DATEADD(MINUTE, -39600, @T0), NULL),
-            (@eBinh, @shChieu, DATEADD(DAY, -24, @D), DATEADD(MINUTE, -33840, @T0), DATEADD(MINUTE, -33540, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -36720, @T0), DATEADD(MINUTE, -36720, @T0), NULL),
-            (@eBinh, @shChieu, DATEADD(DAY, -22, @D), DATEADD(MINUTE, -30960, @T0), DATEADD(MINUTE, -30660, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -33840, @T0), DATEADD(MINUTE, -33840, @T0), NULL),
-            (@eBinh, @shChieu, DATEADD(DAY, -20, @D), DATEADD(MINUTE, -28080, @T0), DATEADD(MINUTE, -27780, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -30960, @T0), DATEADD(MINUTE, -30960, @T0), NULL),
-            (@eBinh, @shChieu, DATEADD(DAY, -18, @D), DATEADD(MINUTE, -25200, @T0), DATEADD(MINUTE, -24900, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -28080, @T0), DATEADD(MINUTE, -28080, @T0), NULL),
-            (@eBinh, @shChieu, DATEADD(DAY, -16, @D), DATEADD(MINUTE, -22320, @T0), DATEADD(MINUTE, -22020, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -25200, @T0), DATEADD(MINUTE, -25200, @T0), NULL),
-            (@eHr, @shFull, DATEADD(DAY, -27, @D), DATEADD(MINUTE, -38460, @T0), DATEADD(MINUTE, -37950, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -41340, @T0), DATEADD(MINUTE, -41340, @T0), NULL),
-            (@eHr, @shFull, DATEADD(DAY, -25, @D), DATEADD(MINUTE, -35580, @T0), DATEADD(MINUTE, -35070, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -38460, @T0), DATEADD(MINUTE, -38460, @T0), NULL),
-            (@eHr, @shFull, DATEADD(DAY, -23, @D), DATEADD(MINUTE, -32700, @T0), DATEADD(MINUTE, -32190, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -35580, @T0), DATEADD(MINUTE, -35580, @T0), NULL),
-            (@eHr, @shFull, DATEADD(DAY, -21, @D), DATEADD(MINUTE, -29820, @T0), DATEADD(MINUTE, -29310, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -32700, @T0), DATEADD(MINUTE, -32700, @T0), NULL),
-            (@eHr, @shFull, DATEADD(DAY, -19, @D), DATEADD(MINUTE, -26940, @T0), DATEADD(MINUTE, -26430, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -29820, @T0), DATEADD(MINUTE, -29820, @T0), NULL),
-            (@eHr, @shFull, DATEADD(DAY, -17, @D), DATEADD(MINUTE, -24060, @T0), DATEADD(MINUTE, -23550, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -26940, @T0), DATEADD(MINUTE, -26940, @T0), NULL),
-            (@eHr, @shFull, DATEADD(DAY, -15, @D), DATEADD(MINUTE, -21180, @T0), DATEADD(MINUTE, -20670, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -24060, @T0), DATEADD(MINUTE, -24060, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -13, @D), DATEADD(MINUTE, -18300, @T0), DATEADD(MINUTE, -18000, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -21180, @T0), DATEADD(MINUTE, -21180, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -12, @D), DATEADD(MINUTE, -16860, @T0), DATEADD(MINUTE, -16560, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -19740, @T0), DATEADD(MINUTE, -19740, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -11, @D), DATEADD(MINUTE, -15420, @T0), DATEADD(MINUTE, -15120, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -18300, @T0), DATEADD(MINUTE, -18300, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -10, @D), DATEADD(MINUTE, -13980, @T0), DATEADD(MINUTE, -13680, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -16860, @T0), DATEADD(MINUTE, -16860, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -9, @D), DATEADD(MINUTE, -12540, @T0), DATEADD(MINUTE, -12240, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -15420, @T0), DATEADD(MINUTE, -15420, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -8, @D), DATEADD(MINUTE, -11100, @T0), DATEADD(MINUTE, -10800, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -13980, @T0), DATEADD(MINUTE, -13980, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -7, @D), DATEADD(MINUTE, -9660, @T0), DATEADD(MINUTE, -9360, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -12540, @T0), DATEADD(MINUTE, -12540, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -6, @D), DATEADD(MINUTE, -8220, @T0), DATEADD(MINUTE, -7920, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -11100, @T0), DATEADD(MINUTE, -11100, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -5, @D), DATEADD(MINUTE, -6780, @T0), DATEADD(MINUTE, -6480, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -9660, @T0), DATEADD(MINUTE, -9660, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -4, @D), DATEADD(MINUTE, -5340, @T0), DATEADD(MINUTE, -5040, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -8220, @T0), DATEADD(MINUTE, -8220, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -3, @D), DATEADD(MINUTE, -3900, @T0), DATEADD(MINUTE, -3600, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -6780, @T0), DATEADD(MINUTE, -6780, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -2, @D), DATEADD(MINUTE, -2460, @T0), DATEADD(MINUTE, -2160, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -5340, @T0), DATEADD(MINUTE, -5340, @T0), NULL),
-            (@eAn, @shSang, DATEADD(DAY, -1, @D), DATEADD(MINUTE, -1020, @T0), DATEADD(MINUTE, -720, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -3900, @T0), DATEADD(MINUTE, -3900, @T0), NULL),
-            (@eBinh, @shChieu, DATEADD(DAY, -12, @D), DATEADD(MINUTE, -16560, @T0), DATEADD(MINUTE, -16260, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -19440, @T0), DATEADD(MINUTE, -19440, @T0), NULL),
-            (@eBinh, @shChieu, DATEADD(DAY, -10, @D), DATEADD(MINUTE, -13680, @T0), DATEADD(MINUTE, -13380, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -16560, @T0), DATEADD(MINUTE, -16560, @T0), NULL),
-            (@eBinh, @shChieu, DATEADD(DAY, -8, @D), DATEADD(MINUTE, -10800, @T0), DATEADD(MINUTE, -10500, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -13680, @T0), DATEADD(MINUTE, -13680, @T0), NULL),
-            (@eBinh, @shChieu, DATEADD(DAY, -5, @D), DATEADD(MINUTE, -6480, @T0), DATEADD(MINUTE, -6180, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -9360, @T0), DATEADD(MINUTE, -9360, @T0), NULL),
-            (@eBinh, @shChieu, DATEADD(DAY, -3, @D), DATEADD(MINUTE, -3600, @T0), DATEADD(MINUTE, -3300, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -6480, @T0), DATEADD(MINUTE, -6480, @T0), NULL),
-            (@eBinh, @shChieu, DATEADD(DAY, -1, @D), DATEADD(MINUTE, -720, @T0), DATEADD(MINUTE, -420, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -3600, @T0), DATEADD(MINUTE, -3600, @T0), NULL),
-            (@eHr, @shFull, DATEADD(DAY, -13, @D), DATEADD(MINUTE, -18300, @T0), DATEADD(MINUTE, -17790, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -21180, @T0), DATEADD(MINUTE, -21180, @T0), NULL),
-            (@eHr, @shFull, DATEADD(DAY, -11, @D), DATEADD(MINUTE, -15420, @T0), DATEADD(MINUTE, -14910, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -18300, @T0), DATEADD(MINUTE, -18300, @T0), NULL),
-            (@eHr, @shFull, DATEADD(DAY, -9, @D), DATEADD(MINUTE, -12540, @T0), DATEADD(MINUTE, -12030, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -15420, @T0), DATEADD(MINUTE, -15420, @T0), NULL),
-            (@eHr, @shFull, DATEADD(DAY, -8, @D), DATEADD(MINUTE, -11100, @T0), DATEADD(MINUTE, -10590, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -13980, @T0), DATEADD(MINUTE, -13980, @T0), NULL),
-            (@eHr, @shFull, DATEADD(DAY, -6, @D), DATEADD(MINUTE, -8220, @T0), DATEADD(MINUTE, -7710, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -11100, @T0), DATEADD(MINUTE, -11100, @T0), NULL),
-            (@eHr, @shFull, DATEADD(DAY, -4, @D), DATEADD(MINUTE, -5340, @T0), DATEADD(MINUTE, -4830, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -8220, @T0), DATEADD(MINUTE, -8220, @T0), NULL),
-            (@eHr, @shFull, DATEADD(DAY, -2, @D), DATEADD(MINUTE, -2460, @T0), DATEADD(MINUTE, -1950, @T0), 'PUBLISHED', @uMgr, DATEADD(MINUTE, -5340, @T0), DATEADD(MINUTE, -5340, @T0), NULL),
-            (@eAn, @shTest, DATEADD(DAY, 0, @D), DATEADD(MINUTE, 0, @T0), DATEADD(MINUTE, 1439, @T0), 'PUBLISHED', @uMgr, SYSUTCDATETIME(), SYSUTCDATETIME(), N'Ca test: check-in được cả ngày'),
-            (@eAn, @shTest, DATEADD(DAY, 1, @D), DATEADD(MINUTE, 1440, @T0), DATEADD(MINUTE, 2879, @T0), 'PUBLISHED', @uMgr, SYSUTCDATETIME(), SYSUTCDATETIME(), N'Ca test: check-in được cả ngày'),
-            (@eAn, @shTest, DATEADD(DAY, 2, @D), DATEADD(MINUTE, 2880, @T0), DATEADD(MINUTE, 4319, @T0), 'PUBLISHED', @uMgr, SYSUTCDATETIME(), SYSUTCDATETIME(), N'Ca test: check-in được cả ngày'),
-            (@eAn, @shTest, DATEADD(DAY, 3, @D), DATEADD(MINUTE, 4320, @T0), DATEADD(MINUTE, 5759, @T0), 'PUBLISHED', @uMgr, SYSUTCDATETIME(), SYSUTCDATETIME(), N'Ca test: check-in được cả ngày'),
-            (@eAn, @shTest, DATEADD(DAY, 4, @D), DATEADD(MINUTE, 5760, @T0), DATEADD(MINUTE, 7199, @T0), 'PUBLISHED', @uMgr, SYSUTCDATETIME(), SYSUTCDATETIME(), N'Ca test: check-in được cả ngày'),
-            (@eAn, @shTest, DATEADD(DAY, 5, @D), DATEADD(MINUTE, 7200, @T0), DATEADD(MINUTE, 8639, @T0), 'PUBLISHED', @uMgr, SYSUTCDATETIME(), SYSUTCDATETIME(), N'Ca test: check-in được cả ngày'),
-            (@eAn, @shTest, DATEADD(DAY, 6, @D), DATEADD(MINUTE, 8640, @T0), DATEADD(MINUTE, 10079, @T0), 'PUBLISHED', @uMgr, SYSUTCDATETIME(), SYSUTCDATETIME(), N'Ca test: check-in được cả ngày'),
-            (@eBinh, @shTest, DATEADD(DAY, 0, @D), DATEADD(MINUTE, 0, @T0), DATEADD(MINUTE, 1439, @T0), 'PUBLISHED', @uMgr, SYSUTCDATETIME(), SYSUTCDATETIME(), N'Ca test: check-in được cả ngày'),
-            (@eChi, @shTest, DATEADD(DAY, 0, @D), DATEADD(MINUTE, 0, @T0), DATEADD(MINUTE, 1439, @T0), 'PUBLISHED', @uMgr, SYSUTCDATETIME(), SYSUTCDATETIME(), N'Ca test: check-in được cả ngày'),
-            (@eHr, @shTest, DATEADD(DAY, 0, @D), DATEADD(MINUTE, 0, @T0), DATEADD(MINUTE, 1439, @T0), 'PUBLISHED', @uMgr, SYSUTCDATETIME(), SYSUTCDATETIME(), N'Ca test: check-in được cả ngày'),
-            (@eAn, @shSang, DATEADD(DAY, 8, @D), DATEADD(MINUTE, 11940, @T0), DATEADD(MINUTE, 12240, @T0), 'CANCELLED', @uMgr, SYSUTCDATETIME(), SYSUTCDATETIME(), N'Ca đã hủy (thử lỗi check-in ca không còn hiệu lực)');
-
-
-        -- 7. Chấm công (kết quả giờ vào/ra đã khớp công thức trong AttendanceMetricsService)
-        INSERT INTO dbo.Attendance (ShiftAssignmentId, EmployeeId, CheckInAt, CheckOutAt, CheckInLatitude, CheckInLongitude, CheckInAccuracyM, CheckOutLatitude, CheckOutLongitude, CheckOutAccuracyM, CheckInMethod, CheckOutMethod, CheckInFaceStatus, CheckOutFaceStatus, AttendanceStatus, LateMinutes, EarlyLeaveMinutes, WorkedMinutes, ApprovedOTMinutes, ManagerReviewedBy, ManagerReviewedAt, PayrollStatus, Note, CreatedAt, UpdatedAt, CheckInDeviceId, CheckOutDeviceId, GraceApplied)
-        VALUES
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -27, @D)), @eAn, DATEADD(MINUTE, -38463, @T0), DATEADD(MINUTE, -38158, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -38463, @T0), DATEADD(MINUTE, -38158, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -26, @D)), @eAn, DATEADD(MINUTE, -37025, @T0), DATEADD(MINUTE, -36718, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -37025, @T0), DATEADD(MINUTE, -36718, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -25, @D)), @eAn, DATEADD(MINUTE, -35577, @T0), DATEADD(MINUTE, -35279, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 297, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -35577, @T0), DATEADD(MINUTE, -35279, @T0), @dvAn, @dvAn, 1),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -24, @D)), @eAn, DATEADD(MINUTE, -34125, @T0), DATEADD(MINUTE, -33839, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'LATE', 10, 0, 285, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -34125, @T0), DATEADD(MINUTE, -33839, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -23, @D)), @eAn, DATEADD(MINUTE, -32705, @T0), DATEADD(MINUTE, -32398, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -32705, @T0), DATEADD(MINUTE, -32398, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -22, @D)), @eAn, DATEADD(MINUTE, -31264, @T0), DATEADD(MINUTE, -30915, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 45, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -31264, @T0), DATEADD(MINUTE, -30915, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -20, @D)), @eAn, DATEADD(MINUTE, -28385, @T0), DATEADD(MINUTE, -28078, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -28385, @T0), DATEADD(MINUTE, -28078, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -19, @D)), @eAn, DATEADD(MINUTE, -26943, @T0), DATEADD(MINUTE, -26660, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'EARLY_LEAVE', 0, 20, 280, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -26943, @T0), DATEADD(MINUTE, -26660, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -18, @D)), @eAn, DATEADD(MINUTE, -25500, @T0), DATEADD(MINUTE, -25200, @T0), NULL, NULL, NULL, NULL, NULL, NULL, 'MANUAL_APPROVAL', 'MANUAL_APPROVAL', 'NOT_RUN', 'NOT_RUN', 'APPROVED_EXCEPTION', 0, 0, 300, 0, @uMgr, DATEADD(MINUTE, -25080, @T0), 'OPEN', N'Chấm công thủ công được Quản lý duyệt (sự cố thiết bị)', DATEADD(MINUTE, -25500, @T0), DATEADD(MINUTE, -25200, @T0), NULL, NULL, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -17, @D)), @eAn, DATEADD(MINUTE, -24065, @T0), DATEADD(MINUTE, -23758, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -24065, @T0), DATEADD(MINUTE, -23758, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -15, @D)), @eAn, DATEADD(MINUTE, -21185, @T0), DATEADD(MINUTE, -20878, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -21185, @T0), DATEADD(MINUTE, -20878, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eBinh AND WorkDate = DATEADD(DAY, -26, @D)), @eBinh, DATEADD(MINUTE, -36725, @T0), DATEADD(MINUTE, -36418, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -36725, @T0), DATEADD(MINUTE, -36418, @T0), @dvBinhOld, @dvBinhOld, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eBinh AND WorkDate = DATEADD(DAY, -24, @D)), @eBinh, DATEADD(MINUTE, -33845, @T0), DATEADD(MINUTE, -33538, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -33845, @T0), DATEADD(MINUTE, -33538, @T0), @dvBinhOld, @dvBinhOld, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eBinh AND WorkDate = DATEADD(DAY, -22, @D)), @eBinh, DATEADD(MINUTE, -30945, @T0), DATEADD(MINUTE, -30659, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'LATE', 10, 0, 285, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -30945, @T0), DATEADD(MINUTE, -30659, @T0), @dvBinhOld, @dvBinhOld, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eBinh AND WorkDate = DATEADD(DAY, -20, @D)), @eBinh, DATEADD(MINUTE, -28085, @T0), DATEADD(MINUTE, -27778, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -28085, @T0), DATEADD(MINUTE, -27778, @T0), @dvBinhOld, @dvBinhOld, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eBinh AND WorkDate = DATEADD(DAY, -18, @D)), @eBinh, DATEADD(MINUTE, -25205, @T0), DATEADD(MINUTE, -24898, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -25205, @T0), DATEADD(MINUTE, -24898, @T0), @dvBinhOld, @dvBinhOld, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eBinh AND WorkDate = DATEADD(DAY, -16, @D)), @eBinh, DATEADD(MINUTE, -22324, @T0), DATEADD(MINUTE, -21975, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 45, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -22324, @T0), DATEADD(MINUTE, -21975, @T0), @dvBinhOld, @dvBinhOld, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eHr AND WorkDate = DATEADD(DAY, -27, @D)), @eHr, DATEADD(MINUTE, -38465, @T0), DATEADD(MINUTE, -37948, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 480, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -38465, @T0), DATEADD(MINUTE, -37948, @T0), @dvHr, @dvHr, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eHr AND WorkDate = DATEADD(DAY, -25, @D)), @eHr, DATEADD(MINUTE, -35585, @T0), DATEADD(MINUTE, -35068, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 480, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -35585, @T0), DATEADD(MINUTE, -35068, @T0), @dvHr, @dvHr, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eHr AND WorkDate = DATEADD(DAY, -23, @D)), @eHr, DATEADD(MINUTE, -32703, @T0), DATEADD(MINUTE, -32210, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'EARLY_LEAVE', 0, 20, 460, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -32703, @T0), DATEADD(MINUTE, -32210, @T0), @dvHr, @dvHr, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eHr AND WorkDate = DATEADD(DAY, -21, @D)), @eHr, DATEADD(MINUTE, -29825, @T0), DATEADD(MINUTE, -29308, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 480, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -29825, @T0), DATEADD(MINUTE, -29308, @T0), @dvHr, @dvHr, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eHr AND WorkDate = DATEADD(DAY, -19, @D)), @eHr, DATEADD(MINUTE, -26945, @T0), DATEADD(MINUTE, -26428, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 480, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -26945, @T0), DATEADD(MINUTE, -26428, @T0), @dvHr, @dvHr, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eHr AND WorkDate = DATEADD(DAY, -17, @D)), @eHr, DATEADD(MINUTE, -24065, @T0), DATEADD(MINUTE, -23548, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 480, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -24065, @T0), DATEADD(MINUTE, -23548, @T0), @dvHr, @dvHr, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eHr AND WorkDate = DATEADD(DAY, -15, @D)), @eHr, DATEADD(MINUTE, -21185, @T0), DATEADD(MINUTE, -20668, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 480, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -21185, @T0), DATEADD(MINUTE, -20668, @T0), @dvHr, @dvHr, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -13, @D)), @eAn, DATEADD(MINUTE, -18305, @T0), DATEADD(MINUTE, -17998, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -18305, @T0), DATEADD(MINUTE, -17998, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -12, @D)), @eAn, DATEADD(MINUTE, -16865, @T0), DATEADD(MINUTE, -16558, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -16865, @T0), DATEADD(MINUTE, -16558, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -11, @D)), @eAn, DATEADD(MINUTE, -15405, @T0), DATEADD(MINUTE, -15119, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'LATE', 10, 0, 285, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -15405, @T0), DATEADD(MINUTE, -15119, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -10, @D)), @eAn, DATEADD(MINUTE, -13985, @T0), DATEADD(MINUTE, -13650, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', N'Check-out muộn, đã gửi yêu cầu điều chỉnh', DATEADD(MINUTE, -13985, @T0), DATEADD(MINUTE, -13650, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -9, @D)), @eAn, DATEADD(MINUTE, -12545, @T0), DATEADD(MINUTE, -12238, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -12545, @T0), DATEADD(MINUTE, -12238, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -8, @D)), @eAn, DATEADD(MINUTE, -11075, @T0), DATEADD(MINUTE, -10800, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'LATE', 20, 0, 275, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -11075, @T0), DATEADD(MINUTE, -10800, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -7, @D)), @eAn, DATEADD(MINUTE, -9664, @T0), DATEADD(MINUTE, -9315, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 45, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -9664, @T0), DATEADD(MINUTE, -9315, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -6, @D)), @eAn, DATEADD(MINUTE, -8225, @T0), DATEADD(MINUTE, -7918, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -8225, @T0), DATEADD(MINUTE, -7918, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -5, @D)), @eAn, DATEADD(MINUTE, -6785, @T0), DATEADD(MINUTE, -6478, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -6785, @T0), DATEADD(MINUTE, -6478, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -4, @D)), @eAn, DATEADD(MINUTE, -5343, @T0), DATEADD(MINUTE, -5060, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'EARLY_LEAVE', 0, 20, 280, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -5343, @T0), DATEADD(MINUTE, -5060, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -3, @D)), @eAn, DATEADD(MINUTE, -3902, @T0), NULL, 21.0278500, 105.8342400, 12.50, NULL, NULL, NULL, 'GPS', NULL, 'NOT_RUN', NULL, 'IN_PROGRESS', 0, 0, NULL, 0, NULL, NULL, 'OPEN', N'Chưa check-out (quên chấm công ra)', DATEADD(MINUTE, -3902, @T0), DATEADD(MINUTE, -3902, @T0), @dvAn, NULL, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -2, @D)), @eAn, DATEADD(MINUTE, -2465, @T0), DATEADD(MINUTE, -2158, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -2465, @T0), DATEADD(MINUTE, -2158, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -1, @D)), @eAn, DATEADD(MINUTE, -1025, @T0), DATEADD(MINUTE, -718, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -1025, @T0), DATEADD(MINUTE, -718, @T0), @dvAn, @dvAn, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eBinh AND WorkDate = DATEADD(DAY, -12, @D)), @eBinh, DATEADD(MINUTE, -16565, @T0), DATEADD(MINUTE, -16258, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -16565, @T0), DATEADD(MINUTE, -16258, @T0), @dvBinhOld, @dvBinhOld, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eBinh AND WorkDate = DATEADD(DAY, -10, @D)), @eBinh, DATEADD(MINUTE, -13685, @T0), DATEADD(MINUTE, -13378, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -13685, @T0), DATEADD(MINUTE, -13378, @T0), @dvBinhOld, @dvBinhOld, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eBinh AND WorkDate = DATEADD(DAY, -8, @D)), @eBinh, DATEADD(MINUTE, -10805, @T0), DATEADD(MINUTE, -10498, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -10805, @T0), DATEADD(MINUTE, -10498, @T0), @dvBinhOld, @dvBinhOld, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eBinh AND WorkDate = DATEADD(DAY, -5, @D)), @eBinh, DATEADD(MINUTE, -6484, @T0), DATEADD(MINUTE, -6140, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', N'Làm thêm giờ, chờ Quản lý duyệt OT', DATEADD(MINUTE, -6484, @T0), DATEADD(MINUTE, -6140, @T0), @dvBinhOld, @dvBinhOld, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eBinh AND WorkDate = DATEADD(DAY, -3, @D)), @eBinh, DATEADD(MINUTE, -3605, @T0), DATEADD(MINUTE, -3298, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -3605, @T0), DATEADD(MINUTE, -3298, @T0), @dvBinhOld, @dvBinhOld, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eBinh AND WorkDate = DATEADD(DAY, -1, @D)), @eBinh, DATEADD(MINUTE, -725, @T0), DATEADD(MINUTE, -418, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 300, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -725, @T0), DATEADD(MINUTE, -418, @T0), @dvBinhOld, @dvBinhOld, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eHr AND WorkDate = DATEADD(DAY, -13, @D)), @eHr, DATEADD(MINUTE, -18305, @T0), DATEADD(MINUTE, -17788, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 480, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -18305, @T0), DATEADD(MINUTE, -17788, @T0), @dvHr, @dvHr, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eHr AND WorkDate = DATEADD(DAY, -11, @D)), @eHr, DATEADD(MINUTE, -15425, @T0), DATEADD(MINUTE, -14908, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 480, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -15425, @T0), DATEADD(MINUTE, -14908, @T0), @dvHr, @dvHr, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eHr AND WorkDate = DATEADD(DAY, -9, @D)), @eHr, DATEADD(MINUTE, -12545, @T0), DATEADD(MINUTE, -12028, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 480, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -12545, @T0), DATEADD(MINUTE, -12028, @T0), @dvHr, @dvHr, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eHr AND WorkDate = DATEADD(DAY, -6, @D)), @eHr, DATEADD(MINUTE, -8225, @T0), DATEADD(MINUTE, -7708, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 480, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -8225, @T0), DATEADD(MINUTE, -7708, @T0), @dvHr, @dvHr, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eHr AND WorkDate = DATEADD(DAY, -4, @D)), @eHr, DATEADD(MINUTE, -5345, @T0), DATEADD(MINUTE, -4828, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 480, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -5345, @T0), DATEADD(MINUTE, -4828, @T0), @dvHr, @dvHr, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eHr AND WorkDate = DATEADD(DAY, -2, @D)), @eHr, DATEADD(MINUTE, -2465, @T0), DATEADD(MINUTE, -1948, @T0), 21.0278500, 105.8342400, 12.50, 21.0278500, 105.8342400, 11.80, 'GPS', 'GPS', 'NOT_RUN', 'NOT_RUN', 'PRESENT', 0, 0, 480, 0, NULL, NULL, 'OPEN', NULL, DATEADD(MINUTE, -2465, @T0), DATEADD(MINUTE, -1948, @T0), @dvHr, @dvHr, 0),
-            ((SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eHr AND WorkDate = DATEADD(DAY, 0, @D)), @eHr, DATEADD(MINUTE, 0, @T0), NULL, 21.0278300, 105.8342200, 9.60, NULL, NULL, NULL, 'GPS', NULL, 'NOT_RUN', NULL, 'IN_PROGRESS', 0, 0, NULL, 0, NULL, NULL, 'OPEN', N'Đã check-in sẵn để thử check-out', DATEADD(MINUTE, 0, @T0), DATEADD(MINUTE, 0, @T0), @dvHr, NULL, 0);
-
-
-        -- 8. Kết quả xác minh chấm công (SRS 7.4): GPS, thiết bị và ảnh demo sinh từ bản ghi chấm công
-        INSERT INTO dbo.AttendanceVerification (AttendanceId, VerificationType, EventType, Latitude, Longitude, AccuracyMeters, DistanceMeters, VerificationStatus, VerifiedAt)
-        SELECT a.AttendanceId, 'GPS', 'CHECK_IN', a.CheckInLatitude, a.CheckInLongitude, a.CheckInAccuracyM, 12.00, 'PASSED', a.CheckInAt
-        FROM dbo.Attendance a WHERE a.CheckInLatitude IS NOT NULL;
-
-        INSERT INTO dbo.AttendanceVerification (AttendanceId, VerificationType, EventType, DeviceId, VerificationStatus, VerifiedAt)
-        SELECT a.AttendanceId, 'DEVICE', 'CHECK_IN', a.CheckInDeviceId, 'PASSED', a.CheckInAt
-        FROM dbo.Attendance a WHERE a.CheckInDeviceId IS NOT NULL;
-
-        INSERT INTO dbo.AttendanceVerification (AttendanceId, VerificationType, EventType, EvidenceStorageKey, VerificationStatus, VerifiedAt, RetainUntil)
-        SELECT a.AttendanceId, 'PHOTO', 'CHECK_IN', CONCAT('attendance-evidence/demo/', a.AttendanceId, '/checkin.jpg'), 'PASSED', a.CheckInAt,
-               DATEADD(MONTH, 12, CAST(a.CheckInAt AS DATE))
-        FROM dbo.Attendance a WHERE a.CheckInAt IS NOT NULL;
-
-        -- 10. Đơn giải trình chấm công: chờ duyệt (làm vướng kỳ B), đã duyệt, bị từ chối
-        INSERT INTO dbo.AttendanceExceptionRequest (EmployeeId, ShiftAssignmentId, AttendanceId, RequestType, RequestedCheckInAt, RequestedCheckOutAt, Reason, RequestStatus, SubmittedAt, ReviewedBy, ReviewedAt, ReviewNote)
-        VALUES
-            (@eHr, (SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eHr AND WorkDate = DATEADD(DAY, -8, @D)), NULL, 'MISSED_CHECK_IN', DATEADD(MINUTE, -11100, @T0), DATEADD(MINUTE, -10590, @T0), N'Quên chấm công cả ca, có mặt làm việc đủ giờ', 'PENDING', DATEADD(MINUTE, -10530, @T0), NULL, NULL, NULL),
-            (@eAn, (SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -18, @D)), (SELECT a.AttendanceId FROM dbo.Attendance a JOIN dbo.ShiftAssignment s ON s.ShiftAssignmentId = a.ShiftAssignmentId WHERE s.EmployeeId = @eAn AND s.WorkDate = DATEADD(DAY, -18, @D)), 'DEVICE_ISSUE', DATEADD(MINUTE, -25500, @T0), DATEADD(MINUTE, -25200, @T0), N'Điện thoại hỏng, không mở được app chấm công', 'APPROVED', DATEADD(MINUTE, -25140, @T0), @uMgr, DATEADD(MINUTE, -24480, @T0), N'Đã xác nhận với ca trực'),
-            (@eBinh, (SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eBinh AND WorkDate = DATEADD(DAY, -22, @D)), (SELECT a.AttendanceId FROM dbo.Attendance a JOIN dbo.ShiftAssignment s ON s.ShiftAssignmentId = a.ShiftAssignmentId WHERE s.EmployeeId = @eBinh AND s.WorkDate = DATEADD(DAY, -22, @D)), 'DEVICE_ISSUE', DATEADD(MINUTE, -30945, @T0), DATEADD(MINUTE, -30659, @T0), N'Điện thoại treo nên vào ca muộn', 'REJECTED', DATEADD(MINUTE, -30600, @T0), @uMgr, DATEADD(MINUTE, -29940, @T0), N'Không có minh chứng sự cố thiết bị');
-
-
-        -- 11. Điều chỉnh công (2 bước: Quản lý -> HR): đã duyệt, chờ Quản lý, chờ HR, bị từ chối. Giá trị là Instant UTC dạng ISO
-        INSERT INTO dbo.AttendanceAdjustmentRequest (AttendanceId, RequestedBy, FieldName, OldValue, NewValue, Reason, ManagerStatus, ManagerReviewedBy, ManagerReviewedAt, HrStatus, HrReviewedBy, HrReviewedAt, CreatedAt)
-        VALUES
-            ((SELECT a.AttendanceId FROM dbo.Attendance a JOIN dbo.ShiftAssignment s ON s.ShiftAssignmentId = a.ShiftAssignmentId WHERE s.EmployeeId = @eAn AND s.WorkDate = DATEADD(DAY, -27, @D)), @uAn, 'CHECK_IN', CONVERT(VARCHAR(19), DATEADD(MINUTE, -38420, @T0), 126) + 'Z', CONVERT(VARCHAR(19), DATEADD(MINUTE, -38463, @T0), 126) + 'Z', N'FORGOT_CHECKIN: Quên bấm check-in, bấm muộn khi đã vào quầy', 'APPROVED', @uMgr, DATEADD(MINUTE, -37460, @T0), 'APPROVED', @uHr, DATEADD(MINUTE, -37260, @T0), DATEADD(MINUTE, -38130, @T0)),
-            ((SELECT a.AttendanceId FROM dbo.Attendance a JOIN dbo.ShiftAssignment s ON s.ShiftAssignmentId = a.ShiftAssignmentId WHERE s.EmployeeId = @eAn AND s.WorkDate = DATEADD(DAY, -10, @D)), @uAn, 'CHECK_OUT', CONVERT(VARCHAR(19), DATEADD(MINUTE, -13650, @T0), 126) + 'Z', CONVERT(VARCHAR(19), DATEADD(MINUTE, -13678, @T0), 126) + 'Z', N'WRONG_TIME: Bấm check-out muộn so với giờ thực tế rời quầy', 'PENDING', NULL, NULL, 'PENDING', NULL, NULL, DATEADD(MINUTE, -13650, @T0)),
-            ((SELECT a.AttendanceId FROM dbo.Attendance a JOIN dbo.ShiftAssignment s ON s.ShiftAssignmentId = a.ShiftAssignmentId WHERE s.EmployeeId = @eAn AND s.WorkDate = DATEADD(DAY, -8, @D)), @uAn, 'CHECK_IN', CONVERT(VARCHAR(19), DATEADD(MINUTE, -11075, @T0), 126) + 'Z', CONVERT(VARCHAR(19), DATEADD(MINUTE, -11101, @T0), 126) + 'Z', N'GPS_ERROR: GPS lỗi nên chấm công muộn dù đã có mặt', 'APPROVED', @uMgr, DATEADD(MINUTE, -10100, @T0), 'PENDING', NULL, NULL, DATEADD(MINUTE, -10770, @T0)),
-            ((SELECT a.AttendanceId FROM dbo.Attendance a JOIN dbo.ShiftAssignment s ON s.ShiftAssignmentId = a.ShiftAssignmentId WHERE s.EmployeeId = @eBinh AND s.WorkDate = DATEADD(DAY, -18, @D)), @uBinh, 'CHECK_OUT', CONVERT(VARCHAR(19), DATEADD(MINUTE, -24898, @T0), 126) + 'Z', CONVERT(VARCHAR(19), DATEADD(MINUTE, -24880, @T0), 126) + 'Z', N'OTHER: Đề nghị tính thêm thời gian dọn quầy', 'REJECTED', @uMgr, DATEADD(MINUTE, -24200, @T0), 'PENDING', NULL, NULL, DATEADD(MINUTE, -24870, @T0));
-
-
-        -- 12. Checklist: mẫu + mục
-        INSERT INTO dbo.ChecklistTemplate (StoreId, ChecklistCode, ChecklistName, ChecklistType, IsManagerApprovalRequired)
-        VALUES
-            (@sId, 'OPEN_STORE', N'Mở cửa hàng', 'OPENING', 1),
-            (@sId, 'CLOSE_STORE', N'Đóng cửa hàng', 'CLOSING', 1),
-            (@sId, 'HANDOVER_SHIFT', N'Bàn giao ca', 'HANDOVER', 0),
-            (@sId, 'INVENTORY_DAILY', N'Kiểm kho hằng ngày', 'INVENTORY', 0);
-
-        DECLARE @tOpen INT = (SELECT ChecklistTemplateId FROM dbo.ChecklistTemplate WHERE StoreId = @sId AND ChecklistCode = 'OPEN_STORE');
-        DECLARE @tClose INT = (SELECT ChecklistTemplateId FROM dbo.ChecklistTemplate WHERE StoreId = @sId AND ChecklistCode = 'CLOSE_STORE');
-        DECLARE @tHand INT = (SELECT ChecklistTemplateId FROM dbo.ChecklistTemplate WHERE StoreId = @sId AND ChecklistCode = 'HANDOVER_SHIFT');
-        DECLARE @tInv INT = (SELECT ChecklistTemplateId FROM dbo.ChecklistTemplate WHERE StoreId = @sId AND ChecklistCode = 'INVENTORY_DAILY');
-        INSERT INTO dbo.ChecklistTemplateItem (ChecklistTemplateId, ItemName, Instructions, IsMandatory, RequiresEvidence, SortOrder)
-        VALUES
-            (@tOpen, N'Bật máy pha cà phê và kiểm tra áp suất', N'Chờ máy đạt áp suất rồi chụp đồng hồ', 1, 1, 1),
-            (@tOpen, N'Vệ sinh quầy bar và bàn ghế', NULL, 1, 0, 2),
-            (@tOpen, N'Kiểm tra nguyên liệu, ly cốc, đá', N'Ghi chú mục nào sắp hết', 1, 0, 3),
-            (@tOpen, N'Chụp ảnh khu vực quầy bar sau khi chuẩn bị', N'Ảnh toàn cảnh quầy', 1, 1, 4),
-            (@tClose, N'Vệ sinh máy pha và máy xay', NULL, 1, 0, 1),
-            (@tClose, N'Kiểm đếm và niêm phong két tiền', N'Chụp ảnh túi niêm phong', 1, 1, 2),
-            (@tClose, N'Tắt thiết bị điện, khóa cửa', NULL, 1, 0, 3),
-            (@tClose, N'Ghi chú sự cố trong ngày (nếu có)', NULL, 0, 0, 4),
-            (@tHand, N'Bàn giao tồn kho nguyên liệu', NULL, 1, 0, 1),
-            (@tHand, N'Bàn giao tiền lẻ và hóa đơn', NULL, 1, 0, 2),
-            (@tHand, N'Ghi chú việc cần theo dõi cho ca sau', NULL, 0, 0, 3),
-            (@tInv, N'Đếm sữa và cà phê hạt', N'Chụp ảnh kệ kho', 1, 1, 1),
-            (@tInv, N'Kiểm tra hạn sử dụng', NULL, 1, 0, 2),
-            (@tInv, N'Đề xuất nhập hàng', NULL, 0, 0, 3);
-
-
-        -- 13. Lần thực hiện checklist: PENDING, IN_PROGRESS, SUBMITTED, APPROVED, REJECTED; OVERDUE/WAIVED là trạng thái nghiệp vụ hợp lệ khác.
-        -- Mỗi mục = một dòng ChecklistTaskItem; minh chứng = ChecklistEvidence; lịch sử duyệt = ChecklistReview
-        INSERT INTO dbo.ChecklistTask (ChecklistTemplateId, ShiftAssignmentId, EmployeeId, DueAt, StartedAt, SubmittedAt, RunStatus, ManagerStatus)
-        VALUES (@tOpen, NULL, @eAn, DATEADD(MINUTE, 2879, @T0), NULL, NULL, 'PENDING', 'NOT_REQUIRED');
-        DECLARE @run1 BIGINT = SCOPE_IDENTITY();
-        INSERT INTO dbo.ChecklistTaskItem (ChecklistTaskId, ChecklistTemplateItemId, IsCompleted, CompletedAt, CompletedBy, Note)
-        VALUES
-            (@run1, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 1), 0, NULL, NULL, NULL),
-            (@run1, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 2), 0, NULL, NULL, NULL),
-            (@run1, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 3), 0, NULL, NULL, NULL),
-            (@run1, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 4), 0, NULL, NULL, NULL);
-        INSERT INTO dbo.ChecklistTask (ChecklistTemplateId, ShiftAssignmentId, EmployeeId, DueAt, StartedAt, SubmittedAt, RunStatus, ManagerStatus)
-        VALUES (@tHand, NULL, @eBinh, DATEADD(MINUTE, 2879, @T0), DATEADD(MINUTE, 10, @T0), NULL, 'IN_PROGRESS', 'NOT_REQUIRED');
-        DECLARE @run2 BIGINT = SCOPE_IDENTITY();
-        INSERT INTO dbo.ChecklistTaskItem (ChecklistTaskId, ChecklistTemplateItemId, IsCompleted, CompletedAt, CompletedBy, Note)
-        VALUES
-            (@run2, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tHand AND SortOrder = 1), 1, DATEADD(MINUTE, 15, @T0), @uBinh, NULL),
-            (@run2, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tHand AND SortOrder = 2), 0, NULL, NULL, NULL),
-            (@run2, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tHand AND SortOrder = 3), 0, NULL, NULL, NULL);
-        INSERT INTO dbo.ChecklistTask (ChecklistTemplateId, ShiftAssignmentId, EmployeeId, DueAt, StartedAt, SubmittedAt, RunStatus, ManagerStatus)
-        VALUES (@tOpen, (SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -1, @D)), @eAn, DATEADD(MINUTE, -990, @T0), DATEADD(MINUTE, -1015, @T0), DATEADD(MINUTE, -970, @T0), 'SUBMITTED', 'PENDING');
-        DECLARE @run3 BIGINT = SCOPE_IDENTITY();
-        INSERT INTO dbo.ChecklistTaskItem (ChecklistTaskId, ChecklistTemplateItemId, IsCompleted, CompletedAt, CompletedBy, Note)
-        VALUES
-            (@run3, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 1), 1, DATEADD(MINUTE, -980, @T0), @uAn, NULL),
-            (@run3, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 2), 1, DATEADD(MINUTE, -980, @T0), @uAn, NULL),
-            (@run3, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 3), 1, DATEADD(MINUTE, -980, @T0), @uAn, NULL),
-            (@run3, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 4), 1, DATEADD(MINUTE, -980, @T0), @uAn, NULL);
-        INSERT INTO dbo.ChecklistTask (ChecklistTemplateId, ShiftAssignmentId, EmployeeId, DueAt, StartedAt, SubmittedAt, RunStatus, ManagerStatus)
-        VALUES (@tInv, NULL, @eAn, DATEADD(MINUTE, -1441, @T0), DATEADD(MINUTE, -1920, @T0), DATEADD(MINUTE, -1880, @T0), 'APPROVED', 'NOT_REQUIRED');
-        DECLARE @run4 BIGINT = SCOPE_IDENTITY();
-        INSERT INTO dbo.ChecklistTaskItem (ChecklistTaskId, ChecklistTemplateItemId, IsCompleted, CompletedAt, CompletedBy, Note)
-        VALUES
-            (@run4, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tInv AND SortOrder = 1), 1, DATEADD(MINUTE, -1890, @T0), @uAn, NULL),
-            (@run4, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tInv AND SortOrder = 2), 1, DATEADD(MINUTE, -1890, @T0), @uAn, NULL),
-            (@run4, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tInv AND SortOrder = 3), 1, DATEADD(MINUTE, -1890, @T0), @uAn, NULL);
-        INSERT INTO dbo.ChecklistTask (ChecklistTemplateId, ShiftAssignmentId, EmployeeId, DueAt, StartedAt, SubmittedAt, RunStatus, ManagerStatus)
-        VALUES (@tOpen, (SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eHr AND WorkDate = DATEADD(DAY, -4, @D)), @eHr, DATEADD(MINUTE, -5310, @T0), DATEADD(MINUTE, -5335, @T0), DATEADD(MINUTE, -5280, @T0), 'REJECTED', 'REJECTED');
-        DECLARE @run5 BIGINT = SCOPE_IDENTITY();
-        INSERT INTO dbo.ChecklistTaskItem (ChecklistTaskId, ChecklistTemplateItemId, IsCompleted, CompletedAt, CompletedBy, Note)
-        VALUES
-            (@run5, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 1), 1, DATEADD(MINUTE, -5290, @T0), @uHr, NULL),
-            (@run5, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 2), 1, DATEADD(MINUTE, -5290, @T0), @uHr, NULL),
-            (@run5, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 3), 1, DATEADD(MINUTE, -5290, @T0), @uHr, NULL),
-            (@run5, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 4), 0, NULL, NULL, NULL);
-        INSERT INTO dbo.ChecklistTask (ChecklistTemplateId, ShiftAssignmentId, EmployeeId, DueAt, StartedAt, SubmittedAt, RunStatus, ManagerStatus)
-        VALUES (@tOpen, (SELECT ShiftAssignmentId FROM dbo.ShiftAssignment WHERE EmployeeId = @eAn AND WorkDate = DATEADD(DAY, -6, @D)), @eAn, DATEADD(MINUTE, -8190, @T0), DATEADD(MINUTE, -8215, @T0), DATEADD(MINUTE, -8170, @T0), 'APPROVED', 'APPROVED');
-        DECLARE @run6 BIGINT = SCOPE_IDENTITY();
-        INSERT INTO dbo.ChecklistTaskItem (ChecklistTaskId, ChecklistTemplateItemId, IsCompleted, CompletedAt, CompletedBy, Note)
-        VALUES
-            (@run6, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 1), 1, DATEADD(MINUTE, -8180, @T0), @uAn, NULL),
-            (@run6, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 2), 1, DATEADD(MINUTE, -8180, @T0), @uAn, NULL),
-            (@run6, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 3), 1, DATEADD(MINUTE, -8180, @T0), @uAn, NULL),
-            (@run6, (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 4), 1, DATEADD(MINUTE, -8180, @T0), @uAn, NULL);
-
-        -- Lịch sử duyệt (ChecklistReview)
-        INSERT INTO dbo.ChecklistReview (ChecklistTaskId, ReviewerId, Decision, Reason, ReviewedAt)
-        VALUES
-            (@run5, @uMgr, 'REJECTED', N'Thiếu ảnh khu vực quầy bar, vui lòng làm lại mục 4', DATEADD(MINUTE, -5160, @T0)),
-            (@run6, @uMgr, 'APPROVED', N'Đạt', DATEADD(MINUTE, -8080, @T0));
-
-        -- Minh chứng (ChecklistEvidence): mỗi ảnh một dòng
-        INSERT INTO dbo.ChecklistEvidence (ChecklistTaskId, ChecklistTaskItemId, StorageKey, UploadedBy, UploadedAt)
-        VALUES
-            (@run3, (SELECT ChecklistTaskItemId FROM dbo.ChecklistTaskItem WHERE ChecklistTaskId = @run3 AND ChecklistTemplateItemId = (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 1)), 'checklist-evidence/seed/tOpen-1.jpg', @uAn, DATEADD(MINUTE, -980, @T0)),
-            (@run3, (SELECT ChecklistTaskItemId FROM dbo.ChecklistTaskItem WHERE ChecklistTaskId = @run3 AND ChecklistTemplateItemId = (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 4)), 'checklist-evidence/seed/tOpen-4.jpg', @uAn, DATEADD(MINUTE, -980, @T0)),
-            (@run4, (SELECT ChecklistTaskItemId FROM dbo.ChecklistTaskItem WHERE ChecklistTaskId = @run4 AND ChecklistTemplateItemId = (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tInv AND SortOrder = 1)), 'checklist-evidence/seed/tInv-1.jpg', @uAn, DATEADD(MINUTE, -1890, @T0)),
-            (@run5, (SELECT ChecklistTaskItemId FROM dbo.ChecklistTaskItem WHERE ChecklistTaskId = @run5 AND ChecklistTemplateItemId = (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 1)), 'checklist-evidence/seed/tOpen-1.jpg', @uHr, DATEADD(MINUTE, -5290, @T0)),
-            (@run6, (SELECT ChecklistTaskItemId FROM dbo.ChecklistTaskItem WHERE ChecklistTaskId = @run6 AND ChecklistTemplateItemId = (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 1)), 'checklist-evidence/seed/tOpen-1.jpg', @uAn, DATEADD(MINUTE, -8180, @T0)),
-            (@run6, (SELECT ChecklistTaskItemId FROM dbo.ChecklistTaskItem WHERE ChecklistTaskId = @run6 AND ChecklistTemplateItemId = (SELECT ChecklistTemplateItemId FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @tOpen AND SortOrder = 4)), 'checklist-evidence/seed/tOpen-4.jpg', @uAn, DATEADD(MINUTE, -8180, @T0));
-
-        -- 14. Đào tạo: khóa bắt buộc chặn nhận ca nếu chưa đạt (xem Chi và Dũng)
+        -- Một bộ khóa học nhỏ giúp thử màn đào tạo và giữ nhân viên đủ điều kiện nhận ca.
         INSERT INTO dbo.TrainingCourse (CourseCode, CourseName, Description, PassingScore)
-        VALUES
+        SELECT v.CourseCode, v.CourseName, v.Description, v.PassingScore
+        FROM (VALUES
             ('FOOD_SAFETY_101', N'An toàn vệ sinh thực phẩm cơ bản', N'Bắt buộc với mọi nhân viên', 80),
             ('HOUSE_RULES', N'Nội quy và quy trình cửa hàng', N'Bắt buộc với mọi nhân viên', 80),
             ('BARISTA_BASIC', N'Kỹ thuật pha chế cơ bản', N'Dành cho nhân viên pha chế', 70),
-            ('COFFEE_TASTING', N'Thử nếm và phân biệt hương vị cà phê', N'Khóa tự chọn', 60);
+            ('COFFEE_TASTING', N'Thử nếm và phân biệt hương vị cà phê', N'Khóa tự chọn', 60)
+        ) AS v(CourseCode, CourseName, Description, PassingScore)
+        WHERE NOT EXISTS (SELECT 1 FROM dbo.TrainingCourse c WHERE c.CourseCode = v.CourseCode);
 
-        -- Khóa bắt buộc cho mọi chức vụ, chặn nhận ca khi chưa đạt (SRS 3.5)
-        INSERT INTO dbo.PositionTrainingRequirement (PositionId, CourseId, IsMandatory, BlocksShiftAssignment, EffectiveFrom)
+        INSERT INTO dbo.PositionTrainingRequirement
+            (PositionId, CourseId, IsMandatory, BlocksShiftAssignment, EffectiveFrom)
         SELECT p.PositionId, c.CourseId, 1, 1, '2000-01-01'
-        FROM dbo.JobPosition p CROSS JOIN dbo.TrainingCourse c
+        FROM dbo.JobPosition p
+        CROSS JOIN dbo.TrainingCourse c
         WHERE c.CourseCode IN ('FOOD_SAFETY_101', 'HOUSE_RULES')
-          AND NOT EXISTS (SELECT 1 FROM dbo.PositionTrainingRequirement r
-                          WHERE r.PositionId = p.PositionId AND r.CourseId = c.CourseId
-                            AND r.EffectiveFrom = '2000-01-01');
+          AND NOT EXISTS (
+              SELECT 1 FROM dbo.PositionTrainingRequirement r
+              WHERE r.PositionId = p.PositionId AND r.CourseId = c.CourseId
+                AND r.EffectiveFrom = '2000-01-01'
+          );
 
-        DECLARE @cFood INT = (SELECT CourseId FROM dbo.TrainingCourse WHERE CourseCode = 'FOOD_SAFETY_101');
-        DECLARE @cRules INT = (SELECT CourseId FROM dbo.TrainingCourse WHERE CourseCode = 'HOUSE_RULES');
-        DECLARE @cBarista INT = (SELECT CourseId FROM dbo.TrainingCourse WHERE CourseCode = 'BARISTA_BASIC');
-        DECLARE @cTasting INT = (SELECT CourseId FROM dbo.TrainingCourse WHERE CourseCode = 'COFFEE_TASTING');
-        INSERT INTO dbo.EmployeeTraining (EmployeeId, CourseId, AssignedAt, DueAt, CompletedAt, TestScore, TrainingStatus)
-        VALUES
-            (@eMgr, @cFood, DATEADD(MINUTE, -86400, @T0), NULL, DATEADD(MINUTE, -72000, @T0), 95, 'PASSED'),
-            (@eMgr, @cRules, DATEADD(MINUTE, -86400, @T0), NULL, DATEADD(MINUTE, -72000, @T0), 90, 'PASSED'),
-            (@eHr, @cFood, DATEADD(MINUTE, -86400, @T0), NULL, DATEADD(MINUTE, -72000, @T0), 88, 'PASSED'),
-            (@eHr, @cRules, DATEADD(MINUTE, -86400, @T0), NULL, DATEADD(MINUTE, -72000, @T0), 85, 'PASSED'),
-            (@eAn, @cFood, DATEADD(MINUTE, -86400, @T0), NULL, DATEADD(MINUTE, -72000, @T0), 92, 'PASSED'),
-            (@eAn, @cRules, DATEADD(MINUTE, -86400, @T0), NULL, DATEADD(MINUTE, -72000, @T0), 88, 'PASSED'),
-            (@eAn, @cBarista, DATEADD(MINUTE, -86400, @T0), DATEADD(DAY, 14, @D), NULL, NULL, 'IN_PROGRESS'),
-            (@eBinh, @cFood, DATEADD(MINUTE, -86400, @T0), NULL, DATEADD(MINUTE, -72000, @T0), 81, 'PASSED'),
-            (@eBinh, @cRules, DATEADD(MINUTE, -86400, @T0), NULL, DATEADD(MINUTE, -72000, @T0), 84, 'PASSED'),
-            (@eChi, @cFood, DATEADD(MINUTE, -86400, @T0), NULL, DATEADD(MINUTE, -72000, @T0), 65, 'FAILED'),
-            (@eChi, @cRules, DATEADD(MINUTE, -86400, @T0), DATEADD(DAY, 7, @D), NULL, NULL, 'NOT_STARTED'),
-            (@eDung, @cFood, DATEADD(MINUTE, -86400, @T0), DATEADD(DAY, 14, @D), NULL, NULL, 'NOT_STARTED'),
-            (@eDung, @cRules, DATEADD(MINUTE, -86400, @T0), DATEADD(DAY, 14, @D), NULL, NULL, 'NOT_STARTED'),
-            (@eKhoa, @cFood, DATEADD(MINUTE, -86400, @T0), NULL, DATEADD(MINUTE, -72000, @T0), 80, 'PASSED'),
-            (@eKhoa, @cRules, DATEADD(MINUTE, -86400, @T0), DATEADD(DAY, -30, @D), NULL, NULL, 'EXPIRED');
+        INSERT INTO dbo.EmployeeTraining
+            (EmployeeId, CourseId, AssignedAt, DueAt, CompletedAt, TestScore, TrainingStatus)
+        SELECT v.EmployeeId, c.CourseId, DATEADD(DAY, -30, SYSUTCDATETIME()),
+               DATEADD(DAY, 30, SYSUTCDATETIME()),
+               CASE WHEN v.TrainingStatus = 'PASSED' THEN DATEADD(DAY, -25, SYSUTCDATETIME()) END,
+               v.TestScore, v.TrainingStatus
+        FROM (VALUES
+            (@ManagerEmployeeId, 'FOOD_SAFETY_101', 'PASSED', 95.0),
+            (@ManagerEmployeeId, 'HOUSE_RULES', 'PASSED', 90.0),
+            (@EmployeeId, 'FOOD_SAFETY_101', 'PASSED', 92.0),
+            (@EmployeeId, 'HOUSE_RULES', 'PASSED', 88.0),
+            (@EmployeeId, 'BARISTA_BASIC', 'IN_PROGRESS', CAST(NULL AS DECIMAL(5,2))),
+            (@EmployeeId, 'COFFEE_TASTING', 'NOT_STARTED', CAST(NULL AS DECIMAL(5,2)))
+        ) AS v(EmployeeId, CourseCode, TrainingStatus, TestScore)
+        JOIN dbo.TrainingCourse c ON c.CourseCode = v.CourseCode
+        WHERE NOT EXISTS (
+            SELECT 1 FROM dbo.EmployeeTraining et
+            WHERE et.EmployeeId = v.EmployeeId AND et.CourseId = c.CourseId
+        );
 
+        -- Hai mẫu checklist cơ bản để quản lý có thể tạo checklist cho ca được phân.
+        IF NOT EXISTS (SELECT 1 FROM dbo.ChecklistTemplate WHERE StoreId = @StoreId AND ChecklistCode = 'OPEN_STORE' AND Version = 1)
+            INSERT INTO dbo.ChecklistTemplate (StoreId, ChecklistCode, ChecklistName, ChecklistType, IsManagerApprovalRequired)
+            VALUES (@StoreId, 'OPEN_STORE', N'Mở cửa hàng', 'OPENING', 0);
+        IF NOT EXISTS (SELECT 1 FROM dbo.ChecklistTemplate WHERE StoreId = @StoreId AND ChecklistCode = 'HANDOVER_SHIFT' AND Version = 1)
+            INSERT INTO dbo.ChecklistTemplate (StoreId, ChecklistCode, ChecklistName, ChecklistType, IsManagerApprovalRequired)
+            VALUES (@StoreId, 'HANDOVER_SHIFT', N'Bàn giao ca', 'HANDOVER', 1);
 
-        -- 15. Quy tắc thưởng/phạt bổ sung (cần có mức CRITICAL để thử luồng Giám đốc vận hành duyệt)
-        INSERT INTO dbo.RuleCatalog (RuleCode, RuleName, RuleType, Severity, DefaultAmount, IsAutomatic, Description)
-        VALUES
-            ('ASSET_LOSS', N'Làm mất/hư hỏng tài sản', 'VIOLATION', 'CRITICAL', NULL, 0, N'Cần Giám đốc vận hành phê duyệt'),
-            ('UNIFORM_VIOLATION', N'Sai đồng phục', 'VIOLATION', 'MINOR', 20000, 0, N'Quản lý/HR xử lý'),
-            ('OUTSTANDING_ACHIEVEMENT', N'Thành tích xuất sắc', 'REWARD', 'CRITICAL', NULL, 0, N'Cần Giám đốc vận hành phê duyệt');
+        DECLARE @OpenTemplateId INT =
+            (SELECT ChecklistTemplateId FROM dbo.ChecklistTemplate WHERE StoreId = @StoreId AND ChecklistCode = 'OPEN_STORE' AND Version = 1);
+        DECLARE @HandoverTemplateId INT =
+            (SELECT ChecklistTemplateId FROM dbo.ChecklistTemplate WHERE StoreId = @StoreId AND ChecklistCode = 'HANDOVER_SHIFT' AND Version = 1);
 
-        DECLARE @ruLate INT = (SELECT RuleId FROM dbo.RuleCatalog WHERE RuleCode = 'LATE_MINOR');
-        DECLARE @ruChk INT = (SELECT RuleId FROM dbo.RuleCatalog WHERE RuleCode = 'CHECKLIST_MISSED');
-        DECLARE @ruSvc INT = (SELECT RuleId FROM dbo.RuleCatalog WHERE RuleCode = 'SERVICE_ISSUE');
-        DECLARE @ruCompl INT = (SELECT RuleId FROM dbo.RuleCatalog WHERE RuleCode = 'CUSTOMER_COMPLIMENT');
-        DECLARE @ruKpi INT = (SELECT RuleId FROM dbo.RuleCatalog WHERE RuleCode = 'KPI_EXCEEDED');
-        DECLARE @ruAsset INT = (SELECT RuleId FROM dbo.RuleCatalog WHERE RuleCode = 'ASSET_LOSS');
-        DECLARE @ruUniform INT = (SELECT RuleId FROM dbo.RuleCatalog WHERE RuleCode = 'UNIFORM_VIOLATION');
-        DECLARE @ruOutstanding INT = (SELECT RuleId FROM dbo.RuleCatalog WHERE RuleCode = 'OUTSTANDING_ACHIEVEMENT');
+        INSERT INTO dbo.ChecklistTemplateItem
+            (ChecklistTemplateId, ItemName, Instructions, IsMandatory, RequiresEvidence, RequiresManagerApproval, SortOrder)
+        SELECT v.ChecklistTemplateId, v.ItemName, v.Instructions, 1, 0, 0, v.SortOrder
+        FROM (VALUES
+            (@OpenTemplateId, N'Kiểm tra khu vực phục vụ', N'Đảm bảo khu vực sạch và sẵn sàng đón khách', 1),
+            (@OpenTemplateId, N'Kiểm tra thiết bị', N'Kiểm tra máy pha và các thiết bị đầu ca', 2),
+            (@HandoverTemplateId, N'Bàn giao tiền và hóa đơn', N'Đối chiếu số liệu trước khi bàn giao', 1),
+            (@HandoverTemplateId, N'Bàn giao tồn kho', N'Ghi nhận vật tư cần bổ sung', 2)
+        ) AS v(ChecklistTemplateId, ItemName, Instructions, SortOrder)
+        WHERE NOT EXISTS (
+            SELECT 1 FROM dbo.ChecklistTemplateItem i
+            WHERE i.ChecklistTemplateId = v.ChecklistTemplateId AND i.SortOrder = v.SortOrder
+        );
 
-        -- 16. Sự kiện vi phạm (ViolationEvent): ghi nhận tự động từ chấm công / checklist. PENDING = chờ xử lý
-        INSERT INTO dbo.ViolationEvent (EmployeeId, RuleId, AttendanceId, OccurredAt, SourceType, Details, RecordStatus, IsAutoGenerated, CreatedBy, ReviewedBy, ReviewedAt, ReviewNote)
-        VALUES
-            (@eAn, @ruLate, (SELECT a.AttendanceId FROM dbo.Attendance a JOIN dbo.ShiftAssignment s ON s.ShiftAssignmentId = a.ShiftAssignmentId WHERE s.EmployeeId = @eAn AND s.WorkDate = DATEADD(DAY, -24, @D)), DATEADD(MINUTE, -33960, @T0), 'ATTENDANCE', N'Đi muộn 10 phút sau ân hạn', 'REJECTED', 1, NULL, @uMgr, DATEADD(MINUTE, -33870, @T0), N'Đã giải trình: tắc đường do tai nạn'),
-            (@eBinh, @ruLate, (SELECT a.AttendanceId FROM dbo.Attendance a JOIN dbo.ShiftAssignment s ON s.ShiftAssignmentId = a.ShiftAssignmentId WHERE s.EmployeeId = @eBinh AND s.WorkDate = DATEADD(DAY, -22, @D)), DATEADD(MINUTE, -31080, @T0), 'ATTENDANCE', N'Đi muộn 10 phút sau ân hạn', 'APPROVED', 1, NULL, @uMgr, DATEADD(MINUTE, -30990, @T0), N'Xác nhận'),
-            (@eAn, @ruLate, (SELECT a.AttendanceId FROM dbo.Attendance a JOIN dbo.ShiftAssignment s ON s.ShiftAssignmentId = a.ShiftAssignmentId WHERE s.EmployeeId = @eAn AND s.WorkDate = DATEADD(DAY, -11, @D)), DATEADD(MINUTE, -15240, @T0), 'ATTENDANCE', N'Đi muộn 10 phút sau ân hạn', 'PENDING', 1, NULL, NULL, NULL, NULL),
-            (@eAn, @ruLate, (SELECT a.AttendanceId FROM dbo.Attendance a JOIN dbo.ShiftAssignment s ON s.ShiftAssignmentId = a.ShiftAssignmentId WHERE s.EmployeeId = @eAn AND s.WorkDate = DATEADD(DAY, -8, @D)), DATEADD(MINUTE, -10920, @T0), 'ATTENDANCE', N'Đi muộn 20 phút sau ân hạn', 'PENDING', 1, NULL, NULL, NULL, NULL),
-            (@eChi, @ruChk, NULL, DATEADD(MINUTE, -2280, @T0), 'CHECKLIST', N'Bỏ sót checklist sau khi hết số lần nhắc', 'PENDING', 1, NULL, NULL, NULL, NULL);
+        IF NOT EXISTS (
+            SELECT 1 FROM dbo.AttendanceDevice
+            WHERE DeviceFingerprint = LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'seed-device-an'), 2))
+        )
+            INSERT INTO dbo.AttendanceDevice
+                (EmployeeId, DeviceFingerprint, DeviceName, Platform, Status, RequestedAt, ApprovedBy, ApprovedAt)
+            VALUES
+                (@EmployeeId,
+                 LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'seed-device-an'), 2)),
+                 N'Thiết bị test của An', 'ANDROID', 'ACTIVE', DATEADD(DAY, -30, SYSUTCDATETIME()),
+                 @ManagerId, DATEADD(DAY, -29, SYSUTCDATETIME()));
 
-        -- 16b. Quyết định phạt tiền (EmployeeRewardPenalty, DecisionType = PENALTY). ASSET_LOSS (CRITICAL) chỉ Giám đốc duyệt được
-        INSERT INTO dbo.EmployeeRewardPenalty (DecisionType, EmployeeId, RuleId, EffectiveDate, Details, Amount, DecisionStatus, ProposedBy, ApprovedBy, ApprovedAt, ReviewNote)
-        VALUES
-            ('PENALTY', @eChi, @ruSvc, DATEADD(MINUTE, -2280, @T0), N'Làm sai món 3 lần trong ca, khách phản ánh', 50000, 'PENDING', @uMgr, NULL, NULL, NULL),
-            ('PENALTY', @eDung, @ruAsset, DATEADD(MINUTE, -3720, @T0), N'Làm vỡ máy xay cà phê trong ca', 300000, 'PENDING', @uMgr, NULL, NULL, NULL),
-            ('PENALTY', @eBinh, @ruSvc, DATEADD(MINUTE, -28200, @T0), N'Giao nhầm đơn hàng nhiều lần', 50000, 'APPROVED', @uMgr, @uHr, DATEADD(MINUTE, -28110, @T0), N'Đồng ý mức phạt'),
-            ('PENALTY', @eChi, @ruUniform, DATEADD(MINUTE, -12360, @T0), N'Không mặc đồng phục theo quy định', 20000, 'CANCELLED', @uMgr, @uMgr, DATEADD(MINUTE, -12270, @T0), N'Đã nhắc nhở, hủy đề xuất');
+        IF NOT EXISTS (SELECT 1 FROM dbo.WorkShift WHERE StoreId = @StoreId AND ShiftCode = 'CA_TEST')
+            INSERT INTO dbo.WorkShift
+                (StoreId, ShiftCode, ShiftName, StartTime, EndTime, BreakMinutes, EarlyCheckInMinutes, GraceMinutes)
+            VALUES
+                (@StoreId, 'CA_TEST', N'Ca TEST cả ngày', '00:00', '23:59', 0, 15, 5);
 
-        -- 17. Thưởng (EmployeeRewardPenalty, DecisionType = REWARD)
-        INSERT INTO dbo.EmployeeRewardPenalty (DecisionType, EmployeeId, RuleId, EffectiveDate, Details, Amount, DecisionStatus, ProposedBy, ApprovedBy, ApprovedAt, ReviewNote)
-        VALUES
-            ('REWARD', @eAn, @ruCompl, DATEADD(MINUTE, -31080, @T0), N'Khách khen thái độ phục vụ, có ảnh phản hồi', 100000, 'APPROVED', @uMgr, @uHr, DATEADD(MINUTE, -30980, @T0), N'Đồng ý'),
-            ('REWARD', @eBinh, @ruCompl, DATEADD(MINUTE, -2280, @T0), N'Khách để lại lời khen trên mạng xã hội', 50000, 'PENDING', @uMgr, NULL, NULL, NULL),
-            ('REWARD', @eAn, @ruOutstanding, DATEADD(MINUTE, -840, @T0), N'Xử lý sự cố mất điện, giữ ca vận hành ổn định', 500000, 'PENDING', @uMgr, NULL, NULL, NULL),
-            ('REWARD', @eHr, @ruKpi, DATEADD(MINUTE, -6600, @T0), N'Vượt KPI đối soát quý', 200000, 'REJECTED', @uMgr, @uDir, DATEADD(MINUTE, -6500, @T0), N'Chưa đủ số liệu minh chứng');
+        DECLARE @TestShiftId INT =
+            (SELECT WorkShiftId FROM dbo.WorkShift WHERE StoreId = @StoreId AND ShiftCode = 'CA_TEST');
 
-
-        -- 18. Kỳ chốt công: kỳ A sạch (chốt được), kỳ B còn đơn treo (readiness báo vướng). Hôm nay trở đi chưa có kỳ để bạn thử tạo mới
-        INSERT INTO dbo.PayrollPeriod (PeriodCode, StartDate, EndDate, PeriodStatus, CreatedBy, CreatedAt, Note)
-        VALUES ('KY-' + CONVERT(VARCHAR(8), DATEADD(DAY, -27, @D), 112), DATEADD(DAY, -27, @D), DATEADD(DAY, -14, @D), 'OPEN', @uHr, DATEADD(MINUTE, -20160, @T0), N'Kỳ A – sạch, đủ điều kiện chốt');
-
-        INSERT INTO dbo.PayrollPeriod (PeriodCode, StartDate, EndDate, PeriodStatus, CreatedBy, CreatedAt, Note)
-        VALUES ('KY-' + CONVERT(VARCHAR(8), DATEADD(DAY, -13, @D), 112), DATEADD(DAY, -13, @D), DATEADD(DAY, -1, @D), 'OPEN', @uHr, DATEADD(MINUTE, -1440, @T0), N'Kỳ B – còn đơn treo, chưa chốt được');
-
-
-        -- 19. Thông báo mẫu (nhiều cái chưa đọc để thử /notifications/me/unread-count và read-all)
-        INSERT INTO dbo.Notification (UserId, NotificationType, Title, Message, SentAt, ReadAt, DeliveryStatus, AttemptCount, CreatedAt)
-        VALUES
-            (@uAn, 'SHIFT_REMINDER', N'Sắp đến giờ vào ca', N'Ca làm của bạn bắt đầu lúc 07:00', DATEADD(MINUTE, -960, @T0), DATEADD(MINUTE, -940, @T0), 'SENT', 1, DATEADD(MINUTE, -960, @T0)),
-            (@uAn, 'CHECKLIST_ASSIGNED', N'Bạn có checklist mới', N'Mở cửa hàng', SYSUTCDATETIME(), NULL, 'SENT', 1, SYSUTCDATETIME()),
-            (@uAn, 'DEVICE_STATUS', N'Thiết bị đã được duyệt', N'Pixel 7 của An đã được duyệt', DATEADD(MINUTE, -430080, @T0), DATEADD(MINUTE, -430060, @T0), 'SENT', 1, DATEADD(MINUTE, -430080, @T0)),
-            (@uBinh, 'CHECKLIST_ASSIGNED', N'Bạn có checklist mới', N'Bàn giao ca', SYSUTCDATETIME(), NULL, 'SENT', 1, SYSUTCDATETIME()),
-            (@uChi, 'TRAINING_ASSIGNED', N'Bạn được giao khóa đào tạo', N'Nội quy và quy trình cửa hàng', DATEADD(MINUTE, -3840, @T0), NULL, 'SENT', 1, DATEADD(MINUTE, -3840, @T0)),
-            (@uMgr, 'VIOLATION_PENDING', N'Có vi phạm cần xem xét', N'Đi muộn: Phạm Minh An', DATEADD(MINUTE, -15360, @T0), NULL, 'SENT', 1, DATEADD(MINUTE, -15360, @T0)),
-            (@uMgr, 'ADJUSTMENT_PENDING', N'Có yêu cầu điều chỉnh công chờ duyệt', N'Phạm Minh An đề nghị điều chỉnh công', DATEADD(MINUTE, -13920, @T0), NULL, 'SENT', 1, DATEADD(MINUTE, -13920, @T0)),
-            (@uMgr, 'DEVICE_PENDING', N'Có thiết bị chờ duyệt', N'Vũ Quốc Bình đăng ký thiết bị mới', DATEADD(MINUTE, -960, @T0), NULL, 'SENT', 1, DATEADD(MINUTE, -960, @T0)),
-            (@uHr, 'ADJUSTMENT_PENDING', N'Có điều chỉnh công chờ HR duyệt', N'Phạm Minh An – điều chỉnh check-in', DATEADD(MINUTE, -11040, @T0), NULL, 'SENT', 1, DATEADD(MINUTE, -11040, @T0)),
-            (@uDir, 'DECISION_PENDING', N'Có đề xuất thưởng/phạt chờ duyệt', N'Làm mất/hư hỏng tài sản - Hoàng Tiến Dũng', DATEADD(MINUTE, -3840, @T0), NULL, 'SENT', 1, DATEADD(MINUTE, -3840, @T0)),
-            (@uDir, 'DECISION_PENDING', N'Có đề xuất thưởng/phạt chờ duyệt', N'Thành tích xuất sắc - Phạm Minh An', DATEADD(MINUTE, -960, @T0), NULL, 'SENT', 1, DATEADD(MINUTE, -960, @T0));
-
-
-        -- 20. Audit log mẫu (API chỉ đọc/xuất; log mới sinh thêm khi bạn thao tác)
-        INSERT INTO dbo.AuditLog (ActorUserId, ActionCode, EntityType, EntityId, BeforeJson, AfterJson, IpAddress, UserAgent, CreatedAt)
-        VALUES
-            (@uAdmin, 'USER_CREATE', 'AppUser', CAST(@uMgr AS NVARCHAR(20)), NULL, '{"email":"quanly@hrm.test","roles":["STORE_MANAGER"]}', '127.0.0.1', 'seed-data', DATEADD(MINUTE, -431460, @T0)),
-            (@uAdmin, 'USER_CREATE', 'AppUser', CAST(@uHr AS NVARCHAR(20)), NULL, '{"email":"hr@hrm.test","roles":["EMPLOYEE"]}', '127.0.0.1', 'seed-data', DATEADD(MINUTE, -431460, @T0)),
-            (@uAdmin, 'USER_PERMISSIONS_CHANGE', 'AppUser', CAST(@uHr AS NVARCHAR(20)), '{"permissions":[]}', N'{"permissionSets":["HR"],"note":"cấp tập quyền HR"}', '127.0.0.1', 'seed-data', DATEADD(MINUTE, -430020, @T0)),
-            (@uMgr, 'DEVICE_APPROVE', 'AttendanceDevice', CAST(@dvAn AS NVARCHAR(20)), '{"status":"PENDING"}', '{"status":"APPROVED"}', '127.0.0.1', 'seed-data', DATEADD(MINUTE, -430020, @T0)),
-            (@uMgr, 'ATTENDANCE_ADJUST_MANAGER_APPROVE', 'AttendanceAdjustmentRequest', NULL, '{"managerStatus":"PENDING"}', '{"managerStatus":"APPROVED"}', '127.0.0.1', 'seed-data', DATEADD(MINUTE, -10980, @T0)),
-            (@uHr, 'PAYROLL_PERIOD_CREATE', 'PayrollPeriod', NULL, NULL, '{"status":"OPEN"}', '127.0.0.1', 'seed-data', DATEADD(MINUTE, -19620, @T0)),
-            (@uMgr, 'ATTENDANCE_EXCEPTION_REJECT', 'AttendanceExceptionRequest', NULL, '{"status":"PENDING"}', '{"status":"REJECTED"}', '127.0.0.1', 'seed-data', DATEADD(MINUTE, -29700, @T0));
-
+        ;WITH TestDays AS (
+            SELECT 0 AS DayOffset
+            UNION ALL
+            SELECT DayOffset + 1 FROM TestDays WHERE DayOffset < 6
+        )
+        INSERT INTO dbo.ShiftAssignment
+            (EmployeeId, WorkShiftId, WorkDate, PlannedStartAt, PlannedEndAt,
+             ScheduleStatus, CreatedBy, CreatedAt, UpdatedAt, Note)
+        SELECT @EmployeeId, @TestShiftId, DATEADD(DAY, d.DayOffset, @D),
+               DATEADD(DAY, d.DayOffset, @T0),
+               DATEADD(MINUTE, 1439, DATEADD(DAY, d.DayOffset, @T0)),
+               'PUBLISHED', @ManagerId, SYSUTCDATETIME(), SYSUTCDATETIME(),
+               N'Ca TEST cả ngày'
+        FROM TestDays d
+        WHERE NOT EXISTS (
+            SELECT 1 FROM dbo.ShiftAssignment sa
+            WHERE sa.EmployeeId = @EmployeeId
+              AND sa.WorkShiftId = @TestShiftId
+              AND sa.WorkDate = DATEADD(DAY, d.DayOffset, @D)
+              AND sa.ScheduleStatus <> 'CANCELLED'
+        )
+        OPTION (MAXRECURSION 7);
 
         COMMIT TRANSACTION;
-        PRINT N'Đã nạp dữ liệu test.';
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
         THROW;
     END CATCH
-END
+END;
+GO
+
+-- ============================================================================
+-- DỮ LIỆU DEMO MỞ RỘNG: có thể chạy lại sau khi CF-HN01 đã tồn tại.
+-- AppUser được giữ đúng ba tài khoản demo; lịch sử ca được tạo riêng 30 ngày.
+-- ============================================================================
+SET XACT_ABORT ON;
+BEGIN TRY
+    BEGIN TRANSACTION;
+
+    -- Chuyển các tài khoản demo cũ sang đúng email được yêu cầu, giữ nguyên khóa ngoại/UserId.
+    IF NOT EXISTS (SELECT 1 FROM dbo.AppUser WHERE Email = 'baonvchaos@gmail.com')
+       AND EXISTS (SELECT 1 FROM dbo.AppUser WHERE Email = 'quanly@hrm.test')
+        UPDATE dbo.AppUser SET Email = 'baonvchaos@gmail.com' WHERE Email = 'quanly@hrm.test';
+    IF NOT EXISTS (SELECT 1 FROM dbo.AppUser WHERE Email = 'panchisuru@gmail.com')
+       AND EXISTS (SELECT 1 FROM dbo.AppUser WHERE Email = 'nv.an@hrm.test')
+        UPDATE dbo.AppUser SET Email = 'panchisuru@gmail.com' WHERE Email = 'nv.an@hrm.test';
+
+    UPDATE dbo.AppUser
+       SET DisplayName = N'Admin', PhoneNumber = NULL, UserStatus = 'ACTIVE'
+     WHERE Email = 'baonvhe181955@fpt.edu.vn';
+    UPDATE dbo.AppUser
+       SET DisplayName = N'Manager', PhoneNumber = '0901000002', UserStatus = 'ACTIVE'
+     WHERE Email = 'baonvchaos@gmail.com';
+    UPDATE dbo.AppUser
+       SET DisplayName = N'Employee', PhoneNumber = '0901000004', UserStatus = 'ACTIVE'
+     WHERE Email = 'panchisuru@gmail.com';
+
+    DECLARE @AdminUserId BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'baonvhe181955@fpt.edu.vn');
+    DECLARE @ManagerUserId BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'baonvchaos@gmail.com');
+    DECLARE @EmployeeUserId BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'panchisuru@gmail.com');
+    DECLARE @ManagerRoleId INT = (SELECT RoleId FROM dbo.Role WHERE RoleCode = 'STORE_MANAGER');
+    DECLARE @EmployeeRoleId INT = (SELECT RoleId FROM dbo.Role WHERE RoleCode = 'EMPLOYEE');
+    DECLARE @AdminRoleId INT = (SELECT RoleId FROM dbo.Role WHERE RoleCode = 'SYSTEM_ADMIN');
+    DECLARE @Today DATE = CAST(DATEADD(HOUR, 7, SYSUTCDATETIME()) AS DATE);
+
+    INSERT INTO dbo.UserRole (UserId, RoleId)
+    SELECT @AdminUserId, @AdminRoleId
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.UserRole WHERE UserId = @AdminUserId AND RoleId = @AdminRoleId);
+    INSERT INTO dbo.UserRole (UserId, RoleId)
+    SELECT @ManagerUserId, @ManagerRoleId
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.UserRole WHERE UserId = @ManagerUserId AND RoleId = @ManagerRoleId);
+    INSERT INTO dbo.UserRole (UserId, RoleId)
+    SELECT @EmployeeUserId, @EmployeeRoleId
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.UserRole WHERE UserId = @EmployeeUserId AND RoleId = @EmployeeRoleId);
+
+    INSERT INTO dbo.RefreshToken (UserId, TokenHash, ExpiresAt)
+    SELECT v.UserId, LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', v.TokenSeed), 2)), DATEADD(DAY, -1, SYSUTCDATETIME())
+    FROM (VALUES
+        (@AdminUserId, 'demo-refresh-admin'),
+        (@ManagerUserId, 'demo-refresh-manager'),
+        (@EmployeeUserId, 'demo-refresh-employee')
+    ) v(UserId, TokenSeed)
+    WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.RefreshToken t
+        WHERE t.TokenHash = LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', v.TokenSeed), 2))
+    );
+
+    INSERT INTO dbo.UserPermission (UserId, PermissionId, GrantedBy)
+    SELECT v.UserId, p.PermissionId, @AdminUserId
+    FROM (VALUES
+        (@AdminUserId, 'AUDIT_VIEW'),
+        (@ManagerUserId, 'ATTENDANCE_VIEW_ALL'),
+        (@EmployeeUserId, 'ATTENDANCE_SELF')
+    ) v(UserId, PermissionCode)
+    JOIN dbo.Permission p ON p.PermissionCode = v.PermissionCode
+    WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.UserPermission up
+        WHERE up.UserId = v.UserId AND up.PermissionId = p.PermissionId
+    );
+
+    IF NOT EXISTS (SELECT 1 FROM dbo.Store WHERE StoreCode = 'CF-HN02')
+        INSERT INTO dbo.Store (StoreCode, Name, AddressLine, Latitude, Longitude, AttendanceRadiusMeters, IsActive)
+        VALUES ('CF-HN02', N'Cà phê Mộc – Cửa hàng Demo 02', N'12 Hàng Bài, Hoàn Kiếm, Hà Nội', 21.0171000, 105.8525000, 30, 0);
+    IF NOT EXISTS (SELECT 1 FROM dbo.Store WHERE StoreCode = 'CF-HN03')
+        INSERT INTO dbo.Store (StoreCode, Name, AddressLine, Latitude, Longitude, AttendanceRadiusMeters, IsActive)
+        VALUES ('CF-HN03', N'Cà phê Mộc – Cửa hàng Demo 03', N'25 Lê Đại Hành, Hai Bà Trưng, Hà Nội', 21.0108000, 105.8483000, 30, 0);
+
+    DECLARE @StoreId INT = (SELECT StoreId FROM dbo.Store WHERE StoreCode = 'CF-HN01');
+    DECLARE @EmployeeId BIGINT = (SELECT EmployeeId FROM dbo.Employee WHERE UserId = @EmployeeUserId);
+    DECLARE @ManagerEmployeeId BIGINT = (SELECT EmployeeId FROM dbo.Employee WHERE UserId = @ManagerUserId);
+    DECLARE @AdminEmployeeId BIGINT = (SELECT EmployeeId FROM dbo.Employee WHERE UserId = @AdminUserId);
+
+    IF @StoreId IS NULL OR @EmployeeId IS NULL OR @ManagerEmployeeId IS NULL
+        THROW 51010, N'Dữ liệu demo cơ sở chưa có cửa hàng/nhân viên cần thiết.', 1;
+
+    IF @AdminEmployeeId IS NULL
+        INSERT INTO dbo.Employee
+            (UserId, EmployeeCode, StoreId, JobTitle, PositionId, EmploymentType, EmploymentStatus,
+             DateOfBirth, HireDate, IdentityNumber, Address, EmergencyContact, ProfileStatus)
+        VALUES
+            (@AdminUserId, 'ADM001', @StoreId, N'Tài khoản quản trị demo',
+             (SELECT PositionId FROM dbo.JobPosition WHERE PositionCode = 'QL'),
+             'FULL_TIME', 'RESIGNED', '1988-01-10', DATEADD(DAY, -900, @Today),
+             '000000000003', N'Hà Nội', N'Liên hệ demo – 0912000003', 'INCOMPLETE');
+
+    DECLARE @AdminEmployeeIdNow BIGINT = (SELECT EmployeeId FROM dbo.Employee WHERE UserId = @AdminUserId);
+
+    INSERT INTO dbo.EmployeeDocument
+        (EmployeeId, DocumentTypeId, FileName, StorageKey, ReviewStatus, UploadedAt)
+    SELECT @EmployeeId, d.DocumentTypeId, v.FileName,
+           CONCAT('private-documents/employee-', @EmployeeId, '/', v.FileName), 'PENDING', DATEADD(DAY, -v.DaysAgo, SYSUTCDATETIME())
+    FROM (VALUES
+        ('CITIZEN_ID', 'demo-identity.pdf', 20),
+        ('RESUME', 'demo-resume.pdf', 18),
+        ('COMMITMENT', 'demo-commitment.pdf', 15)
+    ) v(DocumentCode, FileName, DaysAgo)
+    JOIN dbo.DocumentType d ON d.DocumentCode = v.DocumentCode
+    WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.EmployeeDocument x
+        WHERE x.EmployeeId = @EmployeeId AND x.DocumentTypeId = d.DocumentTypeId AND x.FileName = v.FileName
+    );
+
+    -- Thiết bị An dùng được để test; thiết bị Admin đang chờ duyệt tạo hàng đợi thao tác thật.
+    IF NOT EXISTS (SELECT 1 FROM dbo.AttendanceDevice WHERE DeviceFingerprint = LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'seed-device-admin'), 2)))
+        INSERT INTO dbo.AttendanceDevice (EmployeeId, DeviceFingerprint, DeviceName, Platform, Status, RequestedAt)
+        VALUES (@AdminEmployeeIdNow, LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'seed-device-admin'), 2)),
+                N'Thiết bị demo của Admin', 'WEB', 'PENDING', DATEADD(DAY, -2, SYSUTCDATETIME()));
+    IF NOT EXISTS (SELECT 1 FROM dbo.AttendanceDevice WHERE DeviceFingerprint = LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'seed-device-manager'), 2)))
+        INSERT INTO dbo.AttendanceDevice (EmployeeId, DeviceFingerprint, DeviceName, Platform, Status, RequestedAt, ApprovedBy, ApprovedAt, LockReason)
+        VALUES (@ManagerEmployeeId, LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'seed-device-manager'), 2)),
+                N'Thiết bị demo cũ của Manager', 'ANDROID', 'REJECTED', DATEADD(DAY, -10, SYSUTCDATETIME()),
+                @AdminUserId, DATEADD(DAY, -9, SYSUTCDATETIME()), N'Dữ liệu demo');
+
+    IF NOT EXISTS (SELECT 1 FROM dbo.WorkShift WHERE StoreId = @StoreId AND ShiftCode = 'CA_SANG')
+        INSERT INTO dbo.WorkShift (StoreId, ShiftCode, ShiftName, StartTime, EndTime, BreakMinutes, EarlyCheckInMinutes, GraceMinutes)
+        VALUES (@StoreId, 'CA_SANG', N'Ca sáng', '07:00', '11:00', 15, 15, 5);
+    IF NOT EXISTS (SELECT 1 FROM dbo.WorkShift WHERE StoreId = @StoreId AND ShiftCode = 'CA_CHIEU')
+        INSERT INTO dbo.WorkShift (StoreId, ShiftCode, ShiftName, StartTime, EndTime, BreakMinutes, EarlyCheckInMinutes, GraceMinutes)
+        VALUES (@StoreId, 'CA_CHIEU', N'Ca chiều', '12:00', '16:00', 15, 15, 5);
+    IF NOT EXISTS (SELECT 1 FROM dbo.WorkShift WHERE StoreId = @StoreId AND ShiftCode = 'CA_TOI')
+        INSERT INTO dbo.WorkShift (StoreId, ShiftCode, ShiftName, StartTime, EndTime, BreakMinutes, EarlyCheckInMinutes, GraceMinutes)
+        VALUES (@StoreId, 'CA_TOI', N'Ca tối', '17:00', '21:00', 15, 15, 5);
+
+    DECLARE @MorningShiftId INT = (SELECT WorkShiftId FROM dbo.WorkShift WHERE StoreId = @StoreId AND ShiftCode = 'CA_SANG');
+    DECLARE @AfternoonShiftId INT = (SELECT WorkShiftId FROM dbo.WorkShift WHERE StoreId = @StoreId AND ShiftCode = 'CA_CHIEU');
+    DECLARE @EveningShiftId INT = (SELECT WorkShiftId FROM dbo.WorkShift WHERE StoreId = @StoreId AND ShiftCode = 'CA_TOI');
+
+    ;WITH PastDays AS (
+        SELECT 1 AS DayOffset
+        UNION ALL
+        SELECT DayOffset + 1 FROM PastDays WHERE DayOffset < 30
+    )
+    INSERT INTO dbo.ShiftAssignment
+        (EmployeeId, WorkShiftId, WorkDate, PlannedStartAt, PlannedEndAt, ScheduleStatus, CreatedBy, CreatedAt, UpdatedAt, Note)
+    SELECT @EmployeeId, x.WorkShiftId, x.WorkDate, t.PlannedStartAt, t.PlannedEndAt,
+           'COMPLETED', @ManagerUserId, DATEADD(DAY, -d.DayOffset, SYSUTCDATETIME()),
+           DATEADD(DAY, -d.DayOffset, SYSUTCDATETIME()), N'Ca demo lịch sử'
+    FROM PastDays d
+    CROSS APPLY (SELECT DATEADD(DAY, -d.DayOffset, @Today) AS WorkDate) wd
+    CROSS APPLY (SELECT CASE d.DayOffset % 3 WHEN 0 THEN @EveningShiftId WHEN 1 THEN @MorningShiftId ELSE @AfternoonShiftId END AS WorkShiftId) shid
+    CROSS APPLY (
+        SELECT shid.WorkShiftId, wd.WorkDate,
+               DATEADD(HOUR, -7, DATEADD(MINUTE, DATEDIFF(MINUTE, CAST('00:00' AS TIME), ws.StartTime), CAST(wd.WorkDate AS DATETIME2))) AS PlannedStartAt,
+               DATEADD(HOUR, -7, DATEADD(MINUTE, DATEDIFF(MINUTE, CAST('00:00' AS TIME), ws.EndTime),
+                   DATEADD(DAY, CASE WHEN ws.EndTime <= ws.StartTime THEN 1 ELSE 0 END, CAST(wd.WorkDate AS DATETIME2)))) AS PlannedEndAt
+        FROM dbo.WorkShift ws WHERE ws.WorkShiftId = shid.WorkShiftId
+    ) x
+    CROSS APPLY (SELECT x.PlannedStartAt, x.PlannedEndAt) t
+    WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.ShiftAssignment sa
+        WHERE sa.EmployeeId = @EmployeeId AND sa.WorkShiftId = x.WorkShiftId AND sa.WorkDate = x.WorkDate
+    )
+    OPTION (MAXRECURSION 32);
+
+    COMMIT TRANSACTION;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+    THROW;
+END CATCH;
+GO
+
+-- Attendance, approval queues, and checklist execution history.
+SET XACT_ABORT ON;
+BEGIN TRY
+    BEGIN TRANSACTION;
+
+    DECLARE @Today DATE = CAST(DATEADD(HOUR, 7, SYSUTCDATETIME()) AS DATE);
+    DECLARE @StoreId INT = (SELECT StoreId FROM dbo.Store WHERE StoreCode = 'CF-HN01');
+    DECLARE @EmployeeUserId BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'panchisuru@gmail.com');
+    DECLARE @ManagerUserId BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'baonvchaos@gmail.com');
+    DECLARE @AdminUserId BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'baonvhe181955@fpt.edu.vn');
+    DECLARE @EmployeeId BIGINT = (SELECT EmployeeId FROM dbo.Employee WHERE UserId = @EmployeeUserId);
+    DECLARE @MorningShiftId INT = (SELECT WorkShiftId FROM dbo.WorkShift WHERE StoreId = @StoreId AND ShiftCode = 'CA_SANG');
+    DECLARE @AfternoonShiftId INT = (SELECT WorkShiftId FROM dbo.WorkShift WHERE StoreId = @StoreId AND ShiftCode = 'CA_CHIEU');
+    DECLARE @EveningShiftId INT = (SELECT WorkShiftId FROM dbo.WorkShift WHERE StoreId = @StoreId AND ShiftCode = 'CA_TOI');
+    DECLARE @OpenTemplateId INT = (SELECT ChecklistTemplateId FROM dbo.ChecklistTemplate WHERE StoreId = @StoreId AND ChecklistCode = 'OPEN_STORE' AND Version = 1);
+    DECLARE @HandoverTemplateId INT = (SELECT ChecklistTemplateId FROM dbo.ChecklistTemplate WHERE StoreId = @StoreId AND ChecklistCode = 'HANDOVER_SHIFT' AND Version = 1);
+
+    IF NOT EXISTS (SELECT 1 FROM dbo.ChecklistTemplate WHERE StoreId = @StoreId AND ChecklistCode = 'DAILY_SERVICE' AND Version = 1)
+        INSERT INTO dbo.ChecklistTemplate (StoreId, ChecklistCode, ChecklistName, ChecklistType, IsManagerApprovalRequired)
+        VALUES (@StoreId, 'DAILY_SERVICE', N'Phục vụ trong ca', 'SERVICE', 1);
+    DECLARE @ServiceTemplateId INT = (SELECT ChecklistTemplateId FROM dbo.ChecklistTemplate WHERE StoreId = @StoreId AND ChecklistCode = 'DAILY_SERVICE' AND Version = 1);
+
+    IF NOT EXISTS (SELECT 1 FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @ServiceTemplateId AND SortOrder = 1)
+        INSERT INTO dbo.ChecklistTemplateItem (ChecklistTemplateId, ItemName, Instructions, IsMandatory, RequiresEvidence, RequiresManagerApproval, SortOrder)
+        VALUES (@ServiceTemplateId, N'Kiểm tra khu vực phục vụ', N'Đảm bảo khu vực phục vụ sạch và sẵn sàng', 1, 0, 0, 1);
+    IF NOT EXISTS (SELECT 1 FROM dbo.ChecklistTemplateItem WHERE ChecklistTemplateId = @ServiceTemplateId AND SortOrder = 2)
+        INSERT INTO dbo.ChecklistTemplateItem (ChecklistTemplateId, ItemName, Instructions, IsMandatory, RequiresEvidence, RequiresManagerApproval, SortOrder)
+        VALUES (@ServiceTemplateId, N'Kiểm tra dụng cụ', N'Kiểm tra dụng cụ và vật tư trong ca', 1, 0, 0, 2);
+
+    DECLARE @History TABLE (DayOffset INT PRIMARY KEY, ShiftAssignmentId BIGINT, AttendanceId BIGINT);
+    INSERT INTO @History (DayOffset, ShiftAssignmentId)
+    SELECT v.DayOffset, sa.ShiftAssignmentId
+    FROM (VALUES (1, @MorningShiftId), (2, @AfternoonShiftId), (3, @EveningShiftId)) v(DayOffset, WorkShiftId)
+    JOIN dbo.ShiftAssignment sa ON sa.EmployeeId = @EmployeeId
+        AND sa.WorkShiftId = v.WorkShiftId AND sa.WorkDate = DATEADD(DAY, -v.DayOffset, @Today);
+
+    INSERT INTO dbo.Attendance
+        (ShiftAssignmentId, EmployeeId, CheckInAt, CheckOutAt,
+         CheckInLatitude, CheckInLongitude, CheckInAccuracyM,
+         CheckOutLatitude, CheckOutLongitude, CheckOutAccuracyM,
+         CheckInMethod, CheckOutMethod, AttendanceStatus, LateMinutes,
+         WorkedMinutes, CheckInDeviceId, CheckOutDeviceId, GraceApplied, Note)
+    SELECT h.ShiftAssignmentId, @EmployeeId,
+           DATEADD(MINUTE, CASE WHEN h.DayOffset = 3 THEN 12 ELSE 0 END, sa.PlannedStartAt),
+           sa.PlannedEndAt, st.Latitude, st.Longitude, 5.0,
+           st.Latitude, st.Longitude, 5.0, 'GPS', 'GPS',
+           CASE WHEN h.DayOffset = 3 THEN 'LATE' ELSE 'PRESENT' END,
+           CASE WHEN h.DayOffset = 3 THEN 7 ELSE 0 END,
+           DATEDIFF(MINUTE, sa.PlannedStartAt, sa.PlannedEndAt) - ws.BreakMinutes,
+           dev.DeviceId, dev.DeviceId, 0, N'Bản ghi demo lịch sử; mẫu thứ ba minh họa có mặt muộn'
+    FROM @History h
+    JOIN dbo.ShiftAssignment sa ON sa.ShiftAssignmentId = h.ShiftAssignmentId
+    JOIN dbo.WorkShift ws ON ws.WorkShiftId = sa.WorkShiftId
+    JOIN dbo.Store st ON st.StoreId = @StoreId
+    JOIN dbo.AttendanceDevice dev ON dev.EmployeeId = @EmployeeId AND dev.Status = 'ACTIVE'
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.Attendance a WHERE a.ShiftAssignmentId = h.ShiftAssignmentId);
+
+    UPDATE h SET AttendanceId = a.AttendanceId
+    FROM @History h JOIN dbo.Attendance a ON a.ShiftAssignmentId = h.ShiftAssignmentId;
+
+    INSERT INTO dbo.AttendanceVerification
+        (AttendanceId, DeviceId, VerificationType, EventType, Latitude, Longitude, AccuracyMeters,
+         DistanceMeters, VerificationStatus, VerifiedAt, RetainUntil)
+    SELECT h.AttendanceId, dev.DeviceId, 'GPS', 'CHECK_IN', st.Latitude, st.Longitude, 5.0,
+           5.0, 'PASSED', a.CheckInAt, DATEADD(MONTH, 12, CAST(a.CheckInAt AS DATE))
+    FROM @History h
+    JOIN dbo.Attendance a ON a.AttendanceId = h.AttendanceId
+    JOIN dbo.Store st ON st.StoreId = @StoreId
+    JOIN dbo.AttendanceDevice dev ON dev.DeviceId = a.CheckInDeviceId
+    WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.AttendanceVerification v
+        WHERE v.AttendanceId = a.AttendanceId AND v.EventType = 'CHECK_IN' AND v.VerificationType = 'GPS'
+    );
+
+    INSERT INTO dbo.AttendanceSpotCheck
+        (AttendanceId, EmployeeId, ShiftAssignmentId, IsSelected, Status, RequestedAt, ResponseDeadlineAt, RespondedAt)
+    SELECT h.AttendanceId, @EmployeeId, h.ShiftAssignmentId, v.IsSelected, v.Status,
+           CASE WHEN v.Status IN ('VERIFIED','MISSED') THEN DATEADD(HOUR, 1, a.CheckInAt) END,
+           CASE WHEN v.Status IN ('VERIFIED','MISSED') THEN DATEADD(HOUR, 1, DATEADD(MINUTE, 5, a.CheckInAt)) END,
+           CASE WHEN v.Status = 'VERIFIED' THEN DATEADD(HOUR, 1, DATEADD(MINUTE, 2, a.CheckInAt)) END
+    FROM @History h
+    JOIN dbo.Attendance a ON a.AttendanceId = h.AttendanceId
+    JOIN (VALUES (1, CAST(1 AS BIT), 'VERIFIED'), (2, CAST(1 AS BIT), 'MISSED'), (3, CAST(0 AS BIT), 'CANCELLED'))
+         v(DayOffset, IsSelected, Status) ON v.DayOffset = h.DayOffset
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.AttendanceSpotCheck c WHERE c.AttendanceId = h.AttendanceId);
+
+    INSERT INTO dbo.OvertimeRequest (ShiftAssignmentId, EmployeeId, RequestedStartAt, RequestedEndAt, Reason, ApprovalStatus, RequestedAt)
+    SELECT h.ShiftAssignmentId, @EmployeeId, sa.PlannedEndAt, DATEADD(HOUR, 1, sa.PlannedEndAt),
+           CONCAT(N'Demo xin tăng ca cho ca ngày ', CONVERT(VARCHAR(10), sa.WorkDate, 23)), 'PENDING', DATEADD(DAY, -h.DayOffset, SYSUTCDATETIME())
+    FROM @History h JOIN dbo.ShiftAssignment sa ON sa.ShiftAssignmentId = h.ShiftAssignmentId
+    WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.OvertimeRequest o
+        WHERE o.ShiftAssignmentId = h.ShiftAssignmentId AND o.Reason = CONCAT(N'Demo xin tăng ca cho ca ngày ', CONVERT(VARCHAR(10), sa.WorkDate, 23))
+    );
+
+    INSERT INTO dbo.AttendanceExceptionRequest
+        (EmployeeId, ShiftAssignmentId, AttendanceId, RequestType, Reason, RequestStatus, SubmittedAt)
+    SELECT @EmployeeId, h.ShiftAssignmentId, h.AttendanceId, v.RequestType,
+           CONCAT(N'Giải trình demo cho ca ngày ', CONVERT(VARCHAR(10), sa.WorkDate, 23)), 'PENDING', DATEADD(DAY, -h.DayOffset, SYSUTCDATETIME())
+    FROM @History h
+    JOIN dbo.ShiftAssignment sa ON sa.ShiftAssignmentId = h.ShiftAssignmentId
+    JOIN (VALUES (1, 'CAMERA_ISSUE'), (2, 'DEVICE_ISSUE'), (3, 'OTHER')) v(DayOffset, RequestType)
+        ON v.DayOffset = h.DayOffset
+    WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.AttendanceExceptionRequest e
+        WHERE e.ShiftAssignmentId = h.ShiftAssignmentId AND e.Reason = CONCAT(N'Giải trình demo cho ca ngày ', CONVERT(VARCHAR(10), sa.WorkDate, 23))
+    );
+
+    INSERT INTO dbo.AttendanceAdjustmentRequest
+        (AttendanceId, RequestedBy, FieldName, OldValue, NewValue, Reason, ManagerStatus, HrStatus, CreatedAt)
+    SELECT h.AttendanceId, @EmployeeUserId, 'CHECK_IN', CONVERT(VARCHAR(30), a.CheckInAt, 126),
+           CONVERT(VARCHAR(30), DATEADD(MINUTE, -1, a.CheckInAt), 126),
+           CONCAT(N'Điều chỉnh demo chờ quản lý cho ca ', h.DayOffset), 'PENDING', 'PENDING', DATEADD(DAY, -h.DayOffset, SYSUTCDATETIME())
+    FROM @History h JOIN dbo.Attendance a ON a.AttendanceId = h.AttendanceId
+    WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.AttendanceAdjustmentRequest r
+        WHERE r.AttendanceId = h.AttendanceId AND r.FieldName = 'CHECK_IN' AND r.Reason = CONCAT(N'Điều chỉnh demo chờ quản lý cho ca ', h.DayOffset)
+    );
+
+    INSERT INTO dbo.AttendanceAdjustmentRequest
+        (AttendanceId, RequestedBy, FieldName, OldValue, NewValue, Reason,
+         ManagerStatus, ManagerReviewedBy, ManagerReviewedAt, HrStatus, HrReviewedBy, HrReviewedAt, CreatedAt)
+    SELECT h.AttendanceId, @EmployeeUserId, 'WORKED_MINUTES',
+           CONVERT(VARCHAR(20), a.WorkedMinutes), CONVERT(VARCHAR(20), a.WorkedMinutes + 5),
+           CONCAT(N'Điều chỉnh demo đã duyệt cho ca ', h.DayOffset),
+           'APPROVED', @ManagerUserId, DATEADD(DAY, -h.DayOffset, SYSUTCDATETIME()),
+           'APPROVED', @AdminUserId, DATEADD(DAY, -h.DayOffset, SYSUTCDATETIME()),
+           DATEADD(DAY, -h.DayOffset, SYSUTCDATETIME())
+    FROM @History h JOIN dbo.Attendance a ON a.AttendanceId = h.AttendanceId
+    WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.AttendanceAdjustmentRequest r
+        WHERE r.AttendanceId = h.AttendanceId AND r.FieldName = 'WORKED_MINUTES' AND r.Reason = CONCAT(N'Điều chỉnh demo đã duyệt cho ca ', h.DayOffset)
+    );
+
+    INSERT INTO dbo.AttendanceAdjustmentHistory
+        (AttendanceAdjustmentRequestId, AttendanceId, FieldName, OldValue, NewValue, ChangedBy, ChangedAt)
+    SELECT r.AttendanceAdjustmentRequestId, r.AttendanceId, r.FieldName, r.OldValue, r.NewValue,
+           @AdminUserId, r.HrReviewedAt
+    FROM dbo.AttendanceAdjustmentRequest r
+    JOIN @History h ON h.AttendanceId = r.AttendanceId
+    WHERE r.FieldName = 'WORKED_MINUTES' AND r.ManagerStatus = 'APPROVED' AND r.HrStatus = 'APPROVED'
+      AND r.Reason = CONCAT(N'Điều chỉnh demo đã duyệt cho ca ', h.DayOffset)
+      AND NOT EXISTS (SELECT 1 FROM dbo.AttendanceAdjustmentHistory x WHERE x.AttendanceAdjustmentRequestId = r.AttendanceAdjustmentRequestId);
+
+    DECLARE @ChecklistRuns TABLE (DayOffset INT PRIMARY KEY, TaskId BIGINT, Status VARCHAR(20));
+    INSERT INTO dbo.ChecklistInstance (ChecklistTemplateId, WorkDate, WorkShiftId)
+    SELECT v.TemplateId, sa.WorkDate, sa.WorkShiftId
+    FROM (VALUES
+        (1, @OpenTemplateId), (2, @HandoverTemplateId), (3, @ServiceTemplateId),
+        (4, @OpenTemplateId), (5, @HandoverTemplateId), (6, @ServiceTemplateId)
+    ) v(DayOffset, TemplateId)
+    JOIN dbo.ShiftAssignment sa ON sa.EmployeeId = @EmployeeId AND sa.WorkDate = DATEADD(DAY, -v.DayOffset, @Today)
+    WHERE v.TemplateId IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM dbo.ChecklistInstance i
+        WHERE i.ChecklistTemplateId = v.TemplateId AND i.WorkDate = sa.WorkDate AND i.WorkShiftId = sa.WorkShiftId
+      );
+
+    INSERT INTO dbo.ChecklistTask
+        (ChecklistTemplateId, ShiftAssignmentId, EmployeeId, DueAt, StartedAt, SubmittedAt, RunStatus, ManagerStatus, ChecklistInstanceId)
+    SELECT v.TemplateId, sa.ShiftAssignmentId, @EmployeeId,
+           DATEADD(HOUR, 3, sa.PlannedEndAt), DATEADD(MINUTE, 15, sa.PlannedStartAt),
+           DATEADD(MINUTE, 30, sa.PlannedStartAt), v.RunStatus, v.ManagerStatus, i.ChecklistInstanceId
+    FROM (VALUES
+        (1, @OpenTemplateId, 'SUBMITTED', 'PENDING'),
+        (2, @HandoverTemplateId, 'SUBMITTED', 'PENDING'),
+        (3, @ServiceTemplateId, 'SUBMITTED', 'PENDING'),
+        (4, @OpenTemplateId, 'APPROVED', 'APPROVED'),
+        (5, @HandoverTemplateId, 'REJECTED', 'REJECTED'),
+        (6, @ServiceTemplateId, 'APPROVED', 'APPROVED')
+    ) v(DayOffset, TemplateId, RunStatus, ManagerStatus)
+    JOIN dbo.ShiftAssignment sa ON sa.EmployeeId = @EmployeeId AND sa.WorkDate = DATEADD(DAY, -v.DayOffset, @Today)
+    JOIN dbo.ChecklistInstance i ON i.ChecklistTemplateId = v.TemplateId AND i.WorkDate = sa.WorkDate AND i.WorkShiftId = sa.WorkShiftId
+    WHERE v.TemplateId IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM dbo.ChecklistTask t WHERE t.ShiftAssignmentId = sa.ShiftAssignmentId AND t.ChecklistTemplateId = v.TemplateId);
+
+    INSERT INTO @ChecklistRuns (DayOffset, TaskId, Status)
+    SELECT v.DayOffset, t.ChecklistTaskId, v.RunStatus
+    FROM (VALUES
+        (1, 'SUBMITTED'), (2, 'SUBMITTED'), (3, 'SUBMITTED'),
+        (4, 'APPROVED'), (5, 'REJECTED'), (6, 'APPROVED')
+    ) v(DayOffset, RunStatus)
+    JOIN dbo.ShiftAssignment sa ON sa.EmployeeId = @EmployeeId AND sa.WorkDate = DATEADD(DAY, -v.DayOffset, @Today)
+    JOIN dbo.ChecklistTask t ON t.ShiftAssignmentId = sa.ShiftAssignmentId;
+
+    INSERT INTO dbo.ChecklistTaskItem (ChecklistTaskId, ChecklistTemplateItemId, IsCompleted, CompletedAt, CompletedBy, Note)
+    SELECT r.TaskId, ti.ChecklistTemplateItemId, 1, DATEADD(MINUTE, 30, sa.PlannedStartAt), @EmployeeUserId, N'Đã hoàn tất dữ liệu demo'
+    FROM @ChecklistRuns r
+    JOIN dbo.ChecklistTask t ON t.ChecklistTaskId = r.TaskId
+    JOIN dbo.ShiftAssignment sa ON sa.ShiftAssignmentId = t.ShiftAssignmentId
+    JOIN dbo.ChecklistTemplateItem ti ON ti.ChecklistTemplateId = t.ChecklistTemplateId
+    WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.ChecklistTaskItem x
+        WHERE x.ChecklistTaskId = r.TaskId AND x.ChecklistTemplateItemId = ti.ChecklistTemplateItemId
+    );
+
+    INSERT INTO dbo.ChecklistEvidence (ChecklistTaskId, ChecklistTaskItemId, StorageKey, UploadedBy, UploadedAt)
+    SELECT r.TaskId, ti.ChecklistTaskItemId,
+           CONCAT('demo/checklist-evidence/task-', r.TaskId, '-item-', ti.ChecklistTaskItemId, '.txt'),
+           @EmployeeUserId, DATEADD(MINUTE, 30, sa.PlannedStartAt)
+    FROM @ChecklistRuns r
+    JOIN dbo.ChecklistTask t ON t.ChecklistTaskId = r.TaskId
+    JOIN dbo.ShiftAssignment sa ON sa.ShiftAssignmentId = t.ShiftAssignmentId
+    CROSS APPLY (SELECT TOP (1) ChecklistTaskItemId FROM dbo.ChecklistTaskItem i WHERE i.ChecklistTaskId = r.TaskId ORDER BY ChecklistTaskItemId) ti
+    WHERE r.DayOffset <= 3
+      AND NOT EXISTS (SELECT 1 FROM dbo.ChecklistEvidence e WHERE e.ChecklistTaskId = r.TaskId);
+
+    INSERT INTO dbo.ChecklistReview (ChecklistTaskId, ReviewerId, Decision, Reason, ReviewedAt)
+    SELECT r.TaskId, @ManagerUserId, r.Status,
+           CASE WHEN r.Status = 'REJECTED' THEN N'Dữ liệu demo: cần bổ sung mục bàn giao' ELSE N'Dữ liệu demo: checklist đã được duyệt' END,
+           DATEADD(DAY, -r.DayOffset, SYSUTCDATETIME())
+    FROM @ChecklistRuns r
+    WHERE r.DayOffset > 3
+      AND NOT EXISTS (SELECT 1 FROM dbo.ChecklistReview x WHERE x.ChecklistTaskId = r.TaskId);
+
+    COMMIT TRANSACTION;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+    THROW;
+END CATCH;
+GO
+
+-- Training, violations, reward decisions, payroll periods, and operational logs.
+SET XACT_ABORT ON;
+BEGIN TRY
+    BEGIN TRANSACTION;
+
+    DECLARE @Today DATE = CAST(DATEADD(HOUR, 7, SYSUTCDATETIME()) AS DATE);
+    DECLARE @AdminUserId BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'baonvhe181955@fpt.edu.vn');
+    DECLARE @ManagerUserId BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'baonvchaos@gmail.com');
+    DECLARE @EmployeeUserId BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email = 'panchisuru@gmail.com');
+    DECLARE @EmployeeId BIGINT = (SELECT EmployeeId FROM dbo.Employee WHERE UserId = @EmployeeUserId);
+    DECLARE @FoodCourseId INT = (SELECT CourseId FROM dbo.TrainingCourse WHERE CourseCode = 'FOOD_SAFETY_101');
+    DECLARE @RulesCourseId INT = (SELECT CourseId FROM dbo.TrainingCourse WHERE CourseCode = 'HOUSE_RULES');
+    DECLARE @BaristaCourseId INT = (SELECT CourseId FROM dbo.TrainingCourse WHERE CourseCode = 'BARISTA_BASIC');
+    DECLARE @LateRuleId INT = (SELECT RuleId FROM dbo.RuleCatalog WHERE RuleCode = 'LATE_MINOR');
+    DECLARE @SpotMissedRuleId INT = (SELECT RuleId FROM dbo.RuleCatalog WHERE RuleCode = 'ATTENDANCE_SPOT_CHECK_MISSED');
+    DECLARE @ServiceRuleId INT = (SELECT RuleId FROM dbo.RuleCatalog WHERE RuleCode = 'SERVICE_ISSUE');
+    DECLARE @ComplimentRuleId INT = (SELECT RuleId FROM dbo.RuleCatalog WHERE RuleCode = 'CUSTOMER_COMPLIMENT');
+    DECLARE @KpiRuleId INT = (SELECT RuleId FROM dbo.RuleCatalog WHERE RuleCode = 'KPI_EXCEEDED');
+    DECLARE @HistoryAttendance1 BIGINT = (SELECT a.AttendanceId FROM dbo.Attendance a JOIN dbo.ShiftAssignment sa ON sa.ShiftAssignmentId = a.ShiftAssignmentId WHERE sa.EmployeeId = @EmployeeId AND sa.WorkDate = DATEADD(DAY, -1, @Today));
+    DECLARE @HistoryAttendance2 BIGINT = (SELECT a.AttendanceId FROM dbo.Attendance a JOIN dbo.ShiftAssignment sa ON sa.ShiftAssignmentId = a.ShiftAssignmentId WHERE sa.EmployeeId = @EmployeeId AND sa.WorkDate = DATEADD(DAY, -2, @Today));
+    DECLARE @HistoryAttendance3 BIGINT = (SELECT a.AttendanceId FROM dbo.Attendance a JOIN dbo.ShiftAssignment sa ON sa.ShiftAssignmentId = a.ShiftAssignmentId WHERE sa.EmployeeId = @EmployeeId AND sa.WorkDate = DATEADD(DAY, -3, @Today));
+    DECLARE @LateViolationId BIGINT;
+
+    -- Heal the two demo violations created without AttendanceId if a prior seed run
+    -- stopped before the attendance/checklist batch could complete.
+    UPDATE v
+       SET AttendanceId = @HistoryAttendance3, SourceType = 'ATTENDANCE', SourceId = @HistoryAttendance3
+    FROM dbo.ViolationEvent v
+    WHERE @HistoryAttendance3 IS NOT NULL AND v.EmployeeId = @EmployeeId AND v.RuleId = @LateRuleId
+      AND v.AttendanceId IS NULL AND v.Details = N'Dữ liệu demo: có mặt muộn 7 phút sau ân hạn';
+
+    UPDATE v
+       SET AttendanceId = @HistoryAttendance2, SourceType = 'ATTENDANCE', SourceId = @HistoryAttendance2
+    FROM dbo.ViolationEvent v
+    WHERE @HistoryAttendance2 IS NOT NULL AND v.EmployeeId = @EmployeeId AND v.RuleId = @SpotMissedRuleId
+      AND v.AttendanceId IS NULL AND v.Details = N'Dữ liệu demo: không phản hồi kiểm tra giữa ca';
+
+    INSERT INTO dbo.UserPermission (UserId, PermissionId, GrantedBy)
+    SELECT @AdminUserId, p.PermissionId, @AdminUserId
+    FROM dbo.Permission p WHERE p.PermissionCode = 'ATTENDANCE_ADJUST_HR'
+      AND NOT EXISTS (SELECT 1 FROM dbo.UserPermission up WHERE up.UserId = @AdminUserId AND up.PermissionId = p.PermissionId);
+
+    INSERT INTO dbo.PositionTrainingRequirement (PositionId, CourseId, IsMandatory, BlocksShiftAssignment, EffectiveFrom)
+    SELECT p.PositionId, c.CourseId, 1, 1, '2000-01-01'
+    FROM dbo.JobPosition p CROSS JOIN dbo.TrainingCourse c
+    WHERE c.CourseCode = 'FOOD_SAFETY_101'
+      AND NOT EXISTS (SELECT 1 FROM dbo.PositionTrainingRequirement r
+          WHERE r.PositionId = p.PositionId AND r.CourseId = c.CourseId AND r.EffectiveFrom = '2000-01-01');
+
+    INSERT INTO dbo.TrainingAttempt (EmployeeId, CourseId, AttemptNo, Score, IsPassed, Source, RecordedBy, RecordedAt, AnswersJson)
+    SELECT @EmployeeId, c.CourseId, v.AttemptNo, v.Score, v.IsPassed, 'QUIZ', @EmployeeUserId,
+           DATEADD(DAY, -v.DaysAgo, SYSUTCDATETIME()), v.AnswersJson
+    FROM (VALUES
+        ('FOOD_SAFETY_101', 1, CAST(92.0 AS DECIMAL(5,2)), CAST(1 AS BIT), 25, N'{"1":"A","2":"B"}'),
+        ('HOUSE_RULES', 1, CAST(88.0 AS DECIMAL(5,2)), CAST(1 AS BIT), 20, N'{"1":"B","2":"A"}'),
+        ('BARISTA_BASIC', 1, CAST(55.0 AS DECIMAL(5,2)), CAST(0 AS BIT), 10, N'{"1":"C","2":"D"}')
+    ) v(CourseCode, AttemptNo, Score, IsPassed, DaysAgo, AnswersJson)
+    JOIN dbo.TrainingCourse c ON c.CourseCode = v.CourseCode
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.TrainingAttempt a WHERE a.EmployeeId = @EmployeeId AND a.CourseId = c.CourseId AND a.AttemptNo = v.AttemptNo);
+
+    INSERT INTO dbo.TrainingQuestion (CourseId, QuestionText, OptionA, OptionB, OptionC, OptionD, CorrectOption, SortOrder)
+    SELECT @FoodCourseId, v.QuestionText, v.OptionA, v.OptionB, v.OptionC, v.OptionD, v.CorrectOption, v.SortOrder
+    FROM (VALUES
+        (N'Nhiệt độ bảo quản lạnh phù hợp giúp hạn chế điều gì?', N'Vi khuẩn phát triển', N'Màu cốc thay đổi', N'Máy pha nóng lên', N'Không điều nào', 'A', 1),
+        (N'Khi nào cần rửa tay trước khi chế biến?', N'Chỉ cuối ca', N'Trước và sau khi xử lý thực phẩm', N'Chỉ khi quản lý nhắc', N'Không cần', 'B', 2),
+        (N'Thực phẩm sống nên được bảo quản thế nào?', N'Đặt trên thực phẩm chín', N'Để chung mọi loại', N'Tách riêng và đậy kín', N'Để ngoài quầy', 'C', 3)
+    ) v(QuestionText, OptionA, OptionB, OptionC, OptionD, CorrectOption, SortOrder)
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.TrainingQuestion q WHERE q.CourseId = @FoodCourseId AND q.SortOrder = v.SortOrder);
+
+    INSERT INTO dbo.Skill (SkillCode, SkillName, Description)
+    SELECT v.SkillCode, v.SkillName, v.Description
+    FROM (VALUES
+        ('CUSTOMER_SERVICE', N'Phục vụ khách hàng', N'Giao tiếp và hỗ trợ khách hàng'),
+        ('BEVERAGE_PREP', N'Pha chế đồ uống', N'Thực hiện công thức và thao tác pha chế'),
+        ('CASH_HANDLING', N'Quản lý tiền mặt', N'Thu ngân và đối soát tiền')
+    ) v(SkillCode, SkillName, Description)
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.Skill s WHERE s.SkillCode = v.SkillCode);
+
+    INSERT INTO dbo.EmployeeSkill (EmployeeId, SkillId, SkillLevel, Note, AssessedBy, AssessedAt)
+    SELECT @EmployeeId, s.SkillId, v.SkillLevel, v.Note, @ManagerUserId, DATEADD(DAY, -v.DaysAgo, SYSUTCDATETIME())
+    FROM (VALUES
+        ('CUSTOMER_SERVICE', 4, N'Đánh giá demo: giao tiếp tốt', 12),
+        ('BEVERAGE_PREP', 3, N'Đánh giá demo: đạt yêu cầu cơ bản', 9),
+        ('CASH_HANDLING', 3, N'Đánh giá demo: cần tiếp tục luyện tập', 6)
+    ) v(SkillCode, SkillLevel, Note, DaysAgo)
+    JOIN dbo.Skill s ON s.SkillCode = v.SkillCode
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.EmployeeSkill es WHERE es.EmployeeId = @EmployeeId AND es.SkillId = s.SkillId AND es.Note = v.Note);
+
+    INSERT INTO dbo.AttendanceVerificationAttempt
+        (EmployeeId, ShiftAssignmentId, EventType, VerificationType, FailureCode, DeviceId, AttemptedAt)
+    SELECT @EmployeeId, sa.ShiftAssignmentId, v.EventType, 'GPS', v.FailureCode, dev.DeviceId,
+           DATEADD(DAY, -v.DayOffset, SYSUTCDATETIME())
+    FROM (VALUES (1, 'CHECK_IN', 'GPS_STALE'), (2, 'CHECK_OUT', 'GPS_OUTSIDE_RADIUS'), (3, 'SPOT_CHECK', 'GPS_LOW_ACCURACY'))
+         v(DayOffset, EventType, FailureCode)
+    JOIN dbo.ShiftAssignment sa ON sa.EmployeeId = @EmployeeId AND sa.WorkDate = DATEADD(DAY, -v.DayOffset, @Today)
+    JOIN dbo.AttendanceDevice dev ON dev.EmployeeId = @EmployeeId AND dev.Status = 'ACTIVE'
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.AttendanceVerificationAttempt a
+        WHERE a.ShiftAssignmentId = sa.ShiftAssignmentId AND a.EventType = v.EventType AND a.FailureCode = v.FailureCode);
+
+    DECLARE @ReviewTaskId BIGINT = (
+        SELECT TOP (1) t.ChecklistTaskId
+        FROM dbo.ChecklistTask t JOIN dbo.ShiftAssignment sa ON sa.ShiftAssignmentId = t.ShiftAssignmentId
+        WHERE t.EmployeeId = @EmployeeId AND sa.WorkDate = DATEADD(DAY, -5, @Today)
+        ORDER BY t.ChecklistTaskId
+    );
+
+    INSERT INTO dbo.ViolationEvent
+        (EmployeeId, RuleId, AttendanceId, SourceType, SourceId, Details, RecordStatus, IsAutoGenerated, CreatedBy, OccurredAt)
+    SELECT @EmployeeId, @LateRuleId, @HistoryAttendance3, 'ATTENDANCE', @HistoryAttendance3,
+           N'Dữ liệu demo: có mặt muộn 7 phút sau ân hạn', 'PENDING', 1, @ManagerUserId, DATEADD(DAY, -3, SYSUTCDATETIME())
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.ViolationEvent v WHERE v.EmployeeId = @EmployeeId AND v.RuleId = @LateRuleId AND v.AttendanceId = @HistoryAttendance3);
+    INSERT INTO dbo.ViolationEvent
+        (EmployeeId, RuleId, AttendanceId, SourceType, SourceId, Details, RecordStatus, IsAutoGenerated, CreatedBy, OccurredAt)
+    SELECT @EmployeeId, @SpotMissedRuleId, @HistoryAttendance2, 'ATTENDANCE', @HistoryAttendance2,
+           N'Dữ liệu demo: không phản hồi kiểm tra giữa ca', 'PENDING', 1, @ManagerUserId, DATEADD(DAY, -2, SYSUTCDATETIME())
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.ViolationEvent v WHERE v.EmployeeId = @EmployeeId AND v.RuleId = @SpotMissedRuleId AND v.AttendanceId = @HistoryAttendance2);
+    INSERT INTO dbo.ViolationEvent
+        (EmployeeId, RuleId, ChecklistTaskId, SourceType, SourceId, Details, RecordStatus, IsAutoGenerated, CreatedBy, OccurredAt)
+    SELECT @EmployeeId, @ServiceRuleId, NULL, 'MANUAL', NULL,
+           N'Dữ liệu demo: cần quản lý xem xét vấn đề dịch vụ', 'PENDING', 0, @ManagerUserId, DATEADD(DAY, -1, SYSUTCDATETIME())
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.ViolationEvent v WHERE v.EmployeeId = @EmployeeId AND v.RuleId = @ServiceRuleId AND v.Details = N'Dữ liệu demo: cần quản lý xem xét vấn đề dịch vụ');
+
+    SET @LateViolationId = (SELECT TOP (1) ViolationEventId FROM dbo.ViolationEvent WHERE EmployeeId = @EmployeeId AND RuleId = @LateRuleId AND AttendanceId = @HistoryAttendance3 ORDER BY ViolationEventId);
+    UPDATE d
+       SET ViolationEventId = @LateViolationId
+    FROM dbo.EmployeeRewardPenalty d
+    WHERE @LateViolationId IS NOT NULL AND d.EmployeeId = @EmployeeId AND d.ProposedBy = @ManagerUserId
+      AND d.Details = N'Demo phạt: vi phạm đi muộn cần xem xét' AND d.ViolationEventId IS NULL;
+    DECLARE @SpotMissedViolationId BIGINT = (
+        SELECT TOP (1) ViolationEventId FROM dbo.ViolationEvent
+        WHERE EmployeeId = @EmployeeId AND RuleId = @SpotMissedRuleId AND AttendanceId = @HistoryAttendance2
+        ORDER BY ViolationEventId
+    );
+    DECLARE @ServiceViolationId BIGINT = (
+        SELECT TOP (1) ViolationEventId FROM dbo.ViolationEvent
+        WHERE EmployeeId = @EmployeeId AND RuleId = @ServiceRuleId
+          AND Details = N'Dữ liệu demo: cần quản lý xem xét vấn đề dịch vụ'
+        ORDER BY ViolationEventId
+    );
+
+    INSERT INTO dbo.ViolationExplanation (ViolationEventId, EmployeeId, Reason, CreatedAt)
+    SELECT v.ViolationEventId, @EmployeeId, x.Reason, DATEADD(DAY, -x.DaysAgo, SYSUTCDATETIME())
+    FROM (VALUES
+        (@LateViolationId, N'Giải trình demo: xe gặp sự cố trên đường', 2),
+        (@SpotMissedViolationId, N'Giải trình demo: không nhìn thấy thông báo kiểm tra', 1),
+        (@ServiceViolationId, N'Giải trình demo: đã trao đổi với khách hàng', 1)
+    ) x(ViolationEventId, Reason, DaysAgo)
+    JOIN dbo.ViolationEvent v ON v.ViolationEventId = x.ViolationEventId
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.ViolationExplanation e WHERE e.ViolationEventId = v.ViolationEventId AND e.Reason = x.Reason);
+
+    INSERT INTO dbo.EmployeeRewardPenalty
+        (DecisionType, EmployeeId, RuleId, ViolationEventId, EffectiveDate, Details, Amount, DecisionStatus, ProposedBy)
+    SELECT v.DecisionType, @EmployeeId, r.RuleId, v.ViolationEventId, DATEADD(DAY, -v.DaysAgo, SYSUTCDATETIME()),
+           v.Details, v.Amount, 'PENDING', @ManagerUserId
+    FROM (VALUES
+        ('REWARD', 'CUSTOMER_COMPLIMENT', CAST(NULL AS BIGINT), N'Demo thưởng: được khách hàng khen', CAST(100000 AS DECIMAL(12,2)), 10),
+        ('REWARD', 'KPI_EXCEEDED', CAST(NULL AS BIGINT), N'Demo thưởng: hoàn thành KPI', CAST(150000 AS DECIMAL(12,2)), 7),
+        ('PENALTY', 'LATE_MINOR', @LateViolationId, N'Demo phạt: vi phạm đi muộn cần xem xét', CAST(0 AS DECIMAL(12,2)), 3)
+    ) v(DecisionType, RuleCode, ViolationEventId, Details, Amount, DaysAgo)
+    JOIN dbo.RuleCatalog r ON r.RuleCode = v.RuleCode
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.EmployeeRewardPenalty d WHERE d.EmployeeId = @EmployeeId AND d.ProposedBy = @ManagerUserId AND d.Details = v.Details);
+
+    INSERT INTO dbo.PayrollPeriod (PeriodCode, StartDate, EndDate, PeriodStatus, CreatedBy, Note)
+    SELECT v.PeriodCode, DATEADD(MONTH, v.MonthOffset, DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1)),
+           EOMONTH(DATEADD(MONTH, v.MonthOffset, DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1))),
+           'OPEN', @ManagerUserId, N'Kỳ công demo để kiểm tra danh sách'
+    FROM (VALUES ('DEMO-01', -2), ('DEMO-02', -1), ('DEMO-03', 0)) v(PeriodCode, MonthOffset)
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.PayrollPeriod p WHERE p.PeriodCode = v.PeriodCode);
+
+    INSERT INTO dbo.Notification (UserId, NotificationType, Title, Message, DeliveryStatus, AttemptCount, CreatedAt, SentAt, DedupKey)
+    SELECT v.UserId, 'DEMO_NOTICE', v.Title, v.Message, 'SENT', 1, DATEADD(DAY, -v.DaysAgo, SYSUTCDATETIME()),
+           DATEADD(DAY, -v.DaysAgo, SYSUTCDATETIME()), v.DedupKey
+    FROM (VALUES
+        (@AdminUserId, N'Dữ liệu demo hệ thống', N'Tài khoản quản trị đã sẵn sàng.', 3, 'DEMO-NOTICE-ADMIN'),
+        (@ManagerUserId, N'Dữ liệu demo công việc', N'Mở Trung tâm công việc để xử lý các hàng đợi demo.', 2, 'DEMO-NOTICE-MANAGER'),
+        (@EmployeeUserId, N'Dữ liệu demo lịch sử', N'Lịch làm và lịch sử chấm công demo đã được tạo.', 1, 'DEMO-NOTICE-EMPLOYEE')
+    ) v(UserId, Title, Message, DaysAgo, DedupKey)
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.Notification n WHERE n.DedupKey = v.DedupKey);
+
+    INSERT INTO dbo.AuditLog (ActorUserId, ActionCode, EntityType, EntityId, AfterJson, UserAgent, CreatedAt)
+    SELECT @AdminUserId, 'DEMO_DATA_INITIALIZED', 'DemoData', v.EntityId, v.AfterJson, N'SEEDDATA', DATEADD(DAY, -v.DaysAgo, SYSUTCDATETIME())
+    FROM (VALUES
+        ('accounts', N'{"accounts":3}', 3),
+        ('shift-history', N'{"historicalDays":30}', 2),
+        ('approval-queues', N'{"demoRecords":3}', 1)
+    ) v(EntityId, AfterJson, DaysAgo)
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.AuditLog a WHERE a.ActionCode = 'DEMO_DATA_INITIALIZED' AND a.EntityId = v.EntityId);
+
+    COMMIT TRANSACTION;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+    THROW;
+END CATCH;
+GO
+
+
+-- Report row counts; the demo is intentionally rich enough to exercise every table.
+DECLARE @CountSql NVARCHAR(MAX);
+DECLARE @Counts TABLE (TableName SYSNAME NOT NULL, RowTotal BIGINT NOT NULL);
+SELECT @CountSql = STRING_AGG(
+    CONVERT(NVARCHAR(MAX), N'SELECT N''' + REPLACE(t.name, N'''', N'''''') + N''' AS TableName, COUNT_BIG(*) AS RowTotal FROM ' + QUOTENAME(s.name) + N'.' + QUOTENAME(t.name)),
+    N' UNION ALL ')
+FROM sys.tables t JOIN sys.schemas s ON s.schema_id = t.schema_id
+WHERE s.name = 'dbo';
+INSERT INTO @Counts EXEC sys.sp_executesql @CountSql;
+SELECT TableName, RowTotal FROM @Counts ORDER BY TableName;
+IF EXISTS (SELECT 1 FROM @Counts WHERE RowTotal < 3)
+    THROW 51011, N'Có bảng chưa đủ ba dòng dữ liệu demo; xem báo cáo số dòng ở trên.', 1;
 GO
 

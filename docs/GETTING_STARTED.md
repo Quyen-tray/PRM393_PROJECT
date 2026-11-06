@@ -38,16 +38,14 @@ Giữ lại các cấu hình local trong `hrm-coffeeshop-backend/.env`. File nà
 
 ## 3. Chuẩn bị SQL Server và database
 
-Nếu chỉ cần xóa lượt chấm công vừa test và phân ca lại, xem [hướng dẫn reset một lượt chấm công](RESET_DATABASE.md).
-
 Chọn đúng trường hợp của bạn:
 
-- **Đã có database cần tiếp tục dùng:** cấu hình kết nối tới database đó trong `.env`. Không chạy lại `config.sql` hoặc `seeddata.sql` trên database đang có dữ liệu. Nếu schema chưa có cập nhật v3, dùng tùy chọn `-ApplyMigration` khi khởi động backend ở bước 6; migration bổ sung giữ dữ liệu hiện có.
+- **Đã có database cần tiếp tục dùng:** cấu hình kết nối tới database đó trong `.env`. Không chạy lại `config.sql` hoặc `seeddata.sql` trên database đang có dữ liệu. Việc nâng cấp schema cần sao lưu và được DBA xử lý riêng.
 - **Tạo database local mới:** dùng tài khoản SQL Server có quyền tạo database, mở và chạy toàn bộ `hrm-coffeeshop-backend/infra/sqlserver/config.sql` trong SSMS hoặc Azure Data Studio, sau đó chạy toàn bộ `hrm-coffeeshop-backend/infra/sqlserver/seeddata.sql`. `config.sql` tạo database `HRM_CoffeeShop` và chỉ dùng cho cài đặt mới. Trước khi chạy seed, thay email quản trị ban đầu bằng Gmail bạn kiểm soát.
 
-`config.sql` đã tích hợp schema V3. Database mới chỉ cần chạy `config.sql` và `seeddata.sql`, sau đó khởi động backend bình thường. `-ApplyMigration` chỉ dành cho database cũ chưa có schema V3.
+Hai file database cần dùng là `config.sql` (tạo toàn bộ schema) và `seeddata.sql` (nạp dữ liệu nền cùng ba tài khoản demo: admin, manager, employee). Chạy theo thứ tự trên database mới.
 
-Không dùng `config.sql` để nâng cấp database đã tồn tại. Các bước này áp dụng cho database development local; với database dùng chung, xác nhận đúng database và migration cần chạy trước khi cập nhật.
+Không dùng `config.sql` để nâng cấp database đã tồn tại. Các bước này áp dụng cho database development local; với database dùng chung, sao lưu và thống nhất kế hoạch nâng cấp schema với DBA trước khi cập nhật.
 
 ## 4. Tạo cấu hình local cho backend và Google
 
@@ -105,13 +103,7 @@ Backend chạy ở cổng `8080`; Swagger UI ở `http://localhost:8080/swagger-
 
 Khi chạy `HrmApplication` trực tiếp từ IDE, backend cũng tự nạp `hrm-coffeeshop-backend/.env` từ thư mục gốc dự án hoặc `.env` từ thư mục backend. Kiểm tra các biến môi trường đặt riêng trong Run Configuration nếu giá trị khác file `.env`. Cách nạp file không có đuôi dùng [Spring Boot Config Data import](https://docs.spring.io/spring-boot/3.3/reference/features/external-config.html).
 
-Nếu đang kết nối database cũ cần migration v3, dùng cờ dưới đây **một lần**:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tooling/Start-HrmBackend.ps1 -ApplyMigration
-```
-
-Giữ terminal backend mở khi dùng app. Các lần khởi động tiếp theo dùng lệnh không có `-ApplyMigration`.
+Giữ terminal backend mở khi dùng app.
 
 ### Terminal 2: Flutter app
 
@@ -147,7 +139,7 @@ Mở `http://127.0.0.1:5000` trong trình duyệt. Khi dừng một tiến trìn
 
 ## Sau mỗi lần `git pull`
 
-1. Đọc ghi chú cập nhật hoặc migration mới trong repository.
+1. Đọc ghi chú cập nhật trong repository.
 2. Chạy lại `flutter pub get` và `mvn -f hrm-coffeeshop-backend/pom.xml dependency:go-offline` nếu các file dependency thay đổi.
-3. Nếu thay đổi schema có migration mới, áp dụng migration cho đúng database theo hướng dẫn của repo; không chạy lại `config.sql` trên database đang dùng.
+3. Nếu bản cập nhật thay đổi schema, không chạy lại `config.sql` trên database đang dùng; cần sao lưu và nhờ DBA xử lý kế hoạch nâng cấp.
 4. Khởi động lại backend và frontend theo bước 6.

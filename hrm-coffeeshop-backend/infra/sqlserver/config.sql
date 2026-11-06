@@ -1,7 +1,7 @@
 ﻿-- ============================================================================
 -- config.sql
 -- Tạo database và toàn bộ cấu trúc: bảng, khóa, CHECK/UNIQUE constraints, index.
--- Đã bao gồm schema V3; database mới không cần chạy migration riêng.
+-- Bao gồm toàn bộ schema hiện tại; database mới chỉ cần file config.sql và seeddata.sql.
 -- Chỉ dùng để cài mới. Nếu database đã tồn tại, script sẽ dừng và KHÔNG xóa dữ liệu.
 -- ============================================================================
 -- =====================================================================================
@@ -548,10 +548,39 @@ CREATE TABLE dbo.AttendanceVerification (
     CONSTRAINT FK_Verification_Attendance FOREIGN KEY (AttendanceId) REFERENCES dbo.Attendance(AttendanceId),
     CONSTRAINT FK_Verification_Device FOREIGN KEY (DeviceId) REFERENCES dbo.AttendanceDevice(DeviceId),
     CONSTRAINT CK_Verification_Type CHECK (VerificationType IN ('GPS','DEVICE','PHOTO','FACE_LIVENESS','QR','WIFI')),
-    CONSTRAINT CK_Verification_Event CHECK (EventType IN ('CHECK_IN','CHECK_OUT')),
+    CONSTRAINT CK_Verification_Event CHECK (EventType IN ('CHECK_IN','CHECK_OUT','SPOT_CHECK')),
     CONSTRAINT CK_Verification_Status CHECK (VerificationStatus IN ('PASSED','FAILED','REVIEW_REQUIRED','EXEMPTED'))
 );
 
+GO
+
+IF OBJECT_ID('tempdb..#HrmInstallGuard') IS NULL
+    THROW 51001, N'Cài đặt đã bị dừng: không tạo mới được database. Không tiếp tục chạy các batch schema.', 1;
+
+-- Một lượt kiểm tra hiện diện ngẫu nhiên tối đa cho mỗi bản chấm công.
+IF OBJECT_ID('dbo.AttendanceSpotCheck', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.AttendanceSpotCheck (
+        SpotCheckId BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+        AttendanceId BIGINT NOT NULL UNIQUE,
+        EmployeeId BIGINT NOT NULL,
+        ShiftAssignmentId BIGINT NOT NULL,
+        IsSelected BIT NOT NULL DEFAULT 0,
+        Status VARCHAR(20) NOT NULL DEFAULT 'NOT_SELECTED',
+        ScheduledAt DATETIME2 NULL,
+        RequestedAt DATETIME2 NULL,
+        ResponseDeadlineAt DATETIME2 NULL,
+        RespondedAt DATETIME2 NULL,
+        ResponseIdempotencyKey VARCHAR(100) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_SpotCheck_Attendance FOREIGN KEY (AttendanceId) REFERENCES dbo.Attendance(AttendanceId),
+        CONSTRAINT FK_SpotCheck_Employee FOREIGN KEY (EmployeeId) REFERENCES dbo.Employee(EmployeeId),
+        CONSTRAINT FK_SpotCheck_Shift FOREIGN KEY (ShiftAssignmentId) REFERENCES dbo.ShiftAssignment(ShiftAssignmentId),
+        CONSTRAINT CK_SpotCheck_Status CHECK (Status IN ('NOT_SELECTED','SCHEDULED','REQUESTED','VERIFIED','MISSED','CANCELLED'))
+    );
+    CREATE INDEX IX_SpotCheck_Due ON dbo.AttendanceSpotCheck(Status, ScheduledAt);
+    CREATE INDEX IX_SpotCheck_Deadline ON dbo.AttendanceSpotCheck(Status, ResponseDeadlineAt);
+END;
 GO
 
 IF OBJECT_ID('tempdb..#HrmInstallGuard') IS NULL
@@ -1177,7 +1206,7 @@ CREATE TABLE dbo.AttendanceVerificationAttempt (
     AttemptedAt        DATETIME2 NOT NULL,
     CONSTRAINT FK_VerifAttempt_Employee FOREIGN KEY (EmployeeId) REFERENCES dbo.Employee(EmployeeId),
     CONSTRAINT FK_VerifAttempt_Shift FOREIGN KEY (ShiftAssignmentId) REFERENCES dbo.ShiftAssignment(ShiftAssignmentId),
-    CONSTRAINT CK_VerifAttempt_Event CHECK (EventType IN ('CHECK_IN','CHECK_OUT')),
+    CONSTRAINT CK_VerifAttempt_Event CHECK (EventType IN ('CHECK_IN','CHECK_OUT','SPOT_CHECK')),
     CONSTRAINT CK_VerifAttempt_Type CHECK (VerificationType IN ('GPS','FACE'))
 );
 GO

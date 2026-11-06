@@ -7,11 +7,13 @@ import com.hrm.coffeeshop.shared.service.ViolationService;
 
 import com.hrm.coffeeshop.common.TimeUtils;
 import com.hrm.coffeeshop.domain.ChecklistTask;
+import com.hrm.coffeeshop.domain.Notification;
 import com.hrm.coffeeshop.domain.ShiftAssignment;
 import com.hrm.coffeeshop.repository.AttendanceRepository;
 import com.hrm.coffeeshop.repository.ReminderRuleRepository;
 import com.hrm.coffeeshop.repository.ChecklistTaskRepository;
 import com.hrm.coffeeshop.repository.ChecklistReviewRepository;
+import com.hrm.coffeeshop.repository.NotificationRepository;
 import com.hrm.coffeeshop.repository.ShiftAssignmentRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,10 +45,12 @@ public class ReminderJob {
     private final TransactionTemplate tx;
     private final Clock clock;
     private final ChecklistReviewRepository reviews;
+    private final NotificationRepository notificationRecords;
 
     public ReminderJob(ShiftAssignmentRepository schedules, AttendanceRepository attendance, ChecklistTaskRepository runs,
                        NotificationService notifications, ViolationService violations, ReminderRuleRepository rules,
-                       PersonLookup people, TransactionTemplate tx, Clock clock, ChecklistReviewRepository reviews) {
+                       PersonLookup people, TransactionTemplate tx, Clock clock, ChecklistReviewRepository reviews,
+                       NotificationRepository notificationRecords) {
         this.schedules = schedules;
         this.attendance = attendance;
         this.runs = runs;
@@ -57,6 +61,7 @@ public class ReminderJob {
         this.tx = tx;
         this.clock = clock;
         this.reviews = reviews;
+        this.notificationRecords = notificationRecords;
     }
 
     @Scheduled(fixedDelay = 60_000, initialDelay = 30_000)
@@ -116,18 +121,41 @@ public class ReminderJob {
                 tx.executeWithoutResult(st -> {
                     ChecklistTask run = runs.findById(r.getChecklistTaskId()).orElseThrow();
                     if (!"OVERDUE".equals(run.getRunStatus())) run.setRunStatus("OVERDUE");
-                    long overdueMinutes = Duration.between(run.getDueAt(), now).toMinutes();
-                    int due = (int) Math.min(max, overdueMinutes / interval);
-                    if(enabled("CHECKLIST_OVERDUE")) for (int k = 1; k <= due; k++)
-                        notifications.notify(people.userIdOf(run.getEmployeeId()), "CHECKLIST_OVERDUE", "Checklist đã quá hạn",
-                                "Nhắc lần " + k + "/" + max + " cho checklist #" + run.getChecklistTaskId(), "ChecklistTask",
-                                run.getChecklistTaskId(), "CHECKLIST_OVERDUE:" + run.getChecklistTaskId() + reviewCycle(run) + ":" + k);
-                    // Sau khi hết số lần nhắc mà vẫn chưa nộp → ghi nhận vi phạm (chờ quản lý xác nhận, không tự khấu trừ)
-                    if (enabled("CHECKLIST_OVERDUE") && overdueMinutes >= (long) max * interval)
+                    if (!enabled("CHECKLIST_OVERDUE")) return;
+
+                    String cycle = reviewCycle(run);
+                    int nextAttempt = 1;
+                    Notification lastReminder = null;
+                    while (nextAttempt <= max) {
+                        String key = overdueReminderKey(run, cycle, nextAttempt);
+                        var sent = notificationRecords.findByDedupKey(key);
+                        if (sent.isEmpty()) break;
+                        lastReminder = sent.get();
+                        nextAttempt++;
+                    }
+
+                    if (nextAttempt > max) {
+                        violations.recordChecklistMissed(run.getEmployeeId(), run.getChecklistTaskId());
+                        return;
+                    }
+                    Instant nextReminderAt = nextAttempt == 1
+                            ? run.getDueAt().plus(Duration.ofMinutes(interval))
+                            : lastReminder.getCreatedAt().plus(Duration.ofMinutes(interval));
+                    if (now.isBefore(nextReminderAt)) return;
+
+                    notifications.notify(people.userIdOf(run.getEmployeeId()), "CHECKLIST_OVERDUE", "Checklist đã quá hạn",
+                            "Nhắc lần " + nextAttempt + "/" + max + " cho checklist #" + run.getChecklistTaskId(), "ChecklistTask",
+                            run.getChecklistTaskId(), overdueReminderKey(run, cycle, nextAttempt));
+                    // Chỉ ghi nhận vi phạm sau khi lời nhắc cuối cùng đã được gửi.
+                    if (nextAttempt == max)
                         violations.recordChecklistMissed(run.getEmployeeId(), run.getChecklistTaskId());
                 });
             } catch (Exception e) { log.warn("overdue handling skipped for {}: {}", r.getChecklistTaskId(), e.getMessage()); }
         }
+    }
+
+    private String overdueReminderKey(ChecklistTask run, String cycle, int attempt) {
+        return "CHECKLIST_OVERDUE:" + run.getChecklistTaskId() + cycle + ":" + attempt;
     }
 
     private String reviewCycle(ChecklistTask run) {

@@ -39,7 +39,7 @@ class OvertimeApprovalConcurrencyIT extends IntegrationTestBase {
     @Test
     void twoManagersApprovingSameOvertimeNeverOverwriteEachOther() throws Exception {
         long an = employeeIdByCode("NV001");
-        long manager1 = userIdByEmail("quanly@hrm.test");
+        long manager1 = userIdByEmail("baonvchaos@gmail.com");
         long manager2 = createUser("it-manager2-ot@hrm.test");
         LocalDate day = LocalDate.of(2033, 5, 10);
 

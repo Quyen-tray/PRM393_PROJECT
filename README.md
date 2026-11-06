@@ -11,7 +11,7 @@ Xem [hướng dẫn Word: chạy và sử dụng ứng dụng](HUONG_DAN_SU_DUNG
 ## Chạy với database của cửa hàng
 
 1. Cấu hình `hrm-coffeeshop-backend/.env` trên máy, không đưa mật khẩu/token vào Git. Dùng SQL Server đang có; không cần Docker. Xem [hướng dẫn bắt đầu](docs/GETTING_STARTED.md) để biết các biến cần đặt.
-2. Với database mới, chạy `hrm-coffeeshop-backend/infra/sqlserver/config.sql` rồi `seeddata.sql`. Với database hiện có, không chạy lại hai file này; nếu cần nâng schema v3, khởi động backend với `-ApplyMigration` một lần để áp dụng migration bổ sung.
+2. Hai file database là `hrm-coffeeshop-backend/infra/sqlserver/config.sql` và `seeddata.sql`. Chạy chúng theo thứ tự trên database mới; không chạy lại trên database đang có dữ liệu. Nâng cấp schema hiện hữu cần sao lưu và DBA xử lý riêng.
 3. Đảm bảo `env.json` có Google OAuth server client ID theo `env.example.json`. Script frontend tự tạo API URL phù hợp cho Android emulator hoặc web.
 4. Cài dependencies bằng `flutter pub get`. Nếu chỉ chạy Android/web trên Windows chưa bật Developer Mode: đặt `$env:FLUTTER_WINDOWS='false'` trong terminal hiện tại trước lệnh này. Chạy native Windows với plugin vẫn cần Developer Mode.
 5. Mở hai terminal tại workspace:
@@ -21,7 +21,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tooling/Start-HrmBackend.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File tooling/Start-HrmFrontend.ps1 -Target android
 ```
 
-Chỉ thêm `-ApplyMigration` khi database hiện có cần migration v3; chạy một lần rồi bỏ cờ ở các lần sau. Chọn `-Target web` để chạy ở `http://127.0.0.1:5000`. Backend mặc định cổng `8080`. Android emulator dùng `10.0.2.2:8080`. Điện thoại thật cần URL máy chủ mà điện thoại truy cập được và cấu hình listen/network tương ứng.
+Chọn `-Target web` để chạy ở `http://127.0.0.1:5000`. Backend mặc định cổng `8080`. Android emulator dùng `10.0.2.2:8080`. Điện thoại thật cần URL máy chủ mà điện thoại truy cập được và cấu hình listen/network tương ứng.
 
 Đăng nhập bằng Google thật trong `lib/main.dart`. Tài khoản phải tồn tại và đang hoạt động trên backend; ứng dụng không có đăng ký hoặc đăng nhập mật khẩu giả. Xem cấu hình OAuth trong [GOOGLE_LOGIN.md](hrm-coffeeshop-backend/docs/GOOGLE_LOGIN.md).
 
@@ -31,7 +31,7 @@ Chỉ thêm `-ApplyMigration` khi database hiện có cần migration v3; chạy
 flutter analyze
 flutter test --no-pub
 powershell -NoProfile -ExecutionPolicy Bypass -File tooling/Test-HrmBackend.ps1 -Integration
-powershell -NoProfile -ExecutionPolicy Bypass -File tooling/Start-HrmBackend.ps1 -TestDatabase -ApplyMigration
+powershell -NoProfile -ExecutionPolicy Bypass -File tooling/Start-HrmBackend.ps1 -TestDatabase
 powershell -NoProfile -ExecutionPolicy Bypass -File tooling/Start-HrmFrontend.ps1 -Target android -TestSession
 ```
 

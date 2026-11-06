@@ -17,7 +17,7 @@ final myAttendanceModule = ModuleSpec(
 
 final attendanceModule = ModuleSpec(
   'attendance',
-  'Chấm công toàn cửa hàng',
+  'Chấm công',
   '/attendance',
   'attendanceId',
   'employeeName',

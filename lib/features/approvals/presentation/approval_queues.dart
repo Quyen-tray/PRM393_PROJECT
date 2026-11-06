@@ -22,16 +22,19 @@ class ApprovalQueues extends StatelessWidget {
                 .where((e) => approvalQueueRoutes.containsKey(e.key))
                 .map((e) {
               final route = approvalQueueRoutes[e.key]!;
+              final count = int.tryParse('${e.value}') ?? 0;
               return Card(
                 child: ListTile(
-                  leading: CircleAvatar(child: Text('${e.value}')),
+                  leading: CircleAvatar(child: Text('$count')),
                   title: Text(route.$1),
-                  subtitle: Text(
-                    e.key.startsWith('adjustments')
-                        ? 'Số trường giờ công chờ xử lý'
-                        : 'Số hồ sơ chờ xử lý',
+                  subtitle: Text(e.key.startsWith('adjustments')
+                      ? '$count trường giờ công chờ xử lý'
+                      : '$count hồ sơ chờ xử lý'),
+                  trailing: TextButton.icon(
+                    onPressed: () => context.push(route.$2),
+                    icon: const Icon(Icons.open_in_new, size: 18),
+                    label: const Text('Mở danh sách'),
                   ),
-                  trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.push(route.$2),
                 ),
               );

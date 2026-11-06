@@ -30,7 +30,7 @@ abstract class AttendanceFlowSupport extends IntegrationTestBase {
     @BeforeEach void actors() {
         employee = employeeIdByCode("NV001");
         employeeUser = userIdOfEmployee("NV001");
-        manager = userIdByEmail("quanly@hrm.test");
+        manager = userIdByEmail("baonvchaos@gmail.com");
         admin = jdbc.queryForObject("SELECT TOP (1) ur.UserId FROM dbo.UserRole ur JOIN dbo.Role r ON r.RoleId=ur.RoleId WHERE r.RoleCode='SYSTEM_ADMIN' ORDER BY ur.UserId", Long.class);
         day = LocalDate.of(2065, 1, 1).plusDays(DAYS.addAndGet(40));
         at(day, 7, 0);

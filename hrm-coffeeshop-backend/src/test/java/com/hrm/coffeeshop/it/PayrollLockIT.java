@@ -50,7 +50,7 @@ class PayrollLockIT extends IntegrationTestBase {
     void lockedPeriodRejectsEveryChangeToItsShifts() {
         long an = employeeIdByCode("NV001");
         long anUser = userIdOfEmployee("NV001");
-        long manager = userIdByEmail("quanly@hrm.test");
+        long manager = userIdByEmail("baonvchaos@gmail.com");
         long device = activeDeviceId(an);
         int sang = workShiftId("CA_SANG");
 

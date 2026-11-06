@@ -29,14 +29,14 @@ const storeFields = [
   ),
   FieldSpec(
     'checkInEarlyMinutes',
-    'Vào sớm (phút)',
+    'Check-in sớm mặc định cho ca mới (phút)',
     kind: FieldKind.integer,
     min: 15,
     max: 30,
   ),
   FieldSpec(
     'graceMinutes',
-    'Ân hạn (phút)',
+    'Ân hạn mặc định cho ca mới (phút)',
     kind: FieldKind.integer,
     min: 3,
     max: 5,

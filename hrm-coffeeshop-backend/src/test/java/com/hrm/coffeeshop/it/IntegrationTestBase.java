@@ -80,7 +80,6 @@ public abstract class IntegrationTestBase {
         r.add("spring.datasource.url", () -> TEST_URL);
         r.add("spring.datasource.username", () -> TEST_USER);
         r.add("spring.datasource.password", () -> TEST_PASSWORD);
-        r.add("spring.sql.init.mode", () -> "always");
         r.add("app.jwt.secret", () -> "it-jwt-secret-" + "a".repeat(32));
         r.add("app.storage.signing-secret", () -> "it-storage-secret-" + "b".repeat(32));
         r.add("app.storage.local-dir", () -> STORAGE_DIR.toString());
@@ -123,7 +122,34 @@ public abstract class IntegrationTestBase {
              Statement s = c.createStatement(); var rs = s.executeQuery("SELECT DB_ID(N'" + TEST_DB + "')")) {
             rs.next(); if (rs.getObject(1) != null) return;
         } catch (SQLException e) { throw new IllegalStateException("Cannot inspect dedicated test database", e); }
-        runScript("config.sql"); runScript("seeddata.sql");
+        runScript("config.sql");
+        runScript("seeddata.sql");
+        createSecondaryEmployeeFixture();
+    }
+
+    /** Additional employee used only by integration cases that need to compare employee ownership. */
+    static void createSecondaryEmployeeFixture() {
+        String sql = """
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppUser WHERE Email='it-fixture-nv002@hrm.test')
+                    INSERT INTO dbo.AppUser (Email, DisplayName, UserStatus)
+                    VALUES ('it-fixture-nv002@hrm.test', N'Nhân viên kiểm thử phụ', 'ACTIVE');
+                DECLARE @UserId BIGINT = (SELECT UserId FROM dbo.AppUser WHERE Email='it-fixture-nv002@hrm.test');
+                DECLARE @RoleId INT = (SELECT RoleId FROM dbo.Role WHERE RoleCode='EMPLOYEE');
+                DECLARE @StoreId INT = (SELECT TOP (1) StoreId FROM dbo.Store WHERE IsActive=1 ORDER BY StoreId);
+                DECLARE @PositionId INT = (SELECT PositionId FROM dbo.JobPosition WHERE PositionCode='PHA_CHE');
+                IF NOT EXISTS (SELECT 1 FROM dbo.UserRole WHERE UserId=@UserId AND RoleId=@RoleId)
+                    INSERT INTO dbo.UserRole (UserId, RoleId) VALUES (@UserId, @RoleId);
+                IF NOT EXISTS (SELECT 1 FROM dbo.Employee WHERE EmployeeCode='NV002')
+                    INSERT INTO dbo.Employee
+                        (UserId, EmployeeCode, StoreId, JobTitle, PositionId, EmploymentType, EmploymentStatus, HireDate, ProfileStatus)
+                    VALUES (@UserId, 'NV002', @StoreId, N'Pha chế', @PositionId, 'PART_TIME', 'ACTIVE', '2020-01-01', 'COMPLETE');
+                """;
+        try (Connection connection = DriverManager.getConnection(TEST_URL, TEST_USER, TEST_PASSWORD);
+             Statement statement = connection.createStatement()) {
+            statement.execute(sql);
+        } catch (SQLException e) {
+            throw new IllegalStateException("Could not create the secondary employee test fixture", e);
+        }
     }
 
     static Path tempDir() {

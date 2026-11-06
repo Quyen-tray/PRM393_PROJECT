@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -44,10 +45,12 @@ class ReadyAttendanceRepository extends FixtureRepository {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  final photoBytes = Uint8List.fromList(base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII='));
   final position = Position(
       latitude: 21.0278,
       longitude: 105.8342,
-      timestamp: DateTime.utc(2026, 11, 5),
+      timestamp: DateTime.now().toUtc(),
       accuracy: 5,
       altitude: 0,
       altitudeAccuracy: 1,
@@ -88,25 +91,34 @@ void main() {
   }
 
   test(
-      'An unselected camera sends fresh GPS and installation identity without uploading a photo',
+      'Manual GPS survives photo capture and is sent with required photo evidence',
       () async {
     final requests = <RequestOptions>[];
     final container = await setup(
         photoRequired: false,
         handler: (request) async {
           requests.add(request);
+          if (request.path.endsWith('/storage/uploads')) {
+            return response({'storageKey': 'uploaded-photo'});
+          }
           return response({'attendanceId': 30});
         });
-    await container.read(attendanceControllerProvider.notifier).submit();
-    expect(requests, hasLength(1));
-    expect(requests.single.path, '/api/v1/attendance/check-in');
-    expect(requests.single.headers['X-Device-Credential'], 'installation-5');
-    final body = requests.single.data as Map;
-    expect(body.containsKey('photoEvidence'), false);
+    final controller = container.read(attendanceControllerProvider.notifier);
+    await controller.locate();
+    controller.setPhoto(photoBytes);
+    expect(container.read(attendanceControllerProvider).requireValue.positionFresh,
+        true);
+    await controller.submit();
+    expect(requests, hasLength(2));
+    final attendance = requests.firstWhere(
+        (request) => request.path.endsWith('/attendance/check-in'));
+    expect(attendance.headers['X-Device-Credential'], 'installation-5');
+    final body = attendance.data as Map;
+    expect(body['photoEvidence']['storageKey'], 'uploaded-photo');
     expect(body['shiftAssignmentId'], 20);
     expect(body['location']['accuracyMeters'], 5);
     expect(body['location']['isMocked'], false);
-    expect(requests.single.headers['Idempotency-Key'], body['idempotencyKey']);
+    expect(attendance.headers['Idempotency-Key'], body['idempotencyKey']);
     expect(
         await container.read(sessionStoreProvider).read('attendance-pending-1'),
         isNull);
@@ -164,7 +176,10 @@ void main() {
           return response(null,
               status: 409, code: 'ATTENDANCE_ALREADY_CHECKED_IN');
         });
-    await container.read(attendanceControllerProvider.notifier).submit();
+    final controller = container.read(attendanceControllerProvider.notifier);
+    await controller.locate();
+    controller.setPhoto(Uint8List.fromList([255, 216, 255, 0]));
+    await controller.submit();
     final state = container.read(attendanceControllerProvider).requireValue;
     expect(state.checkout, true);
     expect(state.pending, isNull);
@@ -192,7 +207,7 @@ void main() {
   });
 
   test(
-      'Photo upload finishes before GPS is sampled for the final attendance request',
+      'Manual GPS remains valid after photo upload and is used for attendance',
       () async {
     final sequence = <String>[];
     final container = await setup(
@@ -210,17 +225,19 @@ void main() {
           expect(request.data['photoEvidence']['storageKey'], 'uploaded-photo');
           return response({'attendanceId': 30});
         });
-    container
-        .read(attendanceControllerProvider.notifier)
-        .setPhoto(Uint8List.fromList([255, 216, 255, 0]));
-    await container.read(attendanceControllerProvider.notifier).submit();
-    expect(sequence, ['upload', 'gps', 'attendance']);
+    final controller = container.read(attendanceControllerProvider.notifier);
+    await controller.locate();
+    controller.setPhoto(Uint8List.fromList([255, 216, 255, 0]));
+    expect(container.read(attendanceControllerProvider).requireValue.positionFresh,
+        true);
+    await controller.submit();
+    expect(sequence, ['gps', 'upload', 'attendance']);
   });
 
   test(
       'An uncertain checkout retries the same operation without recapture or duplicate upload',
       () async {
-    int attempts = 0, locations = 0;
+    int attempts = 0, locations = 0, uploads = 0;
     final bodies = <Object?>[], keys = <Object?>[];
     final container = await setup(
         photoRequired: false,
@@ -230,6 +247,10 @@ void main() {
           return position;
         },
         handler: (request) async {
+          if (request.path.endsWith('/storage/uploads')) {
+            uploads++;
+            return response({'storageKey': 'uploaded-photo'});
+          }
           expect(request.path, '/api/v1/attendance/check-out');
           bodies.add(request.data);
           keys.add(request.headers['Idempotency-Key']);
@@ -240,12 +261,15 @@ void main() {
           return response({'attendanceId': 30});
         });
     final controller = container.read(attendanceControllerProvider.notifier);
+    await controller.locate();
+    controller.setPhoto(Uint8List.fromList([255, 216, 255, 0]));
     await controller.submit();
     expect(container.read(attendanceControllerProvider).requireValue.pending,
         isNotNull);
     await controller.submit(retry: true);
     expect(attempts, 2);
     expect(locations, 1);
+    expect(uploads, 1);
     expect(bodies[0], bodies[1]);
     expect(keys[0], keys[1]);
     expect((bodies.first as Map)['attendanceId'], 30);
@@ -265,8 +289,11 @@ void main() {
         await setup(photoRequired: false, handler: (_) async => response({}));
     final repository =
         container.read(resourceRepositoryProvider) as ReadyAttendanceRepository;
+    final controller = container.read(attendanceControllerProvider.notifier);
+    await controller.locate();
+    controller.setPhoto(photoBytes);
     repository.deviceStatus = 'PENDING';
-    await container.read(attendanceControllerProvider.notifier).refreshStatus();
+    await controller.refreshStatus();
     await tester.pumpWidget(UncontrolledProviderScope(
         container: container,
         child: const MaterialApp(home: Scaffold(body: CheckInScreen()))));
@@ -282,28 +309,45 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  for (final required in [true, false]) {
-    testWidgets(
-        'Camera selection $required controls the capture step and confirmation button',
-        (tester) async {
-      tester.view.physicalSize = const Size(420, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final container = await setup(
-          photoRequired: required, handler: (_) async => response({}));
-      await tester.pumpWidget(UncontrolledProviderScope(
-          container: container,
-          child: const MaterialApp(home: Scaffold(body: CheckInScreen()))));
-      await tester.pumpAndSettle();
-      expect(find.text('Mở camera và chụp ảnh'),
-          required ? findsOneWidget : findsNothing);
-      expect(
-          find.text('Ảnh xác minh'), required ? findsOneWidget : findsNothing);
-      final submit = tester.widget<FilledButton>(
-          find.widgetWithText(FilledButton, 'Xác nhận check-in'));
-      expect(submit.onPressed == null, required);
-      expect(tester.takeException(), isNull);
-    });
-  }
+  testWidgets(
+      'Photo and manually captured GPS are required even if server marks photo optional',
+      (tester) async {
+    tester.view.physicalSize = const Size(420, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final container =
+        await setup(photoRequired: false, handler: (_) async => response({}));
+    await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: CheckInScreen()))));
+    await tester.pumpAndSettle();
+    expect(find.text('Mở camera và chụp ảnh'), findsOneWidget);
+    expect(find.text('Ảnh xác minh'), findsOneWidget);
+    final submit = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Xác nhận check-in'));
+    expect(submit.onPressed, isNull);
+    await tester.tap(find.text('Lấy vị trí GPS'));
+    await tester.pumpAndSettle();
+    container.read(attendanceControllerProvider.notifier).setPhoto(photoBytes);
+    await tester.pumpAndSettle();
+    final readySubmit = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Xác nhận check-in'));
+    expect(readySubmit.onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  test('Spot-check photo capture preserves its manually captured GPS',
+      () async {
+    final container =
+        await setup(photoRequired: false, handler: (_) async => response({}));
+    final controller = container.read(attendanceControllerProvider.notifier);
+    await controller.locateSpotCheck();
+    controller.setSpotCheckPhoto(Uint8List.fromList([255, 216, 255, 0]));
+    final state = container.read(attendanceControllerProvider).requireValue;
+    expect(state.spotCheckPosition, same(position));
+    expect(state.spotCheckPositionFresh, true);
+    expect(state.spotCheckPhoto, isNotNull);
+  });
 }

@@ -238,7 +238,7 @@ const statusLabels = <String, String>{
   'DISMISSED': 'Đã bác bỏ',
   'RESOLVED': 'Đã xử lý',
   'ON_TIME': 'Đúng giờ',
-  'LATE': 'Đi muộn',
+  'LATE': 'Có mặt · đi muộn',
   'ABSENT': 'Vắng',
   'FULL_TIME': 'Toàn thời gian',
   'PART_TIME': 'Bán thời gian',

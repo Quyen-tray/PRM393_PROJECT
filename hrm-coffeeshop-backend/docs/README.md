@@ -2,12 +2,12 @@
 
 ## 1. Chuẩn bị database
 
-Backend chỉ có hai file SQL:
+Database mới dùng hai file nền:
 
 1. `config.sql`: tạo database `HRM_CoffeeShop`, bảng, khóa, constraints và index.
 2. `seeddata.sql`: nạp role, permission, danh mục, tài khoản quản trị ban đầu và dữ liệu demo/test.
 
-Chạy theo đúng thứ tự trên một database mới. Trước khi chạy `seeddata.sql`, thay email quản trị mẫu bằng Gmail thật nếu cần đăng nhập Google. `config.sql` sẽ dừng nếu database đã tồn tại, không tự xóa dữ liệu. Dự án chỉ duy trì hai file SQL, không có migration hay script SQL phụ; không chạy hai file này để nâng cấp database đang có dữ liệu. Xem [INSTALL.md](INSTALL.md) và [GOOGLE_LOGIN.md](GOOGLE_LOGIN.md).
+Chạy theo đúng thứ tự trên một database mới. Trước khi chạy `seeddata.sql`, thay email quản trị mẫu bằng Gmail thật nếu cần đăng nhập Google. `config.sql` sẽ dừng nếu database đã tồn tại, không tự xóa dữ liệu. Không có script nâng cấp database hiện hữu; hãy sao lưu và nhờ DBA xử lý schema riêng. Xem [INSTALL.md](INSTALL.md) và [GOOGLE_LOGIN.md](GOOGLE_LOGIN.md).
 
 ## 2. Đăng nhập thử khi chưa dùng Google
 
@@ -19,7 +19,7 @@ SRS sử dụng Google Sign-In (`POST /auth/google`). Backend có thêm `POST /a
 | `JWT_SECRET` | Chuỗi bí mật tối thiểu 32 ký tự |
 | `DEV_PASSWORD_LOGIN_ENABLED` | Bật endpoint đăng nhập test |
 | `BOOTSTRAP_ADMIN_PASSWORD` | Mật khẩu test cho tài khoản quản trị ban đầu |
-| `TEST_ACCOUNTS_PASSWORD` | Mật khẩu chung cho tài khoản `*@hrm.test` |
+| `TEST_ACCOUNTS_PASSWORD` | Mật khẩu chung cho tài khoản manager/employee demo |
 
 Ví dụ IntelliJ Run Configuration:
 
@@ -45,14 +45,8 @@ Các tài khoản dưới đây được tạo bởi `seeddata.sql`; mật khẩ
 | Email | Vai trò |
 |---|---|
 | `baonvhe181955@fpt.edu.vn` | SYSTEM_ADMIN |
-| `giamdoc@hrm.test` | OPERATIONS_DIRECTOR |
-| `quanly@hrm.test` | STORE_MANAGER |
-| `hr@hrm.test` | EMPLOYEE + tập quyền HR |
-| `nv.an@hrm.test` | EMPLOYEE |
-| `nv.binh@hrm.test` | EMPLOYEE |
-| `nv.chi@hrm.test` | EMPLOYEE |
-| `nv.dung@hrm.test` | EMPLOYEE |
-| `nv.khoa@hrm.test` | Tài khoản LOCKED |
+| `baonvchaos@gmail.com` | STORE_MANAGER |
+| `panchisuru@gmail.com` | EMPLOYEE |
 
 Dữ liệu cửa hàng và nhân viên trong seed là dữ liệu demo. Không sử dụng chúng trên production.
 

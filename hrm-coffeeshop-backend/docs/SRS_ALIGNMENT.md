@@ -42,7 +42,7 @@ Chưa kiểm chứng trên môi trường thật (xem mục 5). Đây là điề
 
 ## 4. Tổ chức database scripts
 
-Database chỉ có đúng hai file SQL: `config.sql` (DDL/schema) và `seeddata.sql` (dữ liệu nền + dữ liệu demo/test). Không có migration hoặc script SQL phụ. Khi phát triển, cập nhật trực tiếp `config.sql`; nếu đổi dữ liệu khởi tạo thì cập nhật `seeddata.sql`. Kiểm chứng bằng cách tạo database test mới từ đầu rồi chạy lần lượt hai file. Không dùng cách này để nâng cấp database đang có dữ liệu.
+`config.sql` (schema) và `seeddata.sql` (dữ liệu nền/demo) là hai script database duy nhất. Chúng dùng để tạo database mới; không chạy lại trên database đang có dữ liệu. Nâng cấp database hiện hữu cần sao lưu và kế hoạch DBA riêng.
 
 ## 5. Kiểm chứng
 

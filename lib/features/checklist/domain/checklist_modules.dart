@@ -6,7 +6,7 @@ import 'package:hrm_coffee_shop_flutter/features/checklist/domain/checklist_fiel
 
 final myChecklistsModule = ModuleSpec(
   'my-checklists',
-  'Checklist được giao',
+  'Checklist',
   '/checklists/me',
   'taskId',
   'checklistName',
@@ -27,7 +27,7 @@ final myChecklistsModule = ModuleSpec(
 
 final checklistsModule = ModuleSpec(
   'checklists',
-  'Checklist cửa hàng',
+  'Checklist',
   '/checklists/instances',
   'taskId',
   'checklistName',
@@ -55,16 +55,24 @@ final checklistsModule = ModuleSpec(
       valueKey: 'templateId',
       labelKey: 'checklistName',
     ),
-    employeeField,
+    FieldSpec(
+      'employeeId',
+      'Nhân viên (chỉ cần nếu không chọn ca)',
+      kind: FieldKind.lookup,
+      required: true,
+      source: '/employees',
+      valueKey: 'employeeId',
+      labelKey: 'fullName',
+    ),
     FieldSpec(
       'workDate',
-      'Ngày thực hiện',
+      'Ngày thực hiện (chỉ cần nếu không chọn ca)',
       kind: FieldKind.date,
       required: true,
     ),
     FieldSpec(
       'scheduleId',
-      'Ca được phân (tùy chọn)',
+      'Ca được phân (tùy chọn; ngày và nhân viên lấy theo ca)',
       kind: FieldKind.lookup,
       source: '/shift-assignments',
       valueKey: 'assignmentId',

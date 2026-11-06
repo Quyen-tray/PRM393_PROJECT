@@ -34,7 +34,7 @@ class AbsenceWorkflowIT extends IntegrationTestBase {
     void absenceMustBeGeneratedApprovedOrRejectedBeforeFinalize() {
         long nv = employeeIdByCode("NV001");
         long employeeUser = userIdOfEmployee("NV001");
-        long manager = userIdByEmail("quanly@hrm.test");
+        long manager = userIdByEmail("baonvchaos@gmail.com");
         int sang = workShiftId("CA_SANG");
 
         loginAs(manager, null, Set.of(Roles.STORE_MANAGER));

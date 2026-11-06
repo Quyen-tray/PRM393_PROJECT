@@ -27,7 +27,7 @@ class ScheduleLockIT extends IntegrationTestBase {
     @Test
     void lockedPeriodBlocksCreatePatchAndCancelOfItsShifts() {
         long nv = employeeIdByCode("NV001");
-        long manager = userIdByEmail("quanly@hrm.test");
+        long manager = userIdByEmail("baonvchaos@gmail.com");
         int sang = workShiftId("CA_SANG");
         String code = "IT-SCHED-2032-05";
 

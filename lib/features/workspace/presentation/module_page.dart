@@ -38,7 +38,7 @@ class _ModulePageState extends ConsumerState<ModulePage> {
         'accounts' => 'userId',
         'devices' => 'deviceId',
         'attendance' || 'my-attendance' => 'attendanceId',
-        'checklists' || 'checklist-reviews' => 'checklistTaskId',
+        'checklists' || 'my-checklists' || 'checklist-reviews' => 'dueAt',
         'explanations' || 'my-explanations' => 'submittedAt',
         'overtime' || 'my-overtime' => 'requestedAt',
         'assignments' || 'my-schedule' => 'plannedStartAt',
