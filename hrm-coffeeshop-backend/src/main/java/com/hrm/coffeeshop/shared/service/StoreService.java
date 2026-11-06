@@ -79,7 +79,7 @@ public class StoreService {
                 s.getGpsMaxAccuracyMeters());
     }
 
-    /** Thay đổi cấu hình chỉ áp dụng cho ca TẠO MỚI (ca đã tạo giữ giá trị của mẫu ca). */
+    /** Check-in sớm và ân hạn là mặc định cho mẫu ca mới; GPS và reminder có hiệu lực khi lưu. */
     @Transactional
     public SettingsView update(SettingsRequest r) {
         Store s = current();

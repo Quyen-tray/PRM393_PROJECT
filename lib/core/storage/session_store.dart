@@ -39,9 +39,13 @@ class TokenVault {
   String? refreshToken;
   String? deviceCredential;
   int generation = 0;
+  int sessionGeneration = 0;
   Future<void> load() async {
     final loadedAccess = await store.read('access');
-    if (loadedAccess != accessToken) generation++;
+    if (loadedAccess != accessToken) {
+      generation++;
+      sessionGeneration++;
+    }
     accessToken = loadedAccess;
     refreshToken = await store.read('refresh');
     deviceCredential = await store.read('device-credential');
@@ -51,8 +55,10 @@ class TokenVault {
     }
   }
 
-  Future<void> save(Map<String, dynamic> tokens) async {
+  Future<void> save(Map<String, dynamic> tokens,
+      {bool rotation = false}) async {
     generation++;
+    if (!rotation) sessionGeneration++;
     refreshToken = tokens['refreshToken'] as String;
     accessToken = tokens['accessToken'] as String;
     await store.write('refresh', refreshToken!);
@@ -61,6 +67,7 @@ class TokenVault {
 
   Future<void> clear() async {
     generation++;
+    sessionGeneration++;
     accessToken = null;
     refreshToken = null;
     await store.delete('access');

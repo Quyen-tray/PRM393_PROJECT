@@ -20,8 +20,7 @@ public interface EmployeeRewardPenaltyRepository extends JpaRepository<EmployeeR
 
     /** Lọc, sắp xếp và phân trang ngay trong SQL. Chuỗi rỗng hoặc 0 nghĩa là không lọc. */
     @Query(value = "select r from EmployeeRewardPenalty r where (:type = '' or r.decisionType = :type) "
-                 + "and (:employeeId = 0L or r.employeeId = :employeeId) and (:status = '' or r.decisionStatus = :status) "
-                 + "order by r.effectiveDate desc",
+                 + "and (:employeeId = 0L or r.employeeId = :employeeId) and (:status = '' or r.decisionStatus = :status)",
            countQuery = "select count(r) from EmployeeRewardPenalty r where (:type = '' or r.decisionType = :type) "
                  + "and (:employeeId = 0L or r.employeeId = :employeeId) and (:status = '' or r.decisionStatus = :status)")
     Page<EmployeeRewardPenalty> search(@Param("type") String type, @Param("employeeId") long employeeId,

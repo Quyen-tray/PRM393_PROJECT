@@ -54,6 +54,8 @@ public class AttendanceService {
     private final Clock clock;
     private final AttendancePhotoPolicy photoPolicy;
     private final boolean flexibleTesting;
+    private final boolean blockMockLocations;
+    private final boolean faceVerificationRequired;
 
     public AttendanceService(AttendanceRepository attendance, AttendanceVerificationRepository evidences,
                              ShiftAssignmentRepository schedules, WorkShiftRepository shifts,
@@ -63,7 +65,9 @@ public class AttendanceService {
                              StorageGateway storage, ViolationService violations, PersonLookup people,
                              AuditService audit, AppProperties props, PayrollLockGuard lockGuard, VerificationAttemptRecorder attemptRecorder, Clock clock,
                              AttendancePhotoPolicy photoPolicy,
-                             @Value("${app.attendance.flexible-testing-enabled:false}") boolean flexibleTesting) {
+                             @Value("${app.attendance.flexible-testing-enabled:false}") boolean flexibleTesting,
+                             @Value("${app.attendance.block-mock-locations:true}") boolean blockMockLocations,
+                             @Value("${app.attendance.face-verification-required:false}") boolean faceVerificationRequired) {
         this.attendance = attendance;
         this.evidences = evidences;
         this.schedules = schedules;
@@ -85,6 +89,8 @@ public class AttendanceService {
         this.clock = clock;
         this.photoPolicy = photoPolicy;
         this.flexibleTesting = flexibleTesting;
+        this.blockMockLocations = blockMockLocations;
+        this.faceVerificationRequired = faceVerificationRequired;
     }
 
     private record Geo(BigDecimal lat, BigDecimal lon, BigDecimal accuracy, double distance) {}
@@ -101,6 +107,7 @@ public class AttendanceService {
 
         // Khóa kỳ công TRƯỚC khi nạp bản ghi công: bản ghi có thể được tạo hoặc cập nhật ngay bên dưới.
         if (!flexibleTesting) lockGuard.assertWorkDateOpen(sc.getWorkDate());
+        sc = schedules.findByIdForUpdate(sc.getShiftAssignmentId()).orElseThrow();
         Optional<Attendance> existing = attendance.findByShiftAssignmentId(sc.getShiftAssignmentId());
         if (existing.isPresent() && existing.get().getCheckInAt() != null) {
             Attendance ex = existing.get();
@@ -127,7 +134,7 @@ public class AttendanceService {
                     BusinessException.details("restrictions", el.restrictions()));
         devices.requireActive(empId, r.deviceId());
         Geo geo = gpsOrRecord(r.location(), now, sc.getShiftAssignmentId(), empId, "CHECK_IN", r.deviceId());
-        String photoKey = requirePhoto(r.photoEvidence(), photoPolicy.required(empId, sc.getShiftAssignmentId(), "CHECK_IN"));
+        String photoKey = requirePhoto(r.photoEvidence(), photoRequired(empId, sc.getShiftAssignmentId(), "CHECK_IN"));
         FaceVerificationClient.Result fr = faceOrRecord(r.faceVerification(), photoKey, empId, sc.getShiftAssignmentId(), "CHECK_IN", r.deviceId(), now);
 
         Attendance a = existing.orElseGet(Attendance::new);
@@ -174,7 +181,7 @@ public class AttendanceService {
         LocalDate workDate = attendance.findWorkDateOfAttendance(r.attendanceId(), empId)
                 .orElseThrow(() -> BusinessException.notFound("bản ghi chấm công"));
         if (!flexibleTesting) lockGuard.assertWorkDateOpen(workDate);
-        Attendance a = attendance.findById(r.attendanceId()).filter(x -> x.getEmployeeId().equals(empId))
+        Attendance a = attendance.findByIdForUpdate(r.attendanceId()).filter(x -> x.getEmployeeId().equals(empId))
                 .orElseThrow(() -> BusinessException.notFound("bản ghi chấm công"));
         ShiftAssignment sc = schedules.findById(a.getShiftAssignmentId()).orElseThrow();
         WorkShift sh = shifts.findById(sc.getWorkShiftId()).orElseThrow();
@@ -189,7 +196,7 @@ public class AttendanceService {
         Instant now = clock.instant();
         devices.requireActive(empId, r.deviceId());
         Geo geo = gpsOrRecord(r.location(), now, sc.getShiftAssignmentId(), empId, "CHECK_OUT", r.deviceId());
-        String photoKey = requirePhoto(r.photoEvidence(), photoPolicy.required(empId, sc.getShiftAssignmentId(), "CHECK_OUT"));
+        String photoKey = requirePhoto(r.photoEvidence(), photoRequired(empId, sc.getShiftAssignmentId(), "CHECK_OUT"));
         FaceVerificationClient.Result fr = faceOrRecord(r.faceVerification(), photoKey, empId, sc.getShiftAssignmentId(), "CHECK_OUT", r.deviceId(), now);
 
         a.setCheckOutAt(now.isBefore(a.getCheckInAt()) ? a.getCheckInAt() : now);
@@ -240,6 +247,8 @@ public class AttendanceService {
     private Geo verifyGps(LocationDto loc, Instant now) {
         if (loc == null || loc.latitude() == null || loc.longitude() == null)
             throw new BusinessException(ErrorCode.GPS_UNAVAILABLE, "Không lấy được vị trí GPS. Hãy bật GPS hoặc gửi giải trình.");
+        if (blockMockLocations && !flexibleTesting && Boolean.TRUE.equals(loc.isMocked()))
+            throw new BusinessException(ErrorCode.GPS_MOCKED, "Phát hiện vị trí giả lập. Hãy tắt ứng dụng giả lập vị trí hoặc gửi giải trình.");
         if (!Double.isFinite(loc.latitude()) || !Double.isFinite(loc.longitude())
                 || Math.abs(loc.latitude()) > 90 || Math.abs(loc.longitude()) > 180)
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Tọa độ không hợp lệ");
@@ -271,13 +280,22 @@ public class AttendanceService {
         EvidenceKeys.requireOwnedAttendanceEvidence(p.storageKey(), SecurityUtils.requireEmployeeId());
         if (!storage.exists(p.storageKey()))
             throw new BusinessException(ErrorCode.PHOTO_REQUIRED, "Ảnh xác minh chưa được tải lên hoặc đã hết hạn");
+        if (evidences.existsByEvidenceStorageKey(p.storageKey()))
+            throw new BusinessException(ErrorCode.PHOTO_ALREADY_USED, "Ảnh đã được dùng cho một lượt chấm công. Hãy chụp ảnh mới.");
         return p.storageKey();
+    }
+
+    private boolean photoRequired(Long employeeId, Long assignmentId, String event) {
+        return faceVerificationRequired || photoPolicy.required(employeeId, assignmentId, event);
     }
 
     private FaceVerificationClient.Result verifyFace(FaceVerification fv, String photoKey, Long empId) {
         FaceVerificationClient.Result res = face.verify(fv == null ? null : fv.sessionId(), photoKey, empId);
         if ("NO_MATCH".equals(res.matchStatus()) || "SPOOF".equals(res.livenessStatus()))
             throw new BusinessException(ErrorCode.FACE_VERIFICATION_FAILED, "Xác minh khuôn mặt không đạt, vui lòng thử lại");
+        if (faceVerificationRequired && !"PASSED".equals(faceStatus(res)))
+            throw new BusinessException(ErrorCode.FACE_VERIFICATION_UNAVAILABLE,
+                    "Ca này yêu cầu xác minh khuôn mặt và chống giả mạo, nhưng chưa có kết quả đạt. Liên hệ quản lý hoặc gửi giải trình.");
         return res;
     }
 
@@ -322,7 +340,9 @@ public class AttendanceService {
     private static String faceStatus(FaceVerificationClient.Result fr) {
         if (fr == null || fr.matchStatus() == null || "NOT_RUN".equals(fr.matchStatus())) return "EXEMPTED";
         if ("REVIEW".equals(fr.matchStatus()) || "REVIEW".equals(fr.livenessStatus())) return "REVIEW_REQUIRED";
-        return "PASSED";
+        return List.of("MATCH", "PASSED").contains(fr.matchStatus())
+                && fr.livenessStatus() != null && List.of("LIVE", "PASSED").contains(fr.livenessStatus())
+                ? "PASSED" : "EXEMPTED";
     }
 
     void assertNotLocked(Attendance a) {
@@ -349,7 +369,10 @@ public class AttendanceService {
         LocalDate today = TimeUtils.today(clock);
         List<ShiftAssignment> cand = new ArrayList<>(schedules.findByEmployeeIdAndWorkDateBetweenOrderByPlannedStartAtAsc(empId, today.minusDays(1), today.plusDays(1))
                 .stream().filter(s -> "PUBLISHED".equals(s.getScheduleStatus())).toList());
-        if (flexibleTesting && selectedAssignmentId != null && cand.stream().noneMatch(s -> s.getShiftAssignmentId().equals(selectedAssignmentId))) {
+        for (ShiftAssignment open : schedules.findOpenAttendanceByEmployeeId(empId, now)) {
+            if (cand.stream().noneMatch(s -> s.getShiftAssignmentId().equals(open.getShiftAssignmentId()))) cand.add(open);
+        }
+        if (selectedAssignmentId != null && cand.stream().noneMatch(s -> s.getShiftAssignmentId().equals(selectedAssignmentId))) {
             cand.add(schedules.findById(selectedAssignmentId)
                     .filter(s -> s.getEmployeeId().equals(empId) && "PUBLISHED".equals(s.getScheduleStatus()))
                     .orElseThrow(() -> BusinessException.notFound("ca được giao cho bạn")));
@@ -366,11 +389,12 @@ public class AttendanceService {
             boolean inWindow = !now.isBefore(s.getPlannedStartAt().minus(Duration.ofMinutes(workShift.getEarlyCheckInMinutes())))
                     && !now.isAfter(s.getPlannedEndAt());
             boolean notStarted = ar == null || ar.getCheckInAt() == null;
-            int priority = open ? 0 : notStarted && (flexibleTesting || inWindow) ? 1
-                    : flexibleTesting ? 2 : notStarted && s.getPlannedEndAt().isAfter(now) ? 3 : Integer.MAX_VALUE;
+            boolean recent = !s.getWorkDate().isBefore(today.minusDays(1));
+            int priority = open ? (recent ? 0 : 2) : notStarted && (flexibleTesting || inWindow) ? 1
+                    : flexibleTesting ? 4 : notStarted && s.getPlannedEndAt().isAfter(now) ? 3 : Integer.MAX_VALUE;
             if (priority < best) { best = priority; pick = s; }
         }
-        if (flexibleTesting && selectedAssignmentId != null) {
+        if (selectedAssignmentId != null) {
             pick = cand.stream().filter(s -> s.getShiftAssignmentId().equals(selectedAssignmentId)).findFirst().orElseThrow();
         }
         if (pick == null) return null;
@@ -381,51 +405,33 @@ public class AttendanceService {
         var installation = devices.current(credential);
         boolean deviceOk = installation != null && "ACTIVE".equals(installation.status());
         List<String> blockers = new ArrayList<>();
-        if (!deviceOk) blockers.add("DEVICE_NOT_ACTIVE");
+        if (!deviceOk) blockers.add(installation == null ? "DEVICE_NOT_ACTIVE" : switch (installation.status()) {
+            case "PENDING" -> "DEVICE_PENDING";
+            case "REJECTED" -> "DEVICE_REJECTED";
+            case "LOCKED", "REVOKED" -> "DEVICE_REVOKED";
+            default -> "DEVICE_NOT_ACTIVE";
+        });
+        boolean checkedIn = ar != null && ar.getCheckInAt() != null;
         if (!flexibleTesting) {
-            if (!"ACTIVE".equals(emp.getEmploymentStatus())) blockers.add("ACCOUNT_NOT_ACTIVE");
+            if (!checkedIn && !"ACTIVE".equals(emp.getEmploymentStatus())) blockers.add("ACCOUNT_NOT_ACTIVE");
+            if (!checkedIn && !el.eligible()) blockers.add("EMPLOYEE_NOT_ELIGIBLE_FOR_SHIFT");
             if (now.isBefore(opens) && (ar == null || ar.getCheckInAt() == null)) blockers.add("CHECK_IN_TOO_EARLY");
             if (now.isAfter(pick.getPlannedEndAt()) && (ar == null || ar.getCheckInAt() == null)) blockers.add("CHECK_IN_WINDOW_CLOSED");
             try { lockGuard.assertWorkDateOpen(pick.getWorkDate()); }
             catch (BusinessException e) { blockers.add(e.getCode().name()); }
         }
-        boolean checkedIn = ar != null && ar.getCheckInAt() != null;
         boolean canIn = !checkedIn && (flexibleTesting || !now.isBefore(opens) && !now.isAfter(pick.getPlannedEndAt())) && blockers.isEmpty();
         boolean canOut = checkedIn && ar.getCheckOutAt() == null && blockers.isEmpty();
         return new CurrentShiftView(pick.getShiftAssignmentId(), sh.getShiftName(), TimeUtils.vn(pick.getPlannedStartAt()),
                 TimeUtils.vn(pick.getPlannedEndAt()), TimeUtils.vn(opens), ar == null ? null : ar.getAttendanceId(),
                 ar == null ? null : apiStatus(ar, false), canIn, canOut, deviceOk, el.eligible(), blockers,
-                photoPolicy.required(empId, pick.getShiftAssignmentId(), checkedIn ? "CHECK_OUT" : "CHECK_IN"), flexibleTesting,
+                photoRequired(empId, pick.getShiftAssignmentId(), checkedIn ? "CHECK_OUT" : "CHECK_IN"), flexibleTesting,
                 flexibleTesting ? cand.stream().map(s -> {
                     Attendance record = records.get(s.getShiftAssignmentId());
                     String name = shifts.findById(s.getWorkShiftId()).map(WorkShift::getShiftName).orElse("Ca làm");
                     return new ShiftChoice(s.getShiftAssignmentId(), name, s.getWorkDate(), TimeUtils.vn(s.getPlannedStartAt()),
                             TimeUtils.vn(s.getPlannedEndAt()), record == null ? null : apiStatus(record, false));
-                }).toList() : List.of());
-    }
-
-    @Transactional
-    public CurrentShiftView nextTestSession(Long assignmentId, String credential) {
-        if (!flexibleTesting) throw BusinessException.forbidden("Chế độ test thủ công chưa được bật");
-        Long employeeId = SecurityUtils.requireEmployeeId();
-        ShiftAssignment source = schedules.findById(assignmentId).filter(s -> s.getEmployeeId().equals(employeeId))
-                .orElseThrow(() -> BusinessException.notFound("ca được giao cho bạn"));
-        Attendance previous = attendance.findByShiftAssignmentId(assignmentId).orElse(null);
-        if (previous == null || previous.getCheckOutAt() == null)
-            throw BusinessException.invalidState("Hãy hoàn tất check-in và check-out của lượt hiện tại trước");
-        LocalDate today = TimeUtils.today(clock);
-        ShiftAssignment next = new ShiftAssignment();
-        next.setEmployeeId(employeeId);
-        next.setWorkShiftId(source.getWorkShiftId());
-        next.setWorkDate(today);
-        next.setPlannedStartAt(TimeUtils.startOfDay(today));
-        next.setPlannedEndAt(TimeUtils.startOfDay(today.plusDays(1)));
-        next.setCreatedBy(SecurityUtils.current().userId());
-        next.setNote("Test thủ công - lượt mới từ phân ca #" + assignmentId);
-        schedules.saveAndFlush(next);
-        audit.log("ATTENDANCE_TEST_SESSION_CREATE", "ShiftAssignment", next.getShiftAssignmentId(), null,
-                Map.of("sourceAssignmentId", assignmentId, "manualTest", true));
-        return current(credential, next.getShiftAssignmentId());
+                }).toList() : List.of(), flexibleTesting || !blockMockLocations, faceVerificationRequired);
     }
 
     @Transactional(readOnly = true)
@@ -494,6 +500,8 @@ public class AttendanceService {
         return new AttendanceView(a.getAttendanceId(), a.getShiftAssignmentId(), a.getEmployeeId(), people.nameOf(a.getEmployeeId()),
                 sc == null ? null : sc.getWorkDate(), TimeUtils.vn(a.getCheckInAt()), TimeUtils.vn(a.getCheckOutAt()),
                 apiStatus(a, true), a.getAttendanceStatus(), a.getLateMinutes(), a.getEarlyLeaveMinutes(), a.getWorkedMinutes(),
-                a.getApprovedOTMinutes(), a.getCheckInMethod(), a.getCheckOutMethod(), a.getPayrollStatus(), a.getNote());
+                a.getApprovedOTMinutes(), a.getCheckInMethod(), a.getCheckOutMethod(), a.getPayrollStatus(), a.getNote(),
+                a.getCheckInAt() == null || a.getCheckOutAt() == null ? null : TimeUtils.minutes(a.getCheckInAt(), a.getCheckOutAt()),
+                sc == null || a.getCheckOutAt() == null ? null : metrics.rawOvertimeMinutes(a, sc));
     }
 }

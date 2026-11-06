@@ -1,4 +1,6 @@
--- Additive SQL Server migration. Apply once against the selected application database.
+-- Upgrade existing databases created before config.sql included the V3 schema.
+-- Fresh databases created by the current config.sql already contain these objects.
+-- This migration remains idempotent for existing installations.
 -- Uses @@ as a batch delimiter for Spring SQL initialization; replace @@ with GO in SSMS.
 IF OBJECT_ID(N'dbo.EmployeeTraining', N'U') IS NULL
     THROW 51000, 'Initialize the base schema before applying V3 migration.', 1;

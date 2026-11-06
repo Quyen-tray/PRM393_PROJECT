@@ -28,7 +28,6 @@ class AttendanceState {
   final String? message;
   final Object? error;
   bool get photoRequired => shift?['photoRequired'] != false;
-  bool get flexibleTesting => shift?['flexibleTesting'] == true;
   bool get finished =>
       ['CHECKED_OUT', 'FINALIZED'].contains(shift?['attendanceStatus']);
   List<Json> get shiftChoices =>
@@ -58,10 +57,55 @@ final attendanceControllerProvider =
 
 class AttendanceController extends AsyncNotifier<AttendanceState> {
   int? _lastAssignmentId;
+  bool _refreshingStatus = false;
   Json get _selectionQuery => {
         if (ref.read(selectedAttendanceAssignmentProvider) != null)
           'assignmentId': ref.read(selectedAttendanceAssignmentProvider),
       };
+
+  Future<List<dynamic>> _fetchStatus() {
+    final api = ref.read(resourceRepositoryProvider);
+    return Future.wait([
+      api.read('/attendance/me/current', _selectionQuery),
+      api.read('/stores/current'),
+      api.read('/attendance/devices/current'),
+    ]);
+  }
+
+  Future<void> refreshStatus() async {
+    final old = state.asData?.value;
+    if (old == null || old.busy || _refreshingStatus) return;
+    final selection = ref.read(selectedAttendanceAssignmentProvider);
+    _refreshingStatus = true;
+    try {
+      final result = await _fetchStatus();
+      if (!ref.mounted ||
+          selection != ref.read(selectedAttendanceAssignmentProvider)) {
+        return;
+      }
+      final latest = state.asData?.value;
+      if (latest == null || latest.busy) return;
+      final shift = result[0] == null ? null : json(result[0]);
+      final sameEvent =
+          shift?['shiftAssignmentId'] == latest.shift?['shiftAssignmentId'] &&
+              shift?['attendanceStatus'] == latest.shift?['attendanceStatus'];
+      state = AsyncData(AttendanceState(
+        shift: shift,
+        store: json(result[1]),
+        device: result[2] == null ? null : json(result[2]),
+        photo: sameEvent ? latest.photo : null,
+        position: latest.position,
+        pending: latest.pending,
+        message: latest.message,
+        error: latest.error,
+      ));
+    } catch (_) {
+      // Keep the capture and retry operation intact during background refresh.
+    } finally {
+      _refreshingStatus = false;
+    }
+  }
+
   @override
   Future<AttendanceState> build() async {
     final selection = ref.watch(selectedAttendanceAssignmentProvider);
@@ -91,36 +135,6 @@ class AttendanceController extends AsyncNotifier<AttendanceState> {
     final current = state.asData?.value;
     if (current?.busy == true || current?.pending != null) return;
     ref.read(selectedAttendanceAssignmentProvider.notifier).select(id);
-  }
-
-  Future<void> nextTestSession() async {
-    final old = state.asData?.value;
-    if (old == null ||
-        old.busy ||
-        !old.flexibleTesting ||
-        !old.finished ||
-        old.pending != null) {
-      return;
-    }
-    state = AsyncData(AttendanceState(
-        shift: old.shift, store: old.store, device: old.device, busy: true));
-    try {
-      final result = json(await ref
-          .read(resourceRepositoryProvider)
-          .write('POST', '/attendance/testing/next-session', {
-        'assignmentId': old.shift!['shiftAssignmentId'],
-      }));
-      ref
-          .read(selectedAttendanceAssignmentProvider.notifier)
-          .select((result['shiftAssignmentId'] as num).toInt());
-      ref.read(dataRevisionProvider.notifier).changed();
-    } catch (error) {
-      state = AsyncData(AttendanceState(
-          shift: old.shift,
-          store: old.store,
-          device: old.device,
-          error: error));
-    }
   }
 
   void setPhoto(Uint8List photo) {
@@ -180,6 +194,7 @@ class AttendanceController extends AsyncNotifier<AttendanceState> {
   Future<void> submit({bool retry = false}) async {
     final old = state.asData?.value;
     if (old == null || old.busy) return;
+    if (old.pending != null && !retry) return;
     final userId = ref.read(sessionProvider).user!.id;
     final storage = ref.read(sessionStoreProvider);
     final api = ref.read(authenticatedApiProvider);
@@ -216,6 +231,12 @@ class AttendanceController extends AsyncNotifier<AttendanceState> {
                 'ATTENDANCE',
               );
         final p = await ref.read(locationProvider)();
+        if (p.isMocked && old.shift?['mockLocationsAllowed'] == false) {
+          throw const ApiException(
+              code: 'GPS_MOCKED',
+              message:
+                  'Vị trí đang được giả lập. Hãy tắt giả lập vị trí hoặc gửi giải trình.');
+        }
         final checkout = old.checkout;
         final body = <String, dynamic>{
           if (checkout)
@@ -228,6 +249,7 @@ class AttendanceController extends AsyncNotifier<AttendanceState> {
             'longitude': p.longitude,
             'accuracyMeters': p.accuracy,
             'capturedAt': p.timestamp.toUtc().toIso8601String(),
+            'isMocked': p.isMocked,
           },
           if (photoKey != null)
             'photoEvidence': {
@@ -277,9 +299,29 @@ class AttendanceController extends AsyncNotifier<AttendanceState> {
     } catch (e) {
       // Definitive validation/state failures permit a new capture; ambiguous network failures retain the exact operation.
       if (e is ApiException &&
-          [400, 403, 404, 409, 422].contains(e.statusCode)) {
+          ([400, 403, 404, 409, 422].contains(e.statusCode) ||
+              e.code == 'FACE_VERIFICATION_UNAVAILABLE')) {
         await storage.delete('attendance-pending-$userId');
         pending = null;
+      }
+      if (e is ApiException &&
+          ['ATTENDANCE_ALREADY_CHECKED_IN', 'ATTENDANCE_ALREADY_CHECKED_OUT']
+              .contains(e.code)) {
+        try {
+          final result = await _fetchStatus();
+          if (!ref.mounted) return;
+          state = AsyncData(AttendanceState(
+            shift: result[0] == null ? null : json(result[0]),
+            store: json(result[1]),
+            device: result[2] == null ? null : json(result[2]),
+            message: e.code == 'ATTENDANCE_ALREADY_CHECKED_IN'
+                ? 'Ca này đã check-in. Có thể tiếp tục check-out.'
+                : 'Ca này đã check-out.',
+          ));
+          return;
+        } catch (_) {
+          /* Show the original response if status reload is unavailable. */
+        }
       }
       state = AsyncData(
         AttendanceState(

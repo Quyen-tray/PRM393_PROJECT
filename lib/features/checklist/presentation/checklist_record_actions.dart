@@ -81,7 +81,7 @@ List<Widget> buildChecklistRecordActions(RecordActionContext record) {
                       item['isCompleted'] == true
                           ? 'Cập nhật ghi chú'
                           : item['requiresEvidence'] == true
-                              ? 'Ảnh và hoàn thành mục'
+                              ? 'Chụp ảnh và hoàn thành'
                               : 'Hoàn thành mục',
                     ),
                   ),

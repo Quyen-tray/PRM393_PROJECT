@@ -85,7 +85,7 @@ public abstract class IntegrationTestBase {
         r.add("app.storage.signing-secret", () -> "it-storage-secret-" + "b".repeat(32));
         r.add("app.storage.local-dir", () -> STORAGE_DIR.toString());
         r.add("app.google.client-id", () -> "it-client-id");
-        r.add("app.attendance.flexible-testing-enabled", () -> "false");
+        r.add("ATTENDANCE_FLEXIBLE_TESTING_ENABLED", () -> "false");
     }
 
     @Autowired protected JdbcTemplate jdbc;

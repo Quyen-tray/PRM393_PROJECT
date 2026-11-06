@@ -1,17 +1,23 @@
 import 'package:flutter/material.dart';
 import '../../../shared/resources/data/resource_repository.dart';
 import '../../../core/presentation/business_labels.dart';
+import '../../../shared/resources/domain/record_order.dart';
 
 class ScheduleBoard extends StatelessWidget {
   const ScheduleBoard(this.rows,
-      {required this.onOpen, this.descending = false, super.key});
+      {required this.onOpen, this.descending = true, super.key});
   final List<Json> rows;
   final void Function(Json) onOpen;
   final bool descending;
   @override
   Widget build(BuildContext context) {
     final groups = <String, List<Json>>{};
-    for (final row in rows) {
+    final ordered = [...rows]..sort((a, b) => descending
+        ? compareRecords(b, a,
+            sortField: 'plannedStartAt', idKey: 'assignmentId')
+        : compareRecords(a, b,
+            sortField: 'plannedStartAt', idKey: 'assignmentId'));
+    for (final row in ordered) {
       groups.putIfAbsent('${row['workDate']}', () => []).add(row);
     }
     final days = groups.keys.toList()

@@ -38,12 +38,14 @@ Giữ lại các cấu hình local trong `hrm-coffeeshop-backend/.env`. File nà
 
 ## 3. Chuẩn bị SQL Server và database
 
+Nếu chỉ cần xóa lượt chấm công vừa test và phân ca lại, xem [hướng dẫn reset một lượt chấm công](RESET_DATABASE.md).
+
 Chọn đúng trường hợp của bạn:
 
 - **Đã có database cần tiếp tục dùng:** cấu hình kết nối tới database đó trong `.env`. Không chạy lại `config.sql` hoặc `seeddata.sql` trên database đang có dữ liệu. Nếu schema chưa có cập nhật v3, dùng tùy chọn `-ApplyMigration` khi khởi động backend ở bước 6; migration bổ sung giữ dữ liệu hiện có.
 - **Tạo database local mới:** dùng tài khoản SQL Server có quyền tạo database, mở và chạy toàn bộ `hrm-coffeeshop-backend/infra/sqlserver/config.sql` trong SSMS hoặc Azure Data Studio, sau đó chạy toàn bộ `hrm-coffeeshop-backend/infra/sqlserver/seeddata.sql`. `config.sql` tạo database `HRM_CoffeeShop` và chỉ dùng cho cài đặt mới. Trước khi chạy seed, thay email quản trị ban đầu bằng Gmail bạn kiểm soát.
 
-Database vừa tạo từ schema nền cũng cần migration V3: dùng `-ApplyMigration` ở lần khởi động backend đầu tiên, rồi bỏ cờ ở các lần chạy sau.
+`config.sql` đã tích hợp schema V3. Database mới chỉ cần chạy `config.sql` và `seeddata.sql`, sau đó khởi động backend bình thường. `-ApplyMigration` chỉ dành cho database cũ chưa có schema V3.
 
 Không dùng `config.sql` để nâng cấp database đã tồn tại. Các bước này áp dụng cho database development local; với database dùng chung, xác nhận đúng database và migration cần chạy trước khi cập nhật.
 
@@ -59,7 +61,7 @@ JWT_SECRET=<chuoi-ngau-nhien-it-nhat-32-ky-tu>
 GOOGLE_CLIENT_ID=<Web-OAuth-Client-ID>
 ```
 
-Sửa máy chủ, cổng, tên database và tài khoản nếu SQL Server của bạn khác ví dụ. Script `Start-HrmBackend.ps1` đọc các biến trong file `.env`. Nếu chạy backend trực tiếp từ IDE, hãy tự cấu hình các biến môi trường trong cấu hình chạy của IDE.
+Sửa máy chủ, cổng, tên database và tài khoản nếu SQL Server của bạn khác ví dụ. Script `Start-HrmBackend.ps1` và backend chạy trực tiếp từ IDE đều đọc `.env`. Biến môi trường đặt riêng trong cấu hình chạy của IDE được ưu tiên hơn giá trị trong file.
 
 Đăng nhập của app cần Web OAuth Client ID giống nhau ở backend và `GOOGLE_SERVER_CLIENT_ID` trong file `env.json` tại thư mục gốc. Nếu file `env.json` chưa có, tạo từ mẫu:
 
@@ -100,6 +102,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tooling/Start-HrmBackend.ps1
 ```
 
 Backend chạy ở cổng `8080`; Swagger UI ở `http://localhost:8080/swagger-ui.html`.
+
+Khi chạy `HrmApplication` trực tiếp từ IDE, backend cũng tự nạp `hrm-coffeeshop-backend/.env` từ thư mục gốc dự án hoặc `.env` từ thư mục backend. Kiểm tra các biến môi trường đặt riêng trong Run Configuration nếu giá trị khác file `.env`. Cách nạp file không có đuôi dùng [Spring Boot Config Data import](https://docs.spring.io/spring-boot/3.3/reference/features/external-config.html).
 
 Nếu đang kết nối database cũ cần migration v3, dùng cờ dưới đây **một lần**:
 

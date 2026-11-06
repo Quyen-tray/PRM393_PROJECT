@@ -82,6 +82,7 @@ class V3WorkflowIT extends IntegrationTestBase {
         assertEquals(attendance,call(employee,"POST","/attendance/check-in",body,200,credential).path("attendanceId").asLong());
         clock.setAt(vn(2037,2,11,2,0));assertTrue(call(employee,"GET","/attendance/me/current",null,200,credential).path("canCheckOut").asBoolean());
         clock.setAt(vn(2037,2,11,6,0));body.remove("shiftAssignmentId");body.put("attendanceId",attendance);body.put("location",onSite());body.put("idempotencyKey","out-"+code());
+        body.put("photoEvidence",uploadPhoto(employee.employeeId(),LocalDate.of(2037,2,11)));
         call(employee,"POST","/attendance/check-out",body,200,credential);assertEquals(1,countAttendanceOfShift(assignment));
     }
     @Test @Order(2)

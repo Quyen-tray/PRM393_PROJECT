@@ -19,6 +19,7 @@ import 'package:hrm_coffee_shop_flutter/features/notifications/presentation/noti
 import 'package:hrm_coffee_shop_flutter/features/store/presentation/store_settings_page.dart';
 import 'package:hrm_coffee_shop_flutter/features/training/presentation/training_page.dart';
 import 'package:hrm_coffee_shop_flutter/shared/resources/presentation/record_summary.dart';
+import '../../../shared/resources/domain/record_order.dart';
 
 class ModulePage extends ConsumerStatefulWidget {
   const ModulePage(this.spec, {this.initialStatus, super.key});
@@ -38,12 +39,15 @@ class _ModulePageState extends ConsumerState<ModulePage> {
         'devices' => 'deviceId',
         'attendance' || 'my-attendance' => 'attendanceId',
         'checklists' || 'checklist-reviews' => 'checklistTaskId',
-        'explanations' => 'submittedAt',
-        'overtime' => 'requestedAt',
-        'assignments' => 'plannedStartAt',
+        'explanations' || 'my-explanations' => 'submittedAt',
+        'overtime' || 'my-overtime' => 'requestedAt',
+        'assignments' || 'my-schedule' => 'plannedStartAt',
         'employees' => 'employeeId',
         'adjustments' || 'my-adjustments' => 'createdAt',
-        'notifications' => 'createdAt',
+        'notifications' || 'deliveries' || 'audit' => 'createdAt',
+        'violations' || 'my-violations' => 'occurredAt',
+        'decisions' || 'my-rewards' => 'effectiveDate',
+        'payroll' => 'startDate',
         _ => ''
       };
   String status = '', search = '', entityType = '', actionCode = '';
@@ -58,7 +62,6 @@ class _ModulePageState extends ConsumerState<ModulePage> {
           _ => ''
         };
     if (widget.spec.kind == 'schedule') {
-      ordering = 'asc';
       from = DateUtils.dateOnly(
         DateTime.now(),
       ).subtract(Duration(days: DateTime.now().weekday - 1));
@@ -397,19 +400,12 @@ class _ModulePageState extends ConsumerState<ModulePage> {
                             v is String &&
                             v.toLowerCase().contains(search.toLowerCase()))))
                 .toList();
-            int compareId(Json a, Json b) {
-              final first = num.tryParse(recordId(spec, a)),
-                  second = num.tryParse(recordId(spec, b));
-              return first != null && second != null
-                  ? first.compareTo(second)
-                  : recordId(spec, a).compareTo(recordId(spec, b));
-            }
-
-            if (local && ordering == 'desc') {
-              rows.sort((a, b) => compareId(b, a));
-            }
-            if (local && ordering == 'asc') {
-              rows.sort(compareId);
+            if (local) {
+              rows.sort((a, b) => ordering == 'desc'
+                  ? compareRecords(b, a,
+                      sortField: sortField, idKey: spec.idKey)
+                  : compareRecords(a, b,
+                      sortField: sortField, idKey: spec.idKey));
             }
             final pages = (rows.length / pageSize).ceil().clamp(1, 100000);
             final localPage = page.clamp(0, pages - 1);

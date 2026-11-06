@@ -1,4 +1,8 @@
 spring:
+  config:
+    import:
+      - "optional:file:./hrm-coffeeshop-backend/.env[.properties]"
+      - "optional:file:./.env[.properties]"
   application:
     name: hrm-coffeeshop
   datasource:
@@ -57,6 +61,8 @@ app:
   attendance:
     flexible-testing-enabled: ${ATTENDANCE_FLEXIBLE_TESTING_ENABLED:false}
     photo-sample-percent: ${ATTENDANCE_PHOTO_SAMPLE_PERCENT:50}
+    block-mock-locations: ${ATTENDANCE_BLOCK_MOCK_LOCATIONS:true}
+    face-verification-required: ${ATTENDANCE_FACE_VERIFICATION_REQUIRED:false}
     gps-max-accuracy-meters: 50       # D-05: cần chốt sau khi thử thực địa
     gps-max-age-seconds: 120
   rate-limit:

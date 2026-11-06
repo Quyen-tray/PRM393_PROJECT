@@ -14,6 +14,10 @@ public interface ShiftAssignmentRepository extends JpaRepository<ShiftAssignment
 
     List<ShiftAssignment> findByEmployeeIdAndWorkDateBetweenOrderByPlannedStartAtAsc(Long employeeId, LocalDate from, LocalDate to);
 
+    @Query("select s from ShiftAssignment s, Attendance a where a.shiftAssignmentId = s.shiftAssignmentId "
+         + "and s.employeeId = :employeeId and a.checkInAt <= :now and a.checkOutAt is null order by s.plannedStartAt desc")
+    List<ShiftAssignment> findOpenAttendanceByEmployeeId(@Param("employeeId") Long employeeId, @Param("now") Instant now);
+
     @Query("select s from ShiftAssignment s where s.employeeId = :employeeId and s.scheduleStatus in ('DRAFT','PUBLISHED','COMPLETED') "
          + "and s.plannedStartAt < :end and s.plannedEndAt > :start and s.shiftAssignmentId <> :excludeId")
     List<ShiftAssignment> findOverlapping(@Param("employeeId") Long employeeId, @Param("start") Instant start,
