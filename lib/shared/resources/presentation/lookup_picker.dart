@@ -4,6 +4,20 @@ import 'package:hrm_coffee_shop_flutter/core/presentation/resource_widgets.dart'
 import 'package:hrm_coffee_shop_flutter/shared/resources/data/resource_repository.dart';
 import 'package:hrm_coffee_shop_flutter/shared/resources/domain/module_spec.dart';
 
+String shiftAssignmentOptionLabel(Json row) {
+  final shiftName = json(row['workShift'])['shiftName'] ?? 'Ca làm';
+  String time(dynamic value) {
+    final parsed = DateTime.tryParse('$value')?.toLocal();
+    if (parsed == null) return '--:--';
+    return '${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
+  }
+
+  return '${row['employeeName'] ?? 'Nhân viên'} · $shiftName · '
+      '${row['workDate'] ?? 'Chưa có ngày'} · '
+      '${time(row['plannedStartAt'])}–${time(row['plannedEndAt'])} · '
+      '#${row['assignmentId'] ?? '?'}';
+}
+
 class LookupPicker extends ConsumerStatefulWidget {
   const LookupPicker(this.field, {super.key});
   final FieldSpec field;
@@ -47,10 +61,13 @@ class _LookupPickerState extends ConsumerState<LookupPicker> {
               final result = ResourcePage.parse(data);
               final rows = result.items.where(
                 (r) =>
-                    r['isActive'] != false && (serverSearch ||
-                    '${r[f.labelKey]} ${r['employeeCode'] ?? ''}'
-                        .toLowerCase()
-                        .contains(search.toLowerCase())),
+                    r['isActive'] != false &&
+                    (f.source != '/shift-assignments' ||
+                        r['status'] == 'PUBLISHED') &&
+                    (serverSearch ||
+                        '${f.source == '/shift-assignments' ? shiftAssignmentOptionLabel(r) : r[f.labelKey]} ${r['employeeCode'] ?? ''}'
+                            .toLowerCase()
+                            .contains(search.toLowerCase())),
               );
               return Column(
                 children: [
@@ -58,7 +75,13 @@ class _LookupPickerState extends ConsumerState<LookupPicker> {
                   ...rows.map(
                     (r) => Card(
                       child: ListTile(
-                        title: Text('${r[f.labelKey] ?? r[f.valueKey]}'),
+                        title: Text(
+                          f.source == '/shift-assignments'
+                              ? shiftAssignmentOptionLabel(r)
+                              : '${r[f.labelKey] ?? r[f.valueKey]}',
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         subtitle: r['employeeCode'] == null
                             ? null
                             : Text('${r['employeeCode']}'),

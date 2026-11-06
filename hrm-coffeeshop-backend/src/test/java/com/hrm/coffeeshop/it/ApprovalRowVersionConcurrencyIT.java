@@ -94,7 +94,7 @@ class ApprovalRowVersionConcurrencyIT extends IntegrationTestBase {
     void twoManagersApprovingSameAdjustmentNeverOverwriteEachOther() throws Exception {
         long an = employeeIdByCode("NV001");
         long requester = userIdOfEmployee("NV001");
-        long manager1 = userIdByEmail("quanly@hrm.test");
+        long manager1 = userIdByEmail("baonvchaos@gmail.com");
         long manager2 = createUser("it-manager2-adj@hrm.test");
         LocalDate day = LocalDate.of(2033, 6, 10);
 
@@ -124,7 +124,7 @@ class ApprovalRowVersionConcurrencyIT extends IntegrationTestBase {
     @Test
     void twoManagersApprovingSameExceptionCreateOneAttendanceAndOneDecision() throws Exception {
         long an = employeeIdByCode("NV001");
-        long manager1 = userIdByEmail("quanly@hrm.test");
+        long manager1 = userIdByEmail("baonvchaos@gmail.com");
         long manager2 = createUser("it-manager2-exc@hrm.test");
         LocalDate day = LocalDate.of(2033, 6, 11);
 
@@ -154,7 +154,7 @@ class ApprovalRowVersionConcurrencyIT extends IntegrationTestBase {
     void twoManagersApprovingSameRewardDecisionRecordOnlyOne() throws Exception {
         long an = employeeIdByCode("NV001");
         long proposer = createUser("it-proposer-rp@hrm.test");
-        long manager1 = userIdByEmail("quanly@hrm.test");
+        long manager1 = userIdByEmail("baonvchaos@gmail.com");
         long manager2 = createUser("it-manager2-rp@hrm.test");
 
         // Quyết định thưởng đang chờ duyệt (rule OUTSTANDING_ACHIEVEMENT có sẵn trong seed).

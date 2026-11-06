@@ -13,6 +13,7 @@ import java.util.*;
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
 
     boolean existsByDedupKey(String dedupKey);
+    Optional<Notification> findByDedupKey(String dedupKey);
     Page<Notification> findByUserId(Long userId, Pageable p);
     Page<Notification> findByUserIdAndReadAtIsNull(Long userId, Pageable p);
     long countByUserIdAndReadAtIsNull(Long userId);

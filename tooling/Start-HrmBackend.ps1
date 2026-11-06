@@ -1,7 +1,6 @@
 param(
     [int]$Port = 8080,
-    [switch]$TestDatabase,
-    [switch]$ApplyMigration
+    [switch]$TestDatabase
 )
 $ErrorActionPreference = 'Stop'
 if ($TestDatabase -and -not $PSBoundParameters.ContainsKey('Port')) { $Port = 8081 }
@@ -26,6 +25,5 @@ if ($TestDatabase) {
     $env:STORAGE_LOCAL_DIR = Join-Path $backendRoot 'target/v3-verification/live-storage'
 }
 $env:PORT = "$Port"
-$env:DB_MIGRATION_MODE = if ($ApplyMigration) { 'always' } else { 'never' }
 Push-Location -LiteralPath $backendRoot
 try { & mvn -o -DskipTests spring-boot:run } finally { Pop-Location }

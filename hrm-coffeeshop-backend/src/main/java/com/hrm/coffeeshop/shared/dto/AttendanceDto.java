@@ -28,8 +28,15 @@ public final class AttendanceDto {
                                   @Valid PhotoEvidence photoEvidence, @Valid FaceVerification faceVerification,
                                   @Size(max = 100) String idempotencyKey) {}
 
+    public record SpotCheckResponseRequest(@NotNull Long deviceId, @NotNull @Valid LocationDto location,
+                                           @NotNull @Valid PhotoEvidence photoEvidence,
+                                           @Size(max = 100) String idempotencyKey) {}
+
     public record ShiftChoice(Long assignmentId, String shiftName, LocalDate workDate,
                               OffsetDateTime plannedStartAt, OffsetDateTime plannedEndAt, String attendanceStatus) {}
+
+    public record SpotCheckView(Long spotCheckId, String status, OffsetDateTime requestedAt,
+                                OffsetDateTime responseDeadlineAt) {}
 
     public record CheckInResponse(Long attendanceId, Long shiftAssignmentId, OffsetDateTime checkInAt,
                                   String attendanceStatus, String verificationStatus, int lateMinutes, boolean graceApplied) {}
@@ -43,16 +50,17 @@ public final class AttendanceDto {
                                  String attendanceStatus, String recordStatus, int lateMinutes, int earlyLeaveMinutes,
                                  Integer workedMinutes, int approvedOvertimeMinutes, String checkInMethod,
                                  String checkOutMethod, String payrollStatus, String note,
-                                 Long presenceMinutes, Long overtimeMinutes) {}
+                                 Long presenceMinutes, Long overtimeMinutes, SpotCheckView spotCheck) {}
 
     public record CurrentShiftView(Long shiftAssignmentId, String shiftName, OffsetDateTime plannedStartAt,
                                    OffsetDateTime plannedEndAt, OffsetDateTime checkInOpensAt, Long attendanceId,
                                    String attendanceStatus, boolean canCheckIn, boolean canCheckOut,
                                    boolean deviceActive, boolean trainingEligible, List<String> blockers,
                                    boolean photoRequired, boolean flexibleTesting, List<ShiftChoice> shiftChoices,
-                                   boolean mockLocationsAllowed, boolean faceVerificationRequired) {}
+                                   boolean mockLocationsAllowed, boolean faceVerificationRequired,
+                                   SpotCheckView spotCheck) {}
 
-    public record VerificationView(String verificationType, String verificationStatus, Double latitude, Double longitude,
+    public record VerificationView(String eventType, String verificationType, String verificationStatus, Double latitude, Double longitude,
                                    Double accuracyMeters, Double distanceMeters, String evidenceViewUrl,
                                    boolean downloadAllowed, String failureReason, OffsetDateTime verifiedAt) {}
 

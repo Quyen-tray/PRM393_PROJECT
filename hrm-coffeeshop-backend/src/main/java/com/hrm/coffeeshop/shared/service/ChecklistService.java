@@ -14,6 +14,8 @@ import com.hrm.coffeeshop.common.*;
 import com.hrm.coffeeshop.domain.*;
 import com.hrm.coffeeshop.repository.*;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -253,7 +255,11 @@ public class ChecklistService {
     @Transactional(readOnly = true)
     public List<RunView> myTasks(String status) {
         Long empId = SecurityUtils.requireEmployeeId();
-        List<ChecklistTask> list = status == null ? runs.findMine(empId, OPEN_STATES) : status.isBlank() ? runs.findByEmployeeIdOrderByDueAtDesc(empId) : runs.findByEmployeeIdAndRunStatus(empId, status);
+        List<ChecklistTask> list = status == null
+                ? runs.findMine(empId, OPEN_STATES)
+                : status.isBlank()
+                    ? runs.findByEmployeeIdOrderByDueAtDescChecklistTaskIdDesc(empId)
+                    : runs.findByEmployeeIdAndRunStatusOrderByDueAtDescChecklistTaskIdDesc(empId, status);
         return list.stream().map(r -> runView(r, false)).toList();
     }
 
@@ -266,7 +272,13 @@ public class ChecklistService {
 
     @Transactional(readOnly = true)
     public PageResponse<RunView> list(String status, Pageable p) {
-        return PageResponse.of(runs.searchByStatus(status == null ? "" : status, p), r -> runView(r, false));
+        Sort sort = p.getSort().isSorted() ? p.getSort() : Sort.by(Sort.Direction.DESC, "dueAt");
+        Sort.Order dueOrder = sort.getOrderFor("dueAt");
+        Sort.Direction direction = dueOrder == null ? Sort.Direction.DESC : dueOrder.getDirection();
+        if (sort.getOrderFor("checklistTaskId") == null)
+            sort = sort.and(Sort.by(direction, "checklistTaskId"));
+        Pageable ordered = PageRequest.of(p.getPageNumber(), p.getPageSize(), sort);
+        return PageResponse.of(runs.searchByStatus(status == null ? "" : status, ordered), r -> runView(r, false));
     }
 
     @Transactional

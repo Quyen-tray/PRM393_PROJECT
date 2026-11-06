@@ -1,6 +1,6 @@
 # Cài đặt database HRM Coffee Shop
 
-Quy ước database của dự án: chỉ duy trì đúng **2 file SQL** — `config.sql` và `seeddata.sql`. Không tạo migration hoặc script SQL phụ.
+Chỉ cần hai file database: `config.sql` tạo schema và `seeddata.sql` nạp dữ liệu nền cùng tài khoản demo. Không có script nâng cấp database hiện hữu; không chạy lại hai file trên database có dữ liệu.
 
 ## Cài mới
 
@@ -14,9 +14,9 @@ Quy ước database của dự án: chỉ duy trì đúng **2 file SQL** — `co
 - Chỉ dùng `config.sql` cho database mới/trống.
 - Không chạy lại `config.sql` trên database đang có dữ liệu. Script chủ động từ chối nếu DB đã tồn tại.
 - `seeddata.sql` có kiểm tra dữ liệu đã tồn tại để hạn chế insert trùng. Dữ liệu demo cửa hàng `CF-HN01` chỉ được tạo một lần. Nếu seed dừng do lỗi constraint, xử lý nguyên nhân trong `seeddata.sql` rồi chạy lại; không tắt hoặc xóa CHECK/FK/UNIQUE để né lỗi.
-- Khi thay đổi schema trong giai đoạn phát triển, cập nhật trực tiếp `config.sql`; nếu thay đổi dữ liệu nền/demo thì cập nhật `seeddata.sql`. Sau đó dựng lại database test từ đầu và chạy lại đúng hai file theo thứ tự.
+- Khi thay đổi schema, cập nhật `config.sql`. Với database hiện hữu, sao lưu và nhờ DBA chuẩn bị kế hoạch nâng cấp riêng trước khi triển khai mã mới.
 - Trước production, rà soát phần demo/test trong `seeddata.sql`; không dùng tài khoản và dữ liệu demo trên production.
-- Nếu đã có database cần giữ dữ liệu, tuyệt đối không chạy lại hai file này để “nâng cấp”. Dự án không cung cấp migration; cần backup và thực hiện kế hoạch chuyển dữ liệu có kiểm soát riêng trước khi thay backend/schema.
+- Nếu đã có database cần giữ dữ liệu, tuyệt đối không chạy lại hai file này để “nâng cấp”. Sao lưu trước mọi thay đổi schema.
 
 ## Kiểm thử tích hợp
 

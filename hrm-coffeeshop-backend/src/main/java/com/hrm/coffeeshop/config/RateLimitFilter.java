@@ -39,7 +39,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/v1/auth/")) {
             limit = props.rateLimit().authPerMinute();
             key = "auth:" + req.getRemoteAddr();
-        } else if (path.equals("/api/v1/attendance/check-in") || path.equals("/api/v1/attendance/check-out")) {
+        } else if (path.equals("/api/v1/attendance/check-in") || path.equals("/api/v1/attendance/check-out")
+                || path.startsWith("/api/v1/attendance/spot-checks/") && path.endsWith("/respond")
+                || path.startsWith("/api/v1/attendance/") && path.endsWith("/spot-check")) {
             limit = props.rateLimit().attendancePerMinute();
             AuthUser u = SecurityUtils.currentOrNull();
             key = "att:" + (u != null ? u.userId() : req.getRemoteAddr());

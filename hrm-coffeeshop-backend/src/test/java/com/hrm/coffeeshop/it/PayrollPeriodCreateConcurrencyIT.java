@@ -23,7 +23,7 @@ class PayrollPeriodCreateConcurrencyIT extends IntegrationTestBase {
 
     @Test
     void overlappingPeriodsCreatedConcurrentlyYieldOneSuccess() throws Exception {
-        long admin = userIdByEmail("quanly@hrm.test");
+        long admin = userIdByEmail("baonvhe181955@fpt.edu.vn");
         PeriodRequest a = new PeriodRequest("RACE-A", LocalDate.of(2041, 1, 1), LocalDate.of(2041, 1, 31), null);
         PeriodRequest b = new PeriodRequest("RACE-B", LocalDate.of(2041, 1, 15), LocalDate.of(2041, 2, 15), null);
 

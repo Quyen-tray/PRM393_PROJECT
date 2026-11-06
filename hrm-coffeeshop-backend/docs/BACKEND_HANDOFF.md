@@ -15,10 +15,9 @@
 
 ## Database
 
-- Chỉ có `config.sql` và `seeddata.sql`; không sử dụng migration.
+- Chỉ giữ `config.sql` và `seeddata.sql` làm script database; `config.sql` tạo schema và `seeddata.sql` thêm dữ liệu demo tối giản.
 - Cài mới: thay Gmail admin trong `seeddata.sql` nếu cần, chạy `config.sql` rồi `seeddata.sql`.
-- Repository chỉ có đúng hai file `.sql`; không có migration hoặc script SQL phụ.
-- Không chạy lại trên database đang có dữ liệu; dự án không có quy trình nâng cấp schema tự động.
+- Không chạy lại file nền trên database đang có dữ liệu. Nâng cấp schema hiện hữu cần sao lưu và kế hoạch DBA riêng.
 - Đổi Gmail admin trên DB hiện hữu được hướng dẫn bằng thao tác DBA one-off trong `docs/GOOGLE_LOGIN.md`, không tạo file SQL mới.
 
 ## Chưa thể xác nhận

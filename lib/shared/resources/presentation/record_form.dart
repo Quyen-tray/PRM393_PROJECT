@@ -58,6 +58,12 @@ class _RecordFormState extends ConsumerState<RecordForm> {
   final controllers = <String, TextEditingController>{};
   bool busy = false;
   Object? error;
+  bool get _checklistAssignmentForm =>
+      widget.fields.any((field) => field.key == 'scheduleId') &&
+      widget.fields.any((field) => field.key == 'employeeId') &&
+      widget.fields.any((field) => field.key == 'workDate');
+  bool get _checklistUsesAssignedShift =>
+      _checklistAssignmentForm && values['scheduleId'] != null;
   @override
   void initState() {
     super.initState();
@@ -100,9 +106,13 @@ class _RecordFormState extends ConsumerState<RecordForm> {
       error = null;
     });
     try {
-      await widget.onSubmit(
-        {...values}..removeWhere((key, value) => value == null),
-      );
+      final payload = {...values};
+      if (_checklistUsesAssignedShift) {
+        payload.remove('employeeId');
+        payload.remove('workDate');
+      }
+      payload.removeWhere((key, value) => value == null);
+      await widget.onSubmit(payload);
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) setState(() => error = e);
@@ -124,12 +134,23 @@ class _RecordFormState extends ConsumerState<RecordForm> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (widget.header != null) widget.header!,
-                    ...widget.fields.map(
+                    ...widget.fields
+                        .where((field) =>
+                            !_checklistUsesAssignedShift ||
+                            !['employeeId', 'workDate'].contains(field.key))
+                        .map(
                       (f) => Padding(
                         padding: const EdgeInsets.only(bottom: 18),
                         child: field(f),
                       ),
                     ),
+                    if (_checklistAssignmentForm)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(_checklistUsesAssignedShift
+                            ? 'Nhân viên và ngày thực hiện được lấy theo ca đã chọn.'
+                            : 'Nếu không chọn ca, hãy chọn nhân viên và ngày thực hiện.'),
+                      ),
                     if (error != null) ErrorPanel(error!),
                     const SizedBox(height: 16),
                     FilledButton.icon(
@@ -278,7 +299,24 @@ class _RecordFormState extends ConsumerState<RecordForm> {
             ? 'Vui lòng chọn dữ liệu đã có trên hệ thống'
             : null,
         builder: (state) => InputDecorator(
-          decoration: decoration.copyWith(errorText: state.errorText),
+          decoration: decoration.copyWith(
+            errorText: state.errorText,
+            suffixIcon: _checklistAssignmentForm &&
+                    f.key == 'scheduleId' &&
+                    values[f.key] != null
+                ? IconButton(
+                    tooltip: 'Bỏ chọn ca',
+                    onPressed: busy
+                        ? null
+                        : () => setState(() {
+                              values[f.key] = null;
+                              controllers[f.key]!.clear();
+                              state.didChange(null);
+                            }),
+                    icon: const Icon(Icons.clear),
+                  )
+                : null,
+          ),
           child: InkWell(
             onTap: busy
                 ? null
@@ -291,7 +329,9 @@ class _RecordFormState extends ConsumerState<RecordForm> {
                       setState(() {
                         values[f.key] = row[f.valueKey];
                         controllers[f.key]!.text =
-                            '${row[f.labelKey] ?? row[f.valueKey]}';
+                            f.source == '/shift-assignments'
+                                ? shiftAssignmentOptionLabel(row)
+                                : '${row[f.labelKey] ?? row[f.valueKey]}';
                         state.didChange(values[f.key]);
                       });
                     }

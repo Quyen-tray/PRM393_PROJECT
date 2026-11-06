@@ -29,7 +29,7 @@ class CheckInRaceIT extends IntegrationTestBase {
     void twoConcurrentCheckInsForSameShiftYieldOneRecord() throws Exception {
         long an = employeeIdByCode("NV001");
         long anUser = userIdOfEmployee("NV001");
-        long manager = userIdByEmail("quanly@hrm.test");
+        long manager = userIdByEmail("baonvchaos@gmail.com");
         long device = activeDeviceId(an);
         int sang = workShiftId("CA_SANG");
         LocalDate day = LocalDate.of(2034, 7, 10);

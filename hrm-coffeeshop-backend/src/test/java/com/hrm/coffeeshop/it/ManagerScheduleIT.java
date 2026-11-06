@@ -54,7 +54,7 @@ class ManagerScheduleIT extends IntegrationTestBase {
 
     @BeforeEach
     void createAssignments() {
-        managerId = userIdByEmail("quanly@hrm.test");
+        managerId = userIdByEmail("baonvchaos@gmail.com");
         employeeId = employeeIdByCode("NV001");
         // Insert out of chronological order so the assertions also verify sorting.
         lastId = assignment(employeeIdByCode("NV002"), TO);

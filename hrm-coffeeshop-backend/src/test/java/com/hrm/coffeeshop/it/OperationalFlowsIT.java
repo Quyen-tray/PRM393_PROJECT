@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hrm.coffeeshop.config.JwtService;
 import com.hrm.coffeeshop.job.ReminderJob;
-import com.hrm.coffeeshop.shared.service.AttendancePhotoPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -33,7 +32,6 @@ class OperationalFlowsIT extends IntegrationTestBase {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
     @Autowired JwtService jwt;
-    @Autowired AttendancePhotoPolicy photos;
     @Autowired ReminderJob reminders;
     long employee, employeeUser, manager, admin, device;
     LocalDate day;
@@ -42,7 +40,7 @@ class OperationalFlowsIT extends IntegrationTestBase {
     @BeforeEach void actors() {
         employee = employeeIdByCode("NV001");
         employeeUser = userIdOfEmployee("NV001");
-        manager = userIdByEmail("quanly@hrm.test");
+        manager = userIdByEmail("baonvchaos@gmail.com");
         admin = jdbc.queryForObject("SELECT TOP (1) ur.UserId FROM dbo.UserRole ur JOIN dbo.Role r ON r.RoleId=ur.RoleId WHERE r.RoleCode='SYSTEM_ADMIN' ORDER BY ur.UserId", Long.class);
         day = LocalDate.of(2048, 1, 1).plusDays(DAYS.addAndGet(120));
         at(day, 7, 5);
@@ -72,22 +70,12 @@ class OperationalFlowsIT extends IntegrationTestBase {
                 "workShiftId", workShiftId("CA_SANG"), "workDate", date.toString()), 201).path("data");
     }
 
-    long attendanceShift(boolean requiredIn, boolean requiredOut) throws Exception {
+    long attendanceShift() throws Exception {
         credential = "flow-installation-" + UUID.randomUUID();
         device = api(employeeUser, "POST", "/attendance/devices/register", Map.of("deviceFingerprint", credential,
                 "platform", "ANDROID", "deviceLabel", "Operational flow device"), 201).path("data").path("deviceId").asLong();
         api(manager, "POST", "/attendance/devices/" + device + "/approve", Map.of(), 200);
-        for (int attempt = 0; attempt < 100; attempt++) {
-            LocalDate candidate = day.plusDays(attempt);
-            long id = assignment(candidate).path("assignmentId").asLong();
-            if (photos.required(employee, id, "CHECK_IN") == requiredIn
-                    && photos.required(employee, id, "CHECK_OUT") == requiredOut) {
-                day = candidate;
-                at(day, 7, 5);
-                return id;
-            }
-        }
-        throw new AssertionError("No shift matched the deterministic sample");
+        return assignment(day).path("assignmentId").asLong();
     }
 
     Map<String, Object> attendanceBody(long id, boolean checkout, boolean photo) {
@@ -101,7 +89,7 @@ class OperationalFlowsIT extends IntegrationTestBase {
     }
 
     @Test void selectedCameraIsEnforcedForBothEventsAndRetriesAreIdempotent() throws Exception {
-        long shift = attendanceShift(true, true);
+        long shift = attendanceShift();
         for (int reload = 0; reload < 3; reload++)
             assertTrue(api(employeeUser, "GET", "/attendance/me/current", null, 200, credential)
                     .path("data").path("photoRequired").asBoolean());
@@ -123,23 +111,28 @@ class OperationalFlowsIT extends IntegrationTestBase {
         assertEquals("CHECKED_OUT", api(manager, "GET", "/attendance/" + attendanceId, null, 200).path("data").path("attendanceStatus").asText());
     }
 
-    @Test void unselectedCameraDoesNotWeakenGpsOrInstallationChecks() throws Exception {
-        long shift = attendanceShift(false, false);
-        assertFalse(api(employeeUser, "GET", "/attendance/me/current", null, 200, credential).path("data").path("photoRequired").asBoolean());
+    @Test void photoIsAlwaysRequiredAndDoesNotWeakenGpsOrInstallationChecks() throws Exception {
+        long shift = attendanceShift();
+        assertTrue(api(employeeUser, "GET", "/attendance/me/current", null, 200, credential).path("data").path("photoRequired").asBoolean());
         var body = attendanceBody(shift, false, false);
         api(employeeUser, "POST", "/attendance/check-in", body, 422, "another-installation");
         api(employeeUser, "POST", "/attendance/check-in", body, 422);
+        assertEquals("PHOTO_REQUIRED", api(employeeUser, "POST", "/attendance/check-in", body, 422, credential).path("error").path("code").asText());
         assertEquals(0, countAttendanceOfShift(shift));
+        body.put("photoEvidence", uploadPhoto(employee, day));
         long attendanceId = api(employeeUser, "POST", "/attendance/check-in", body, 200, credential).path("data").path("attendanceId").asLong();
         at(day, 11, 0);
-        api(employeeUser, "POST", "/attendance/check-out", attendanceBody(attendanceId, true, false), 200, credential);
-        assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.AttendanceVerification WHERE AttendanceId=? AND VerificationType='PHOTO' AND VerificationStatus='EXEMPTED'", Integer.class, attendanceId));
+        var checkout = attendanceBody(attendanceId, true, false);
+        assertEquals("PHOTO_REQUIRED", api(employeeUser, "POST", "/attendance/check-out", checkout, 422, credential).path("error").path("code").asText());
+        checkout.put("photoEvidence", uploadPhoto(employee, day));
+        api(employeeUser, "POST", "/attendance/check-out", checkout, 200, credential);
+        assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.AttendanceVerification WHERE AttendanceId=? AND VerificationType='PHOTO' AND VerificationStatus='PASSED'", Integer.class, attendanceId));
     }
 
     @ParameterizedTest
     @CsvSource({"MISSING,GPS_UNAVAILABLE", "FAR,GPS_OUT_OF_RANGE", "STALE,GPS_STALE", "INACCURATE,GPS_ACCURACY_INSUFFICIENT"})
     void invalidGpsCannotCreateAttendance(String kind, String expectedCode) throws Exception {
-        long shift = attendanceShift(false, false);
+        long shift = attendanceShift();
         var body = attendanceBody(shift, false, false);
         Object location = switch (kind) {
             case "MISSING" -> null;
@@ -257,7 +250,7 @@ class OperationalFlowsIT extends IntegrationTestBase {
         assertEquals(1, data.path("totalChecklists").asInt());
     }
 
-    @Test void disabledRemindersDoNotEscalateAndEnabledRemindersAreBounded() throws Exception {
+    @Test void overdueRemindersAreSpacedAndViolationFollowsTheLastReminder() throws Exception {
         JsonNode task = checklist("CLOSING", assignment(day).path("assignmentId").asLong(), day);
         long id = task.path("taskId").asLong();
         int interval = jdbc.queryForObject("SELECT IntervalMinutes FROM dbo.ReminderRule WHERE RuleCode='CHECKLIST_OVERDUE'", Integer.class);
@@ -271,6 +264,14 @@ class OperationalFlowsIT extends IntegrationTestBase {
             assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.ViolationEvent WHERE ChecklistTaskId=?", Integer.class, id));
             jdbc.update("UPDATE dbo.ReminderRule SET IsActive=1 WHERE RuleCode='CHECKLIST_OVERDUE'");
             reminders.run(); reminders.run();
+            assertEquals(1, remindersFor(id, "CHECKLIST_OVERDUE"));
+            assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.ViolationEvent WHERE ChecklistTaskId=? AND RecordStatus='PENDING'", Integer.class, id));
+            clock.setAt(clock.instant().plusSeconds(interval * 60L));
+            reminders.run();
+            assertEquals(2, remindersFor(id, "CHECKLIST_OVERDUE"));
+            assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.ViolationEvent WHERE ChecklistTaskId=? AND RecordStatus='PENDING'", Integer.class, id));
+            clock.setAt(clock.instant().plusSeconds(interval * 60L));
+            reminders.run();
             assertEquals(max, remindersFor(id, "CHECKLIST_OVERDUE"));
             assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dbo.ViolationEvent WHERE ChecklistTaskId=? AND RecordStatus='PENDING'", Integer.class, id));
         } finally {

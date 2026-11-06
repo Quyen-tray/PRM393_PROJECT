@@ -12,9 +12,12 @@ import com.hrm.coffeeshop.shared.dto.AttendanceDto.ExceptionView;
 import com.hrm.coffeeshop.shared.dto.AttendanceDto.ExplanationRequest;
 import com.hrm.coffeeshop.shared.dto.AttendanceDto.OvertimeRequestDto;
 import com.hrm.coffeeshop.shared.dto.AttendanceDto.OvertimeView;
+import com.hrm.coffeeshop.shared.dto.AttendanceDto.SpotCheckResponseRequest;
+import com.hrm.coffeeshop.shared.dto.AttendanceDto.SpotCheckView;
 import com.hrm.coffeeshop.shared.service.AttendanceAdjustmentService;
 import com.hrm.coffeeshop.shared.service.AttendanceExceptionService;
 import com.hrm.coffeeshop.shared.service.AttendanceService;
+import com.hrm.coffeeshop.shared.service.AttendanceSpotCheckService;
 import com.hrm.coffeeshop.shared.service.OvertimeService;
 
 import com.hrm.coffeeshop.common.*;
@@ -38,13 +41,15 @@ public class EmployeeAttendanceController {
     private final OvertimeService overtime;
     private final AttendanceAdjustmentService adjustments;
     private final com.hrm.coffeeshop.shared.service.DeviceService devices;
+    private final AttendanceSpotCheckService spotChecks;
 
-    public EmployeeAttendanceController(AttendanceService svc, AttendanceExceptionService exceptions, OvertimeService overtime, AttendanceAdjustmentService adjustments, com.hrm.coffeeshop.shared.service.DeviceService devices) {
+    public EmployeeAttendanceController(AttendanceService svc, AttendanceExceptionService exceptions, OvertimeService overtime, AttendanceAdjustmentService adjustments, com.hrm.coffeeshop.shared.service.DeviceService devices, AttendanceSpotCheckService spotChecks) {
         this.svc = svc;
         this.exceptions = exceptions;
         this.overtime = overtime;
         this.adjustments = adjustments;
         this.devices = devices;
+        this.spotChecks = spotChecks;
     }
 
     @PostMapping("/check-in")
@@ -65,6 +70,18 @@ public class EmployeeAttendanceController {
         String key = resolveKey(r.idempotencyKey(), idemHeader);
         return ApiResponse.ok("Check-out successful", svc.checkOut(new CheckOutRequest(r.attendanceId(), r.deviceId(),
                 r.location(), r.photoEvidence(), r.faceVerification(), key)));
+    }
+
+    @PostMapping("/spot-checks/{spotCheckId}/respond")
+    public ApiResponse<SpotCheckView> respondToSpotCheck(@PathVariable Long spotCheckId,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idemHeader,
+            @RequestHeader(value = "X-Device-Credential", required = false) String credential,
+            @Valid @RequestBody SpotCheckResponseRequest request) {
+        devices.requireInstallation(request.deviceId(), credential);
+        String key = resolveKey(request.idempotencyKey(), idemHeader);
+        return ApiResponse.ok("Attendance check response received",
+                spotChecks.respond(spotCheckId, new SpotCheckResponseRequest(request.deviceId(), request.location(),
+                        request.photoEvidence(), key)));
     }
 
     /** SRS 8.1: khóa idempotency lấy từ header Idempotency-Key, hoặc từ body idempotencyKey. */

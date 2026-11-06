@@ -52,7 +52,7 @@ class HrUploadAndAccessIT extends IntegrationTestBase {
     void hrUploadsPdfOnBehalfOfEmployee() throws Exception {
         long nv1 = employeeIdByCode("NV001");
         // Tài khoản quản lý có đủ quyền (ALL_PERMISSIONS, gồm DOCUMENT_REVIEW)
-        loginAs(userIdByEmail("quanly@hrm.test"), null, Set.of(Roles.STORE_MANAGER));
+        loginAs(userIdByEmail("baonvchaos@gmail.com"), null, Set.of(Roles.STORE_MANAGER));
 
         ApiResponse<UploadView> res = uploads.upload("DOCUMENT", nv1, pdfRequest());
         String key = res.data().storageKey();

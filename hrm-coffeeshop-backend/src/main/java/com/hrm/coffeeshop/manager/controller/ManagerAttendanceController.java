@@ -5,12 +5,14 @@ import com.hrm.coffeeshop.shared.dto.AttendanceDto.AttendanceView;
 import com.hrm.coffeeshop.shared.dto.AttendanceDto.ExceptionView;
 import com.hrm.coffeeshop.shared.dto.AttendanceDto.OvertimeView;
 import com.hrm.coffeeshop.shared.dto.AttendanceDto.StatsView;
+import com.hrm.coffeeshop.shared.dto.AttendanceDto.SpotCheckView;
 import com.hrm.coffeeshop.shared.dto.MiscDto.OptionalNoteRequest;
 import com.hrm.coffeeshop.shared.dto.MiscDto.ReasonRequest;
 import com.hrm.coffeeshop.shared.service.AttendanceAdjustmentService;
 import com.hrm.coffeeshop.shared.service.AttendanceExceptionService;
 import com.hrm.coffeeshop.shared.service.AttendanceService;
 import com.hrm.coffeeshop.shared.service.AttendanceStatsService;
+import com.hrm.coffeeshop.shared.service.AttendanceSpotCheckService;
 import com.hrm.coffeeshop.shared.service.OvertimeService;
 
 import com.hrm.coffeeshop.common.*;
@@ -34,14 +36,18 @@ public class ManagerAttendanceController {
     private final OvertimeService overtime;
     private final AttendanceAdjustmentService adjustments;
     private final AttendanceStatsService stats;
+    private final AttendanceSpotCheckService spotChecks;
     private final Clock clock;
 
-    public ManagerAttendanceController(AttendanceService svc, AttendanceExceptionService exceptions, OvertimeService overtime, AttendanceAdjustmentService adjustments, AttendanceStatsService stats, Clock clock) {
+    public ManagerAttendanceController(AttendanceService svc, AttendanceExceptionService exceptions, OvertimeService overtime,
+                                       AttendanceAdjustmentService adjustments, AttendanceStatsService stats,
+                                       AttendanceSpotCheckService spotChecks, Clock clock) {
         this.svc = svc;
         this.exceptions = exceptions;
         this.overtime = overtime;
         this.adjustments = adjustments;
         this.stats = stats;
+        this.spotChecks = spotChecks;
         this.clock = clock;
     }
 
@@ -53,6 +59,12 @@ public class ManagerAttendanceController {
             @RequestParam(required = false) Long employeeId, @RequestParam(required = false) String status,
             @PageableDefault(size = 50, sort = "attendanceId", direction = Sort.Direction.DESC) Pageable p) {
         return ApiResponse.ok(svc.search(from, to, employeeId, status, p));
+    }
+
+    @PostMapping("/{attendanceId}/spot-check")
+    @PreAuthorize("hasAuthority('ATTENDANCE_REVIEW')")
+    public ApiResponse<SpotCheckView> requestSpotCheck(@PathVariable Long attendanceId) {
+        return ApiResponse.ok("Mid-shift attendance check requested", spotChecks.requestNow(attendanceId));
     }
 
     @GetMapping("/summary")

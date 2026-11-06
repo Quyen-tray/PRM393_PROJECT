@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hrm_coffee_shop_flutter/shared/resources/data/resource_repository.dart';
 import '../../../core/presentation/business_labels.dart';
 import '../../../core/presentation/resource_widgets.dart';
 import '../data/attendance_controller.dart';
@@ -25,10 +26,13 @@ const blockerLabels = {
   'CHECK_IN_WINDOW_CLOSED': 'Ca đã kết thúc. Hãy gửi giải trình từ lịch làm.',
   'ACCOUNT_NOT_ACTIVE': 'Hồ sơ nhân viên chưa ở trạng thái làm việc.',
   'PAYROLL_PERIOD_LOCKED': 'Kỳ công chứa ca này đã khóa.',
+  'ATTENDANCE_SPOT_CHECK_PENDING':
+      'Đang gửi yêu cầu kiểm tra giữa ca. Hãy đợi màn hình cập nhật để chụp ảnh và lấy GPS.',
 };
 
 class CheckInScreen extends ConsumerStatefulWidget {
-  const CheckInScreen({super.key});
+  const CheckInScreen({this.assignmentId, super.key});
+  final int? assignmentId;
   @override
   ConsumerState<CheckInScreen> createState() => _CheckInScreenState();
 }
@@ -39,6 +43,19 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
   @override
   void initState() {
     super.initState();
+    final assignmentId = widget.assignmentId;
+    if (assignmentId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted ||
+            ref.read(selectedAttendanceAssignmentProvider) ==
+                assignmentId) {
+          return;
+        }
+        ref
+            .read(selectedAttendanceAssignmentProvider.notifier)
+            .select(assignmentId);
+      });
+    }
     WidgetsBinding.instance.addObserver(this);
     _poller = Timer.periodic(const Duration(seconds: 20), (_) => _refresh());
   }
@@ -103,7 +120,10 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
                                 overflow: TextOverflow.ellipsis),
                           ))
                       .toList(),
-                  onChanged: s.busy || s.pending != null
+                  onChanged: s.busy ||
+                          s.pending != null ||
+                          s.spotCheckPending != null ||
+                          s.hasSpotCheck
                       ? null
                       : (id) {
                           if (id != null) controller.selectAssignment(id);
@@ -192,16 +212,23 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
                       title: Text('${s.store?['name'] ?? 'Cửa hàng'}'),
                       subtitle: Text(
                           '${s.store?['address'] ?? ''}\nBán kính chấm công: ${s.store?['attendanceRadiusMeters'] ?? 'Chưa cấu hình'} m'))),
-              if (s.position != null)
+              if (s.position != null && !s.hasSpotCheck)
                 Card(
                     child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Text(
                             'Sai số GPS: ${s.position!.accuracy.toStringAsFixed(1)} m\nKhoảng cách tới quán: ${Geolocator.distanceBetween(s.position!.latitude, s.position!.longitude, (s.store!['latitude'] as num).toDouble(), (s.store!['longitude'] as num).toDouble()).toStringAsFixed(1)} m'))),
-              OutlinedButton.icon(
-                  onPressed: s.busy ? null : controller.locate,
-                  icon: const Icon(Icons.my_location),
-                  label: const Text('Lấy vị trí GPS')),
+              if (!s.hasSpotCheck) ...[
+                Text(s.position == null
+                    ? 'Bạn cần tự lấy GPS trước khi xác nhận chấm công.'
+                    : s.positionFresh
+                        ? 'Đã lấy GPS. Vị trí sẽ được kiểm tra với vùng cửa hàng.'
+                        : 'Vị trí GPS đã cũ. Hãy lấy lại trước khi xác nhận.'),
+                OutlinedButton.icon(
+                    onPressed: s.busy ? null : controller.locate,
+                    icon: const Icon(Icons.my_location),
+                    label: const Text('Lấy vị trí GPS')),
+              ],
               TextButton(
                   onPressed: () => Geolocator.openAppSettings(),
                   child: const Text('Mở cài đặt quyền vị trí')),
@@ -216,7 +243,10 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
                       icon: const Icon(Icons.checklist),
                       label: const Text('Tiếp tục checklist')),
                 ]),
-              if (s.shift != null && s.photoRequired && !s.finished) ...[
+              if (s.shift != null &&
+                  s.photoRequired &&
+                  !s.finished &&
+                  !s.hasSpotCheck) ...[
                 const SectionTitle('Ảnh xác minh'),
                 if (s.photo != null)
                   ClipRRect(
@@ -238,6 +268,93 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
                         ? 'Mở camera và chụp ảnh'
                         : 'Chụp ảnh khác')),
               ],
+              if (s.hasSpotCheck) ...[
+                const SizedBox(height: 8),
+                Card(
+                  color: const Color(0xfffff2d8),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Kiểm tra hiện diện giữa ca',
+                            style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 6),
+                        Text(
+                            'Chụp ảnh và tự lấy GPS để xác nhận bạn đang làm việc trước ${dateText(json(s.shift?['spotCheck'])['responseDeadlineAt'])}.'),
+                        const SizedBox(height: 10),
+                        if (s.spotCheckPhoto != null)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: Image.memory(s.spotCheckPhoto!,
+                                height: 190, fit: BoxFit.contain),
+                          ),
+                        OutlinedButton.icon(
+                          onPressed: s.busy
+                              ? null
+                              : () async {
+                                  final bytes = await Navigator.of(context,
+                                          rootNavigator: true)
+                                      .push<Uint8List>(MaterialPageRoute(
+                                          builder: (_) =>
+                                              const CameraCapturePage()));
+                                  if (bytes != null) {
+                                    controller.setSpotCheckPhoto(bytes);
+                                  }
+                                },
+                          icon: const Icon(Icons.camera_alt_outlined),
+                          label: Text(s.spotCheckPhoto == null
+                              ? 'Chụp ảnh xác nhận'
+                              : 'Chụp ảnh khác'),
+                        ),
+                        if (s.spotCheckPosition != null)
+                          Text(s.spotCheckPositionFresh
+                              ? 'Đã lấy GPS, sai số ${s.spotCheckPosition!.accuracy.toStringAsFixed(1)} m.'
+                              : 'GPS đã cũ, cần lấy lại.'),
+                        OutlinedButton.icon(
+                          onPressed:
+                              s.busy ? null : controller.locateSpotCheck,
+                          icon: const Icon(Icons.my_location),
+                          label: const Text('Lấy GPS kiểm tra'),
+                        ),
+                        if (s.spotCheckPending != null) ...[
+                          const Text(
+                              'Gửi đang chờ xác nhận. Có thể kiểm tra lại kết quả.'),
+                          FilledButton(
+                            onPressed: s.busy
+                                ? null
+                                : () => controller.submitSpotCheck(retry: true),
+                            child: const Text('Kiểm tra kết quả gửi'),
+                          ),
+                        ] else
+                          FilledButton.icon(
+                            onPressed: s.busy ||
+                                    s.spotCheckPhoto == null ||
+                                    !s.spotCheckPositionFresh
+                                ? null
+                                : controller.submitSpotCheck,
+                            icon: const Icon(Icons.verified_user_outlined),
+                            label: const Text('Xác nhận kiểm tra giữa ca'),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              if (s.spotCheckPending != null && !s.hasSpotCheck)
+                Card(
+                  child: ListTile(
+                    title: const Text('Lượt kiểm tra giữa ca đang chờ kết quả'),
+                    subtitle: const Text(
+                        'Kết nối bị gián đoạn. Gửi lại cùng yêu cầu để kiểm tra trạng thái.'),
+                    trailing: FilledButton(
+                      onPressed: s.busy
+                          ? null
+                          : () => controller.submitSpotCheck(retry: true),
+                      child: const Text('Gửi lại'),
+                    ),
+                  ),
+                ),
               if (s.error != null)
                 ErrorPanel(s.error!, retry: controller.refreshStatus),
               const SizedBox(height: 20),
@@ -245,7 +362,9 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
                 FilledButton.icon(
                     onPressed: s.busy ||
                             (s.photoRequired && s.photo == null) ||
+                            !s.positionFresh ||
                             s.pending != null ||
+                            s.hasSpotCheck ||
                             !(s.shift?['canCheckIn'] == true ||
                                 s.shift?['canCheckOut'] == true)
                         ? null

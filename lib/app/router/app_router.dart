@@ -109,10 +109,15 @@ final routerProvider = Provider<GoRouter>((ref) {
                       state.pathParameters['section']!))),
           GoRoute(
             path: '/attendance/check-in',
-            builder: (context, state) => SessionAccess(
-              allow: employee,
-              child: const RefreshOnReturn(child: CheckInScreen()),
-            ),
+            builder: (context, state) {
+              final assignmentId = int.tryParse(
+                  state.uri.queryParameters['assignmentId'] ?? '');
+              return SessionAccess(
+                allow: employee,
+                child: RefreshOnReturn(
+                    child: CheckInScreen(assignmentId: assignmentId)),
+              );
+            },
           ),
           GoRoute(
             path: '/quiz/:courseId',

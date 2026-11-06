@@ -72,6 +72,16 @@ public class ViolationService {
         });
     }
 
+    @Transactional
+    public void recordAttendanceSpotCheckMissed(Long employeeId, Long attendanceId) {
+        rules.findByRuleCode("ATTENDANCE_SPOT_CHECK_MISSED")
+                .filter(r -> Boolean.TRUE.equals(r.getIsActive())).ifPresent(rule -> {
+                    if (records.existsByEmployeeIdAndRuleIdAndAttendanceId(employeeId, rule.getRuleId(), attendanceId)) return;
+                    create(employeeId, rule, attendanceId, null,
+                            "Không phản hồi yêu cầu kiểm tra hiện diện giữa ca trong 5 phút");
+                });
+    }
+
     private void create(Long employeeId, RuleCatalog rule, Long attId, Long taskId, String details) {
         ViolationEvent d = new ViolationEvent();
         d.setEmployeeId(employeeId);
